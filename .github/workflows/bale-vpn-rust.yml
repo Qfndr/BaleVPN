@@ -101,6 +101,10 @@ jobs:
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Cache cargo + target
         uses: actions/cache@v4
         with:
@@ -144,6 +148,11 @@ jobs:
         run: |
           cp target/release/bale-vpn${{ matrix.bin_ext }} \
              ../release-staging/bale-vpn-headless-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
+
+      - name: Test fresh installs of staged binaries
+        run: |
+          python ../scripts/smoke-desktop.py ../release-staging/bale-vpn-gui-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
+          python ../scripts/smoke-desktop.py ../release-staging/bale-vpn-headless-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

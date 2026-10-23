@@ -114,11 +114,22 @@ impl Config {
         let path = config_path(override_dir)?;
         let text = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        // Portable installs may supply a config directory that does not exist
+        // yet. Create it before the first settings/token write, not just in a
+        // launcher, so every entry point supports a fresh installation.
+        let parent = path.parent().unwrap();
+        let mut directory = fs::DirBuilder::new();
+        directory.recursive(true);
+        #[cfg(unix)] {
+            use std::os::unix::fs::DirBuilderExt;
+            directory.mode(0o700);
+        }
+        directory.create(parent)?;
         // Exclusive random file, created as 0600 on Unix: no predictable
         // symlink target or interval where the bearer token is world-readable.
         // persist() also replaces an existing destination atomically on Windows.
         use std::io::Write;
-        let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
         tmp.write_all(text.as_bytes())?;
         tmp.as_file().sync_all()?;
         tmp.persist(&path).map_err(|e| e.error)?;
@@ -310,6 +321,23 @@ mod tests {
         let cfg = Config { port: 4001, ..Config::default() };
         assert_eq!(Resolved::merge_cli(&cfg, None, None, None, false).port, 4001);
         assert_eq!(Resolved::merge_cli(&cfg, None, None, Some(5001), false).port, 5001);
+    }
+
+    #[test]
+    fn first_run_creates_missing_config_directory_and_preserves_updates() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("portable build").join("data");
+        assert!(!dir.exists());
+        let file = ConfigFile::new(dir.clone());
+        file.update(|c| c.mode = Some("client".into())).unwrap();
+        file.update(|c| c.socks5_port = 1081).unwrap();
+        let saved = Config::load(Some(&dir)).unwrap();
+        assert_eq!(saved.mode.as_deref(), Some("client"));
+        assert_eq!(saved.socks5_port, 1081);
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700);
+        }
     }
 
     #[test]

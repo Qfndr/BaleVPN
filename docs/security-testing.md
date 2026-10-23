@@ -25,8 +25,15 @@ done
 - Malicious peer names and IDs remain inert in all four management lists, including inline event handler arguments.
 - Loopback, LAN, cloud metadata, CGNAT, and IPv4-mapped private destinations are blocked by the egress policy. A QUIC integration test checks that the server refuses a real loopback connection.
 - Real SOCKS5 traffic crosses two in-process QUIC peers and reaches a controlled echo server. The default listener address is checked, and switching to LAN binding requires an explicit API call.
-- Credential writes replace an existing configuration on Windows, retain other settings, and refuse to overwrite a corrupt configuration. Unix checks also verify 0600 permissions and resistance to predictable temporary-file symlinks.
+- Credential writes create missing configuration directories, replace an existing configuration on Windows, retain other settings, and refuse to overwrite a corrupt configuration. Unix checks also verify 0700 permissions on newly created directories, 0600 on files, and resistance to predictable temporary-file symlinks.
 - Malformed protobuf length prefixes and varints, partial gRPC headers, unsupported compression flags, and invalid gRPC status values are rejected.
+
+Desktop packaging also runs `python scripts/smoke-desktop.py PATH_TO_BINARY`
+against both staged GUI and headless executables before uploading artifacts.
+Each run starts with a missing configuration directory, selects each role via
+the same HTTP endpoint as the UI, saves settings twice, and restarts the process
+to verify persistence. It also checks invalid-phone rejection and the Origin
+guard. It does not request a live OTP or establish an account-to-account tunnel.
 
 ## Remaining limits
 
