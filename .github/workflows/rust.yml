@@ -117,6 +117,10 @@ jobs:
       # covered by bale-vpn-rust.yml, which does install them. Building
       # the headless binary here keeps the compile-time coverage (axum /
       # signaling / NAT wiring) without dragging webkit into the test job.
+      - name: cargo test (bale-vpn-rust, headless)
+        working-directory: bale-vpn-rust
+        run: cargo test -p bale-vpn --locked --no-default-features
+
       - name: cargo build (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust
         run: cargo build -p bale-vpn --release --no-default-features
@@ -159,3 +163,21 @@ jobs:
         if: runner.os != 'Windows'
         working-directory: bale-vpn-android/rust
         run: cargo build -p lktunnel-jni --release
+
+  security-audit:
+    name: Dependency security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --no-default-features
+      - name: Audit every shipped dependency graph
+        shell: bash
+        run: |
+          failed=0
+          for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust; do
+            cargo audit --file "$workspace/Cargo.lock" || failed=1
+          done
+          exit "$failed"

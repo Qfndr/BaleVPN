@@ -36,11 +36,11 @@ mod ui_native;
 /// Omit the subcommand to launch the daemon with mode unset; the
 /// UI picker prompts on first run.
 #[derive(Parser, Debug)]
-#[command(name = "bale-vpn", about = "Bale VPN — Rust client/server.")]
+#[command(name = "bale-vpn", version, about = "Bale VPN — Rust client/server.")]
 struct Cli {
     /// HTTP UI port. Bound to 127.0.0.1.
-    #[arg(long, default_value_t = 3001)]
-    port: u16,
+    #[arg(long)]
+    port: Option<u16>,
 
     /// Run without opening a native webview (GUI builds only).
     /// On builds without the `gui` feature this flag is a no-op.
@@ -123,20 +123,23 @@ fn main() {
     };
 
     log::info!("bale-vpn starting (port={} mode={} nat={} headless={})",
-        cli.port,
+        cli.port.unwrap_or(3001),
         cli_mode.clone().unwrap_or_else(|| "unset".into()),
         cli_nat .clone().unwrap_or_else(|| "default".into()),
         cli.headless);
 
     let cfg = config::Config::load(cli.config_dir.as_deref())
         .expect("failed to load config");
-    let resolved = config::Resolved::merge_cli(
+    let mut resolved = config::Resolved::merge_cli(
         &cfg,
         cli_mode,
         cli_nat,
         cli.port,
         client_tun,
     );
+    if let Some(dir) = cli.config_dir {
+        resolved.config_dir = dir;
+    }
 
     // GUI vs headless dispatch:
     //   - `gui` feature off:                  always headless

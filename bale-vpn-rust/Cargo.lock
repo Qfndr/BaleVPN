@@ -349,6 +349,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tao",
+ "tempfile",
  "tokio",
  "tower",
  "tower-http",

@@ -28,7 +28,7 @@ const CONFIG_FILENAME: &str = ".bale-vpn_config.json";
 /// On-disk config. Field names match the Node app's JSON keys
 /// where present. `serde(default)` everywhere so a partial
 /// file from an old version round-trips cleanly.
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     // ── Node-app keys (preserved verbatim) ───────────────────
     /// Bale `access_token` cookie value. Empty / missing means
@@ -83,6 +83,16 @@ fn default_port()        -> u16    { 3001 }
 fn default_socks5_port() -> u16    { 1080 }
 fn default_max_clients() -> u32    { 5 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            token: String::new(), admission: Vec::new(), blacklist: Vec::new(),
+            max_clients: default_max_clients(), mode: None, nat_mode: None,
+            port: default_port(), peer_id: None, socks5_port: default_socks5_port(),
+        }
+    }
+}
+
 impl Config {
     pub fn load(override_dir: Option<&Path>) -> std::io::Result<Self> {
         let path = config_path(override_dir)?;
@@ -102,16 +112,16 @@ impl Config {
     /// 0600 on Unix.
     pub fn save(&self, override_dir: Option<&Path>) -> std::io::Result<()> {
         let path = config_path(override_dir)?;
-        let tmp  = path.with_extension("json.tmp");
         let text = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
-        fs::write(&tmp, text)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
-        }
-        fs::rename(&tmp, &path)?;
+        // Exclusive random file, created as 0600 on Unix: no predictable
+        // symlink target or interval where the bearer token is world-readable.
+        // persist() also replaces an existing destination atomically on Windows.
+        use std::io::Write;
+        let mut tmp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
+        tmp.write_all(text.as_bytes())?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(&path).map_err(|e| e.error)?;
         Ok(())
     }
 }
@@ -148,7 +158,7 @@ impl Resolved {
         cfg:        &Config,
         cli_mode:   Option<String>,
         cli_nat:    Option<String>,
-        cli_port:   u16,
+        cli_port:   Option<u16>,
         client_tun: bool,
     ) -> Self {
         // CLI > config file > unset (UI picker).
@@ -163,7 +173,7 @@ impl Resolved {
         Self {
             mode,
             nat_mode,
-            port: cli_port,
+            port: cli_port.unwrap_or(cfg.port),
             peer_id: cfg.peer_id.clone(),
             socks5_port: cfg.socks5_port,
             client_tun,
@@ -232,7 +242,7 @@ impl ConfigFile {
     /// the lock just long enough to read, mutate, and write.
     pub fn update<F: FnOnce(&mut Config)>(&self, mutate: F) -> std::io::Result<Config> {
         let _g = self.write_lock.lock();
-        let mut cfg = Config::load(Some(&self.dir)).unwrap_or_default();
+        let mut cfg = Config::load(Some(&self.dir))?;
         mutate(&mut cfg);
         cfg.save(Some(&self.dir))?;
         Ok(cfg)
@@ -278,5 +288,64 @@ impl TokenStore for FileTokenStore {
         if let Err(e) = self.file.update(|c| c.token.clear()) {
             log::warn!("token clear: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fresh_and_legacy_defaults_agree() {
+        let fresh = Config::default();
+        let legacy: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(fresh.port, 3001);
+        assert_eq!(fresh.socks5_port, 1080);
+        assert_eq!(fresh.max_clients, 5);
+        assert_eq!(serde_json::to_value(fresh).unwrap(), serde_json::to_value(legacy).unwrap());
+    }
+
+    #[test]
+    fn cli_port_overrides_persisted_port_only_when_supplied() {
+        let cfg = Config { port: 4001, ..Config::default() };
+        assert_eq!(Resolved::merge_cli(&cfg, None, None, None, false).port, 4001);
+        assert_eq!(Resolved::merge_cli(&cfg, None, None, Some(5001), false).port, 5001);
+    }
+
+    #[test]
+    fn repeated_saves_replace_config_without_losing_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = ConfigFile::new(dir.path().to_path_buf());
+        file.update(|c| c.token = "test-token".into()).unwrap();
+        file.update(|c| c.admission.push("123".into())).unwrap();
+        let cfg = Config::load(Some(dir.path())).unwrap();
+        assert_eq!(cfg.token, "test-token");
+        assert_eq!(cfg.admission, ["123"]);
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(config_path(Some(dir.path())).unwrap()).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+    }
+
+    #[test]
+    fn update_preserves_corrupt_config_for_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = config_path(Some(dir.path())).unwrap();
+        fs::write(&path, "{broken").unwrap();
+        let file = ConfigFile::new(dir.path().to_path_buf());
+        assert!(file.update(|c| c.token.clear()).is_err());
+        assert_eq!(fs::read_to_string(path).unwrap(), "{broken");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_does_not_follow_predictable_temp_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim");
+        fs::write(&victim, "unchanged").unwrap();
+        let tmp = config_path(Some(dir.path())).unwrap().with_extension("json.tmp");
+        std::os::unix::fs::symlink(&victim, tmp).unwrap();
+        Config::default().save(Some(dir.path())).unwrap();
+        assert_eq!(fs::read_to_string(victim).unwrap(), "unchanged");
     }
 }

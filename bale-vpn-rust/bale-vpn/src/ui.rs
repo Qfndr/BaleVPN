@@ -22,6 +22,8 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Json};
 use axum::routing::{delete, get, post};
 use axum::Router;
+use axum::middleware::{self, Next};
+use axum::extract::Request;
 use bale_signaling::auth::{AuthOutcome, StartResult};
 use lk_signaling::Signaling;
 use serde::{Deserialize, Serialize};
@@ -66,6 +68,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/clients",           get(tunnel_clients))
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
         .with_state(state)
+        .layer(middleware::from_fn(protect_management_ui))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"),
+        ))
         .layer(TraceLayer::new_for_http())
         // Blanket `Cache-Control: no-store` on every response.
         // The embedded GUI webview (wry — WKWebView on macOS,
@@ -83,6 +89,44 @@ pub fn router(state: Arc<AppState>) -> Router {
             header::CACHE_CONTROL,
             HeaderValue::from_static("no-store"),
         ))
+}
+
+// Loopback binding alone does not stop a hostile website from submitting
+// forms to localhost, or accessing the API through DNS rebinding.
+fn trusted_request(headers: &axum::http::HeaderMap) -> bool {
+    if headers.get_all(header::HOST).iter().count() != 1 {
+        return false;
+    }
+    let Some(host) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) else {
+        return false;
+    };
+    let Ok(authority) = host.parse::<axum::http::uri::Authority>() else {
+        return false;
+    };
+    if !matches!(authority.host(), "127.0.0.1" | "localhost" | "[::1]") {
+        return false;
+    }
+    if headers.get("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none") {
+        return false;
+    }
+    if headers.get_all(header::ORIGIN).iter().count() > 1 {
+        return false;
+    }
+    if let Some(origin) = headers.get(header::ORIGIN) {
+        let Ok(origin) = origin.to_str() else { return false; };
+        // The UI is served over HTTP, at exactly the requested authority.
+        if origin != format!("http://{host}") {
+            return false;
+        }
+    }
+    true
+}
+
+async fn protect_management_ui(request: Request, next: Next) -> axum::response::Response {
+    if !trusted_request(request.headers()) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    next.run(request).await
 }
 
 /// Bind + serve forever. Returns on listener accept-loop exit.
@@ -163,6 +207,12 @@ async fn set_config(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<SetConfigBody>,
 ) -> Result<Json<OkBody>, ApiError> {
+    if body.mode.as_deref().is_some_and(|m| !matches!(m, "client" | "server"))
+        || body.nat_mode.as_deref().is_some_and(|m| !matches!(m, "kernel" | "userspace"))
+        || body.socks5_port == Some(0)
+    {
+        return Err(ApiError::Internal("invalid mode, NAT mode, or SOCKS5 port".into()));
+    }
     // Persist to disk under the shared write lock. Cheap sync
     // RMW — fine to call from the async handler.
     let mode_disk    = body.mode.clone();
@@ -912,5 +962,38 @@ impl IntoResponse for ApiError {
         (StatusCode::OK,
          Json(serde_json::json!({ "ok": false, "error": m })))
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    use axum::body::Body;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn management_origin_guard_blocks_browser_attacks() {
+        let app = Router::new().route("/", get(|| async { "ok" }))
+            .layer(middleware::from_fn(protect_management_ui));
+        for (host, origin, site, expected) in [
+            ("127.0.0.1:3001", None, None, StatusCode::OK),
+            ("localhost:3001", Some("http://localhost:3001"), Some("same-origin"), StatusCode::OK),
+            ("127.0.0.1:3001", None, Some("none"), StatusCode::OK),
+            ("attacker.example:3001", None, None, StatusCode::FORBIDDEN),
+            ("localhost.attacker.example:3001", None, None, StatusCode::FORBIDDEN),
+            ("127.0.0.1:3001", Some("https://attacker.example"), None, StatusCode::FORBIDDEN),
+            ("127.0.0.1:3001", Some("null"), None, StatusCode::FORBIDDEN),
+            ("127.0.0.1:3001", Some("http://127.0.0.1:4001"), None, StatusCode::FORBIDDEN),
+            ("127.0.0.1:3001", None, Some("cross-site"), StatusCode::FORBIDDEN),
+            ("127.0.0.1:3001", None, Some("same-site"), StatusCode::FORBIDDEN),
+        ] {
+            let mut req = Request::builder().uri("/").header(header::HOST, host);
+            if let Some(origin) = origin { req = req.header(header::ORIGIN, origin); }
+            if let Some(site) = site { req = req.header("sec-fetch-site", site); }
+            let response = app.clone().oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), expected, "host={host}, origin={origin:?}, site={site:?}");
+        }
+        let response = app.oneshot(Request::builder().uri("/").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 }

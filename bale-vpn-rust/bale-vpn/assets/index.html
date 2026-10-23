@@ -924,6 +924,8 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function inlineArg(value) { return escapeHtml(JSON.stringify(String(value))); }
+
 async function pollClients() {
   try {
     const r = await fetch('/tunnel/clients');
@@ -946,8 +948,8 @@ async function pollClients() {
       }
       _sampleCache.set(c.callKey, { ts: now, rxBytes: c.rxBytes, txBytes: c.txBytes });
       const who = c.callerName
-        ? escapeHtml(c.callerName) + ' <span style="opacity:.5; font-weight:400">(' + c.callerId + ')</span>'
-        : (c.callerId ? 'Caller ' + c.callerId : 'Call ' + c.callKey);
+        ? escapeHtml(c.callerName) + ' <span style="opacity:.5; font-weight:400">(' + escapeHtml(c.callerId) + ')</span>'
+        : (c.callerId ? 'Caller ' + escapeHtml(c.callerId) : 'Call ' + escapeHtml(c.callKey));
       return `
       <div class="client-row">
         <div class="client-dot${c.isTunClient ? ' active' : ''}"></div>
@@ -963,7 +965,7 @@ async function pollClients() {
           </span>
         </div>
         <div class="client-actions">
-          <button class="disc-btn" onclick="disconnectClient('${encodeURIComponent(c.callKey)}')">Disconnect</button>
+          <button class="disc-btn" onclick="disconnectClient(${inlineArg(encodeURIComponent(c.callKey))})">Disconnect</button>
         </div>
       </div>`;
     }).join('');
@@ -985,17 +987,17 @@ async function pollPending() {
     if (!list.length) { el.innerHTML = '<div class="empty">No pending requests</div>'; return; }
     el.innerHTML = list.map(p => {
       const who = p.callerName
-        ? escapeHtml(p.callerName) + ' <span style="opacity:.5; font-weight:400">(' + p.callerId + ')</span>'
-        : 'Caller ' + p.callerId;
+        ? escapeHtml(p.callerName) + ' <span style="opacity:.5; font-weight:400">(' + escapeHtml(p.callerId) + ')</span>'
+        : 'Caller ' + escapeHtml(p.callerId);
       return `
       <div class="pending-row">
         <div class="pending-info">
           <span class="pending-name">${who}</span>
           <span class="pending-age">waiting ${fmtAge(p.receivedAt)}</span>
         </div>
-        <button class="accept-btn" onclick="acceptPending('${p.callerId}', false)">Accept once</button>
-        <button class="always-btn" onclick="acceptPending('${p.callerId}', true)">Allow always</button>
-        <button class="reject-btn" onclick="rejectPending('${p.callerId}')">Reject</button>
+        <button class="accept-btn" onclick="acceptPending(${inlineArg(p.callerId)}, false)">Accept once</button>
+        <button class="always-btn" onclick="acceptPending(${inlineArg(p.callerId)}, true)">Allow always</button>
+        <button class="reject-btn" onclick="rejectPending(${inlineArg(p.callerId)})">Reject</button>
       </div>`;
     }).join('');
   } catch {}
@@ -1023,12 +1025,12 @@ async function pollAdmission() {
     if (!list.length) { el.innerHTML = '<div class="empty">No callers on the allow-list</div>'; return; }
     el.innerHTML = list.map(a => {
       const who = a.callerName
-        ? escapeHtml(a.callerName) + ' <span style="opacity:.5; font-weight:400">(' + a.callerId + ')</span>'
-        : 'Caller ' + a.callerId;
+        ? escapeHtml(a.callerName) + ' <span style="opacity:.5; font-weight:400">(' + escapeHtml(a.callerId) + ')</span>'
+        : 'Caller ' + escapeHtml(a.callerId);
       return `
       <div class="admission-row">
         <div class="admission-info">${who}</div>
-        <button class="remove-btn" onclick="removeAdmission(${a.callerId})">Remove</button>
+        <button class="remove-btn" onclick="removeAdmission(${inlineArg(a.callerId)})">Remove</button>
       </div>`;
     }).join('');
   } catch {}
@@ -1047,12 +1049,12 @@ async function pollBlacklist() {
     if (!list.length) { el.innerHTML = '<div class="empty">No blocked callers</div>'; return; }
     el.innerHTML = list.map(a => {
       const who = a.callerName
-        ? escapeHtml(a.callerName) + ' <span style="opacity:.5; font-weight:400">(' + a.callerId + ')</span>'
-        : 'Caller ' + a.callerId;
+        ? escapeHtml(a.callerName) + ' <span style="opacity:.5; font-weight:400">(' + escapeHtml(a.callerId) + ')</span>'
+        : 'Caller ' + escapeHtml(a.callerId);
       return `
       <div class="admission-row">
         <div class="admission-info">${who}</div>
-        <button class="remove-btn" onclick="unblockCaller(${a.callerId})">Unblock</button>
+        <button class="remove-btn" onclick="unblockCaller(${inlineArg(a.callerId)})">Unblock</button>
       </div>`;
     }).join('');
   } catch {}

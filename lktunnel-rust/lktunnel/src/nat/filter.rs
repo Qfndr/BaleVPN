@@ -82,6 +82,11 @@ fn is_oracle_metadata(ip: Ipv4Addr) -> bool {
 }
 
 fn is_blocked_v6(ip: Ipv6Addr) -> bool {
+    // Dual-stack host sockets accept IPv4-mapped IPv6 destinations.
+    // Classify the embedded IPv4 before applying native IPv6 rules.
+    if let Some(v4) = ip.to_ipv4_mapped() {
+        return is_blocked_v4(v4);
+    }
     ip.is_unspecified()         // ::
     || ip.is_loopback()         // ::1
     || ip.is_multicast()        // ff00::/8
@@ -185,6 +190,15 @@ mod tests {
         // 0.0.0.0/8 "this network", not just the unspecified address.
         assert!(is_blocked_dst(v4("0.0.0.0")));
         assert!(is_blocked_dst(v4("0.1.2.3")));
+    }
+
+    #[test]
+    fn blocks_ipv4_mapped_private_destinations() {
+        for ip in ["::ffff:127.0.0.1", "::ffff:10.0.0.1", "::ffff:192.168.1.1",
+                   "::ffff:169.254.169.254", "::ffff:100.64.0.1", "::ffff:0.0.0.0"] {
+            assert!(is_blocked_dst(v6(ip)), "{ip} must be blocked");
+        }
+        assert!(!is_blocked_dst(v6("::ffff:8.8.8.8")));
     }
 
     #[test]
