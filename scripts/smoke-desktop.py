@@ -86,6 +86,16 @@ def main():
                     assert directory.stat().st_mode & 0o777 == 0o700
                     assert (directory / ".bale-vpn_config.json").stat().st_mode & 0o777 == 0o600
                 assert request(base, "/config")["mode"] == mode
+                if mode == "client":
+                    # Even an explicit request cannot mutate this account's
+                    # call privacy while the application is in Client mode.
+                    try:
+                        request(base, "/server/call-privacy", {})
+                    except urllib.error.HTTPError as error:
+                        reply = json.load(error)
+                        assert "Server mode" in reply["error"], reply
+                    else:
+                        raise AssertionError("Client mode accepted a call privacy change")
                 request(base, "/state")
                 invalid = request(base, "/auth/start", {"phone": "0"})
                 assert invalid["ok"] is False

@@ -109,6 +109,23 @@ test('arbitrary connection errors render as text', () => {
   assert.equal(h.get('tunnelStatus').style.display, '');
 });
 
+test('server call privacy reports checking, verified Everyone, or an actionable failure', () => {
+  const h = stateHarness();
+  const render = privacy => h.render({ mode: 'server', tokenSet: true, wsReady: true, serverCallPrivacy: privacy });
+  render({ checking: true, everyone: false });
+  assert.match(h.get('callPrivacyStatus').textContent, /Checking/);
+  assert.equal(h.get('retryCallPrivacy').style.display, 'none');
+  render({ checking: false, everyone: true });
+  assert.match(h.get('callPrivacyStatus').textContent, /Everyone \(verified\)/);
+  assert.equal(h.get('callPrivacyStatus').className, 'entry ok');
+  assert.equal(h.get('retryCallPrivacy').style.display, 'none');
+  render({ checking: false, everyone: false, error: payload });
+  assert.equal(h.get('callPrivacyStatus').textContent, 'Could not verify Bale call privacy: ' + payload);
+  assert.equal(h.get('callPrivacyStatus').className, 'entry err');
+  assert.equal(h.get('retryCallPrivacy').style.display, '');
+  assert.equal(h.get('retryCallPrivacy').disabled, false);
+});
+
 function authHarness(reply) {
   const elements = new Map();
   const timers = new Map();

@@ -277,6 +277,7 @@ async fn run_one_mode(state: &Arc<AppState>, mode: &str)
 /// stale state.
 async fn teardown_mode(state: &Arc<AppState>) {
     state.client.clear();
+    state.server.reset_call_privacy();
     state.server.clear_all().await;
     state.signaling.tunnel_hooks().set_incoming_handler(Box::new(NoopHandler));
     // Revert the WS rule engine to client semantics on any mode
@@ -361,6 +362,11 @@ async fn run_server(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
         server: state.server.clone(),
     }));
     let mut events = mgr.events();
+    // Prepare the account-wide incoming-call permission only for Server mode.
+    // Keep tunnel admission installed before allowing new callers through Bale.
+    if let Err(error) = state.server.allow_bale_calls(&state.signaling).await {
+        log::warn!("server: could not verify Bale call privacy: {error}");
+    }
     let state_for_loop   = state.clone();
     let nat_mode_for_loop = nat_mode.clone();
     tokio::spawn(async move {

@@ -256,7 +256,10 @@
     <div id="serverFields" style="display:none">
       <div class="entry info" style="margin:0">
         Server mode: relay internet connections and auto-answer incoming calls (LiveKit WebRTC tunnel).
+        Activating Server sets this Bale account's incoming-call privacy to Everyone. Tunnel requests still require your approval or allow-list.
       </div>
+      <div id="callPrivacyStatus" class="entry info" style="margin:0" role="status"></div>
+      <button id="retryCallPrivacy" class="refresh-btn" style="display:none">Allow Bale calls and recheck</button>
     </div>
     <button id="tunnelApply">Connect</button>
     <div id="tunnelStatus" class="entry info" style="display:none"></div>
@@ -590,6 +593,16 @@ function applyTunnelUI(s) {
   const adm  = document.getElementById('admissionSection');
 
   if (_tunnelMode === 'server') {
+    const privacy = s.serverCallPrivacy;
+    const privacyStatus = document.getElementById('callPrivacyStatus');
+    const privacyRetry = document.getElementById('retryCallPrivacy');
+    privacyStatus.textContent = privacy?.checking ? 'Checking Bale incoming-call privacy…'
+      : privacy?.everyone ? 'Bale incoming calls: Everyone (verified).'
+      : privacy?.error ? 'Could not verify Bale call privacy: ' + privacy.error
+      : 'Bale incoming-call privacy has not been verified yet.';
+    privacyStatus.className = 'entry ' + (privacy?.everyone ? 'ok' : privacy?.error ? 'err' : 'info');
+    privacyRetry.style.display = privacy?.error ? '' : 'none';
+    privacyRetry.disabled = !!privacy?.checking;
     // Server: status row + admission/pending/clients/blacklist panels visible while WS is up.
     if (s.wsReady) {
       st.style.display = '';
@@ -615,7 +628,7 @@ function applyTunnelUI(s) {
     if (clientError) {
       st.style.display = '';
       st.textContent = clientError.includes('CallNotApproved')
-        ? 'Bale refused the call (CallNotApproved). Test a voice call between these accounts in the official Bale app and check call permissions. The tunnel request has not reached the server approval list.'
+        ? 'Bale refused the call (CallNotApproved). On the server account, verify that incoming calls are allowed for Everyone, using the server privacy check or the official Bale app. The tunnel request has not reached the server approval list.'
         : 'Connection failed: ' + clientError;
       st.className = 'entry err';
     } else if (s.clientRejected) {
@@ -847,6 +860,18 @@ async function pickMode(mode) {
 // reliably anyway (the wry webview can race that event).
 document.getElementById('pickClientBtn').addEventListener('click', () => pickMode('client'));
 document.getElementById('pickServerBtn').addEventListener('click', () => pickMode('server'));
+
+document.getElementById('retryCallPrivacy').addEventListener('click', async (event) => {
+  event.target.disabled = true;
+  try {
+    const response = await fetch('/server/call-privacy', { method: 'POST' });
+    const result = await response.json();
+    await pollState();
+    if (!result.ok) document.getElementById('callPrivacyStatus').textContent = result.error || 'Could not allow Bale calls';
+  } catch (error) {
+    document.getElementById('callPrivacyStatus').textContent = 'Could not allow Bale calls: ' + error.message;
+  } finally { event.target.disabled = false; }
+});
 
 // Activate / Deactivate is the user's only handle on the VPN. The WS lifecycle
 // follows automatically: Activate brings WS up via reconcile / signaling;

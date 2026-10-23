@@ -20,6 +20,14 @@ use tokio::sync::oneshot;
 const DEFAULT_MAX_CLIENTS: u32 = 5;
 const MAX_CLIENTS_LIMIT:   u32 = 253;
 
+#[derive(Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallPrivacySnapshot {
+    pub checking: bool,
+    pub everyone: bool,
+    pub error: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct PendingCallSnapshot {
     pub peer_id:      String,
@@ -59,6 +67,9 @@ struct ActiveClient {
 /// Server-mode state. Wrapped in an Arc by the daemon and
 /// shared with the HTTP UI handlers.
 pub struct ServerState {
+    call_privacy: Mutex<CallPrivacySnapshot>,
+    call_privacy_lock: tokio::sync::Mutex<()>,
+    call_privacy_generation: std::sync::atomic::AtomicU64,
     /// Allow-list — peer IDs whose calls auto-accept.
     admission:    tokio::sync::Mutex<Vec<String>>,
     /// Block-list — peer IDs whose calls silently drop.
@@ -93,6 +104,9 @@ impl ServerState {
         let initial_slots: Vec<u8> =
             (0..crate::daemon::KERNEL_TUN_SLOT_LIMIT).rev().collect();
         Arc::new(Self {
+            call_privacy: Mutex::new(CallPrivacySnapshot::default()),
+            call_privacy_lock: tokio::sync::Mutex::new(()),
+            call_privacy_generation: std::sync::atomic::AtomicU64::new(0),
             admission:    tokio::sync::Mutex::new(admission),
             blacklist:    tokio::sync::Mutex::new(blacklist),
             max_clients:  parking_lot::Mutex::new(max_clients.clamp(1, MAX_CLIENTS_LIMIT)),
@@ -100,6 +114,33 @@ impl ServerState {
             clients:      Mutex::new(HashMap::new()),
             kernel_slots: parking_lot::Mutex::new(initial_slots),
         })
+    }
+
+    pub fn call_privacy(&self) -> CallPrivacySnapshot { self.call_privacy.lock().clone() }
+    pub fn reset_call_privacy(&self) {
+        let mut snapshot = self.call_privacy.lock();
+        self.call_privacy_generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        *snapshot = CallPrivacySnapshot::default();
+    }
+
+    pub async fn allow_bale_calls(&self, signaling: &bale_signaling::BaleSignaling) -> Result<(), String> {
+        let _guard = self.call_privacy_lock.lock().await;
+        let generation = {
+            let mut snapshot = self.call_privacy.lock();
+            *snapshot = CallPrivacySnapshot { checking: true, ..Default::default() };
+            self.call_privacy_generation.load(std::sync::atomic::Ordering::Relaxed)
+        };
+        let result = match tokio::time::timeout(std::time::Duration::from_secs(20), signaling.allow_incoming_calls()).await {
+            Ok(result) => result.map_err(|e| e.to_string()),
+            Err(_) => Err("Bale call privacy check timed out; verify the setting in the official Bale app or retry.".into()),
+        };
+        let mut snapshot = self.call_privacy.lock();
+        if generation == self.call_privacy_generation.load(std::sync::atomic::Ordering::Relaxed) {
+            *snapshot = CallPrivacySnapshot {
+                checking: false, everyone: result.is_ok(), error: result.as_ref().err().cloned(),
+            };
+        }
+        result
     }
 
     // ── Kernel TUN slot pool ─────────────────────────────────

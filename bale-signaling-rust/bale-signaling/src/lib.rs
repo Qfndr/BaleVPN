@@ -5,6 +5,7 @@ pub mod proto;
 pub mod grpc_web;
 pub mod auth;
 pub mod contacts;
+mod call_privacy;
 pub mod peer;
 pub mod ws;
 pub mod signaling;

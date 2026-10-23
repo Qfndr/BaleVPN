@@ -356,6 +356,13 @@ impl BaleSignaling {
             .ok_or(SignalingError::NotAuthenticated)
     }
 
+    /// Explicit account-wide change for server-mode applications. Client
+    /// activation must not call this. Other privacy settings are preserved.
+    pub async fn allow_incoming_calls(&self) -> Result<(), SignalingError> {
+        let token = self.access_token_str()?;
+        crate::call_privacy::allow_incoming_calls(&self.http, &token).await.map_err(grpc_to_signaling)
+    }
+
     /// Fetch + cache the full unfiltered contact list. Subsequent
     /// `list_contacts(query=None)` calls slice into the cache
     /// without hitting the wire until [`Self::add_contact_by_phone`]

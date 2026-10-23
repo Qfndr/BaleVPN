@@ -56,6 +56,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/server/blacklist",          get(get_blacklist).post(add_blacklist))
         .route("/server/blacklist/:peer_id", delete(remove_blacklist))
         .route("/server/max-clients",        get(get_max_clients).post(set_max_clients))
+        .route("/server/call-privacy",       post(allow_server_calls))
         .route("/server/pending",            get(get_pending))
         .route("/server/pending/:peer_id/accept", post(accept_pending))
         .route("/server/pending/:peer_id/reject", post(reject_pending))
@@ -282,6 +283,7 @@ async fn set_config(
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct StateBody {
+    server_call_privacy: Option<crate::server::CallPrivacySnapshot>,
     /// Token persisted? Drives login-vs-VPN view in the UI.
     token_set:          bool,
     /// `"client"` / `"server"` once chosen, `null` on first
@@ -403,6 +405,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
     // way to render "Paused (in call)" instead of "Disconnected".
     let ws_paused = is_client && client_room_ready && !ws_ready;
     Json(StateBody {
+        server_call_privacy: if cfg.mode.as_deref() == Some("server") { Some(s.server.call_privacy()) } else { None },
         token_set,
         mode:              cfg.mode.clone(),
         self_info,
@@ -450,6 +453,19 @@ async fn connect(
     }
     s.signaling.connect().await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
+    if s.cfg.read().await.mode.as_deref() == Some("server") && s.server.call_privacy().error.is_some() {
+        // A fresh activation retries an earlier failed privacy preparation.
+        let state = s.clone();
+        tokio::spawn(async move { let _ = state.server.allow_bale_calls(&state.signaling).await; });
+    }
+    Ok(Json(OkBody { ok: true }))
+}
+
+async fn allow_server_calls(State(s): State<Arc<AppState>>) -> Result<Json<OkBody>, ApiError> {
+    if s.cfg.read().await.mode.as_deref() != Some("server") {
+        return Err(ApiError::Internal("Call privacy can only be changed in Server mode".into()));
+    }
+    s.server.allow_bale_calls(&s.signaling).await.map_err(ApiError::Internal)?;
     Ok(Json(OkBody { ok: true }))
 }
 
@@ -466,6 +482,7 @@ async fn disconnect(State(s): State<Arc<AppState>>) -> Json<OkBody> {
 
 async fn logout(State(s): State<Arc<AppState>>) -> Json<OkBody> {
     s.client.clear_error();
+    s.server.reset_call_privacy();
     s.auth.clear_completed_auth().await;
     s.signaling.sign_out().await;
 
