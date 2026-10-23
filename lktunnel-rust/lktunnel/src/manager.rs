@@ -194,6 +194,7 @@ struct CurrentCall {
 /// One outgoing call at a time. Re-calling `place_call` tears
 /// down the previous session.
 pub struct ClientTunnelManager<S: Signaling + ?Sized> {
+    options: crate::security::TunnelOptions,
     signaling: Arc<S>,
     sink:      EventsSink<SessionEvent>,
     /// Wrapped in `Arc` so the per-call watcher can clear its
@@ -217,9 +218,14 @@ impl<S: Signaling + ?Sized> Drop for ClientTunnelManager<S> {
 
 impl<S: Signaling + ?Sized + 'static> ClientTunnelManager<S> {
     pub fn new(signaling: Arc<S>, driver: Arc<ActivationDriver<S>>) -> Arc<Self> {
+        Self::new_with_options(signaling, driver, Default::default())
+    }
+
+    pub fn new_with_options(signaling: Arc<S>, driver: Arc<ActivationDriver<S>>, options: crate::security::TunnelOptions) -> Arc<Self> {
         driver.set_mode(Mode::Client);
         let me = Arc::new(Self {
             signaling: signaling.clone(),
+            options,
             sink:    EventsSink::new(),
             current: Arc::new(Mutex::new(None)),
             driver,
@@ -252,7 +258,7 @@ impl<S: Signaling + ?Sized + 'static> ClientTunnelManager<S> {
 
     pub async fn place_call(&self, peer: PeerId) -> Result<(), PlaceCallError> {
         let transport = self.signaling.tunnel_hooks().place_call(peer.clone()).await?;
-        let tunnel    = LkTunnel::connect(transport.url, transport.token);
+        let tunnel    = LkTunnel::connect_with_options(transport.url, transport.token, crate::TunnelRole::Client, self.options.clone());
         let entered   = Arc::new(AtomicBool::new(false));
         let new_call  = CurrentCall {
             peer:    peer.clone(),
@@ -418,6 +424,10 @@ impl<S: Signaling + ?Sized> Drop for ServerTunnelManager<S> {
 
 impl<S: Signaling + ?Sized + 'static> ServerTunnelManager<S> {
     pub fn new(signaling: Arc<S>, driver: Arc<ActivationDriver<S>>) -> Arc<Self> {
+        Self::new_with_options(signaling, driver, Default::default())
+    }
+
+    pub fn new_with_options(signaling: Arc<S>, driver: Arc<ActivationDriver<S>>, options: crate::security::TunnelOptions) -> Arc<Self> {
         let admission = Arc::new(Mutex::new(None::<Arc<dyn IncomingHandler>>));
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let me = Arc::new(Self {
@@ -447,7 +457,7 @@ impl<S: Signaling + ?Sized + 'static> ServerTunnelManager<S> {
         tokio::spawn(async move {
             while let Some((peer, transport)) = rx.recv().await {
                 let _ = &transport.peer_id;
-                let tunnel = LkTunnel::connect_server(transport.url, transport.token);
+                let tunnel = LkTunnel::connect_with_options(transport.url, transport.token, crate::TunnelRole::Server, options.clone());
                 let old = sessions.lock().insert(peer.clone(), tunnel.clone());
                 if let Some(old) = old { old.disconnect(); }
                 spawn_server_watcher(

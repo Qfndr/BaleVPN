@@ -306,17 +306,22 @@ pub(crate) async fn enable_listener(
 /// for keeping the returned handle alive.
 pub(crate) fn spawn_server_acceptor(server: QuicServer) -> QuicServerHandle {
     let endpoint = server.endpoint.clone();
+    let sessions = server.authenticated_sessions.clone();
     let task = crate::runtime().spawn(async move {
         loop {
             let Some(incoming) = endpoint.accept().await else {
                 log::info!("socks5/server: quic endpoint closed");
                 break;
             };
+            let sessions=sessions.clone();
             crate::runtime().spawn(async move {
                 let connection = match incoming.await {
                     Ok(c) => c,
                     Err(e) => { log::warn!("socks5/server: incoming err: {e}"); return; }
                 };
+                struct Guard(Arc<std::sync::atomic::AtomicUsize>);
+                impl Drop for Guard {fn drop(&mut self){self.0.fetch_sub(1,Ordering::Relaxed);}}
+                sessions.fetch_add(1,Ordering::Relaxed);let _guard=Guard(sessions);
                 log::info!("socks5/server: quic connection established");
                 loop {
                     let (send, recv) = match connection.accept_bi().await {

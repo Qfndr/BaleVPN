@@ -36,6 +36,8 @@ pub mod socks5_quic;
 #[cfg(unix)]
 pub mod tun;
 
+pub mod security;
+
 use crate::rtc::{Engine, EngineEvent};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
@@ -189,6 +191,9 @@ pub enum TunnelState {
 /// and lifecycle — teardown happens when the last Arc clone is
 /// dropped (or `disconnect` is called).
 pub struct LkTunnel {
+    options: security::TunnelOptions,
+    transport_error: Mutex<Option<String>>,
+    authenticated_sessions: Arc<std::sync::atomic::AtomicUsize>,
     /// Per-tunnel diagnostic id, monotonically issued in [`LkTunnel::connect`].
     /// Used purely for log line prefixes; pointer-as-id would also
     /// work but counter values read nicer.
@@ -327,12 +332,17 @@ static NEXT_TUNNEL_ID: AtomicU64 = AtomicU64::new(1);
 /// [`TunnelState::Connected`] state.
 #[doc(hidden)]
 pub fn connect_loopback() -> (Arc<LkTunnel>, Arc<LkTunnel>) {
+    connect_loopback_with_options(Default::default(), Default::default())
+}
+
+#[doc(hidden)]
+pub fn connect_loopback_with_options(a: security::TunnelOptions, b: security::TunnelOptions) -> (Arc<LkTunnel>, Arc<LkTunnel>) {
     crate::dispatcher::init();
     // `a` is the client side (drives `enable_socks5_server`); `b` is the
     // server side (`start_server`). The roles must match those calls'
     // guards, same as a real `connect` / `connect_server` pair.
-    let (a_inner, a_send_rx) = build_loopback_inner(TunnelRole::Client);
-    let (b_inner, b_send_rx) = build_loopback_inner(TunnelRole::Server);
+    let (a_inner, a_send_rx) = build_loopback_inner(TunnelRole::Client, a);
+    let (b_inner, b_send_rx) = build_loopback_inner(TunnelRole::Server, b);
     spawn_loopback_forwarder(a_send_rx, Arc::clone(&b_inner));
     spawn_loopback_forwarder(b_send_rx, Arc::clone(&a_inner));
     a_inner.connected.store(true, Ordering::Relaxed);
@@ -342,7 +352,7 @@ pub fn connect_loopback() -> (Arc<LkTunnel>, Arc<LkTunnel>) {
     (a_inner, b_inner)
 }
 
-fn build_loopback_inner(role: TunnelRole) -> (Arc<LkTunnel>, tokio::sync::mpsc::Receiver<Vec<u8>>) {
+fn build_loopback_inner(role: TunnelRole, options: security::TunnelOptions) -> (Arc<LkTunnel>, tokio::sync::mpsc::Receiver<Vec<u8>>) {
     let id = NEXT_TUNNEL_ID.fetch_add(1, Ordering::Relaxed);
     let (send_tx, send_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(SEND_QUEUE_CAP);
     let (state_tx, _state_rx) = tokio::sync::watch::channel(TunnelState::Connecting);
@@ -372,6 +382,9 @@ fn build_loopback_inner(role: TunnelRole) -> (Arc<LkTunnel>, tokio::sync::mpsc::
         socks5_handle: Mutex::new(None),
         quic_server_handle: Mutex::new(None),
         role,
+        options,
+        transport_error: Mutex::new(None),
+        authenticated_sessions: Default::default(),
     });
     (inner, send_rx)
 }
@@ -390,6 +403,7 @@ fn spawn_loopback_forwarder(
             if frame.is_empty() { continue; }
             match frame[0] {
                 FRAME_TYPE_IP => {
+                    if to_inner.options.authenticated { continue; }
                     let payload = frame[1..].to_vec();
                     let needs_drain = {
                         let mut q = to_inner.inbound.lock();
@@ -505,6 +519,10 @@ impl LkTunnel {
         token:    impl Into<String> + Send + 'static,
         role:     TunnelRole,
     ) -> Arc<Self> {
+        Self::connect_with_options(url, token, role, Default::default())
+    }
+
+    pub fn connect_with_options(url: impl Into<String> + Send + 'static, token: impl Into<String> + Send + 'static, role: TunnelRole, options: security::TunnelOptions) -> Arc<Self> {
         let id = NEXT_TUNNEL_ID.fetch_add(1, Ordering::Relaxed);
         let (send_tx, send_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(SEND_QUEUE_CAP);
         let (state_tx, _state_rx) = tokio::sync::watch::channel(TunnelState::Connecting);
@@ -535,6 +553,9 @@ impl LkTunnel {
             socks5_handle: Mutex::new(None),
             quic_server_handle: Mutex::new(None),
             role,
+            options,
+            transport_error: Mutex::new(None),
+            authenticated_sessions: Default::default(),
         });
 
         // Inbound IP routing — same bounded per-tunnel queue pattern.
@@ -542,6 +563,7 @@ impl LkTunnel {
         let on_ip = Arc::new(move |ip: &[u8]| {
             if ip.is_empty() { return; }
             let Some(inner) = weak_for_ip.upgrade() else { return };
+            if inner.options.authenticated { return; }
             let needs_drain = {
                 let mut q = inner.inbound.lock();
                 let was_empty = q.is_empty();
@@ -645,6 +667,11 @@ impl LkTunnel {
     /// argument is the *post-tag* byte count fed into the counter
     /// (the tag byte itself isn't billed to the consumer).
     pub fn send_raw_frame(&self, buf: Vec<u8>, tx_payload_len: usize) -> Result<(), SendError> {
+        // Authenticated mode may put only QUIC ciphertext on the carrier,
+        // including when a library caller directly uses this public API.
+        if self.options.authenticated && buf.first()!=Some(&FRAME_TYPE_QUIC) {
+            return Err(SendError::Invalid);
+        }
         if buf.is_empty() || buf.len() > 65536 {
             return Err(SendError::Invalid);
         }
@@ -746,6 +773,19 @@ impl LkTunnel {
     /// the role is set once at [`Self::connect`] / [`Self::connect_server`]
     /// and never changes.
     pub fn role(&self) -> TunnelRole { self.role }
+    pub fn transport_error(&self) -> Option<String> { self.transport_error.lock().clone() }
+    pub(crate) fn fail_transport(&self, error: String) { *self.transport_error.lock()=Some(error);self.disconnect(); }
+    pub fn is_proxy_ready(&self) -> bool {
+        self.quic_client.lock().as_ref().is_some_and(|c| c.connection.close_reason().is_none())
+    }
+    pub fn is_peer_authenticated(&self) -> bool {
+        self.options.authenticated && (self.is_proxy_ready() || self.authenticated_sessions.load(Ordering::Relaxed)>0)
+    }
+    pub fn connection_metrics(&self) -> Option<serde_json::Value> {
+        let client=self.quic_client.lock(); let c=client.as_ref()?; let stats=c.connection.stats();
+        Some(serde_json::json!({"rttMs":stats.path.rtt.as_secs_f64()*1000.0,"lostPackets":stats.path.lost_packets,
+            "sentPackets":stats.path.sent_packets,"congestionWindow":stats.path.cwnd}))
+    }
 
     /// Promote this tunnel to **server mode** — install a userspace
     /// NAT that bridges client IP packets to host sockets. Inbound IP
@@ -758,6 +798,7 @@ impl LkTunnel {
                         construct via LkTunnel::connect_server instead");
         }
         if !self.connected.load(Ordering::Relaxed) { return Err("not connected"); }
+        if self.options.authenticated { self.ensure_quic_acceptor(); return Ok(()); }
         let id = self.id;
         let emit = self.nat_emit();
         let mut nat = self.nat.lock();
@@ -852,6 +893,7 @@ impl LkTunnel {
         fd:     i32,
         format: tun::TunFormat,
     ) -> Result<(), &'static str> {
+        if self.options.authenticated { return Err("Authenticated mode supports SOCKS5 only; raw TUN is disabled"); }
         if !self.connected.load(Ordering::Relaxed) { return Err("not connected"); }
         if fd < 0 { return Err("invalid fd"); }
         // Quick pre-checks before we hop — bail fast on user errors.
@@ -938,9 +980,9 @@ impl LkTunnel {
             }
             *slot = Some(tx);
         }
-        let server_config = quic_tunnel::make_server_config()?;
+        let server_config = match &self.options.server { Some(config) => config.clone(), None => quic_tunnel::make_server_config()? };
         let endpoint = quic_tunnel::build_endpoint(Arc::clone(self), rx, Some(server_config))?;
-        Ok(quic_tunnel::QuicServer { endpoint })
+        Ok(quic_tunnel::QuicServer { endpoint, authenticated_sessions: self.authenticated_sessions.clone() })
     }
 
     /// Idempotently bring up the QUIC client connection to the peer
@@ -985,9 +1027,14 @@ impl LkTunnel {
                     std::io::Error::new(std::io::ErrorKind::NotConnected,
                         "tunnel disconnected during quic handshake")));
             }
-            match self.connect_quic_to_peer().await {
+            let attempt = match tokio::time::timeout(Duration::from_secs(20), self.connect_quic_to_peer()).await {
+                Ok(result)=>result,
+                Err(_)=>{ *self.quic_rx_tx.lock()=None; return Err(quic_tunnel::QuicEndpointError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut,"QUIC authentication timed out; check pairing codes and both versions"))); }
+            };
+            match attempt {
                 Ok(c) => break c,
                 Err(e) => {
+                    if self.options.authenticated { return Err(e); }
                     log::debug!("ensure_quic_client: handshake attempt failed: {e} — retry in {backoff:?}");
                     tokio::time::sleep(backoff).await;
                     // Cap at 5 s so the bringup latency from a slow
@@ -1135,7 +1182,7 @@ impl LkTunnel {
             *self.quic_rx_tx.lock() = None;
         };
 
-        let client_config = match quic_tunnel::make_client_config() {
+        let client_config = match self.options.client.clone().map(Ok).unwrap_or_else(quic_tunnel::make_client_config) {
             Ok(c)  => c,
             Err(e) => { cleanup(); return Err(e.into()); }
         };
@@ -1324,7 +1371,7 @@ async fn run_connect_task(
     on_ip:     Arc<dyn Fn(&[u8]) + Send + Sync>,
     events_tx: tokio::sync::mpsc::UnboundedSender<Event>,
 ) {
-    log::info!("LkTunnel[{id}]::connect: dialing {url}");
+    log::info!("LkTunnel[{id}]::connect: dialing carrier (URL redacted)");
 
     // Receive-side dispatch: the engine unpacks each carrier frame and
     // calls this once per length-prefixed packet. The leading frame-type

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bale Proxy</title>
+<title>BaleVPN</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -161,13 +161,46 @@
     font-size: .72rem; white-space: nowrap;
   }
   .admission-row .remove-btn:hover { background: #c62828; color: #fff; }
+
+  :root { color-scheme: light; --surface:#fff; --bg:#edf2f8; --ink:#13253e; --muted:#52647b; --line:#dce4ee; --accent:#1263d7; }
+  html[data-theme="dark"] { color-scheme:dark; --surface:#132237; --bg:#091321; --ink:#e6edf7; --muted:#a7b6c9; --line:#32465f; --accent:#76b3ff; }
+  body { background:var(--bg); color:var(--ink); padding:24px 16px; }
+  .card { max-width:760px; background:var(--surface); border:1px solid var(--line); border-radius:20px; box-shadow:0 18px 70px #10234418; }
+  .header { background:linear-gradient(115deg,#0a3b87,#137ba5); }
+  input,select,textarea { background:var(--surface); color:var(--ink); border-color:var(--line); direction:ltr; text-align:left; }
+  label,.entry.info,.empty { color:var(--muted); }
+  button { cursor:pointer; min-height:38px; }
+  button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,textarea:focus-visible { outline:3px solid #21a8cf; outline-offset:3px; }
+  button:disabled {cursor:wait;}
+  .dashboard { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:16px 0; }
+  .metric { border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; }
+  .metric span {display:block;font-size:12px;color:var(--muted);margin-bottom:7px;}
+  .metric strong {display:block;font-size:16px;overflow-wrap:anywhere;direction:ltr;}
+  #securityBadge {padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:13px;line-height:1.7;}
+  .settings {margin:18px 22px 22px;border-top:1px solid var(--line);padding-top:16px;}
+  .settings summary {cursor:pointer;font-weight:650;color:var(--accent);padding:6px 0;}
+  .settings fieldset {border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:14px;min-width:0;}
+  .settings legend {padding:0 8px;font-weight:600;}
+  .settings textarea {width:100%;font:12px ui-monospace,monospace;min-height:70px;margin:8px 0 12px;resize:vertical;}
+  .settings p {font-size:13px;line-height:1.8;color:var(--muted);margin:8px 0;}
+  .settings label {display:block;margin-top:10px;}
+  .settings input[type=checkbox] {width:auto;margin-inline-end:8px;}
+  .refresh-btn {background:transparent;color:var(--accent);border-color:var(--accent);}
+  .settings-actions {display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+  .preferences-row {display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  .preferences-row label {flex:1;min-width:160px;}
+  #settingsFeedback {font-size:13px;line-height:1.8;margin-top:12px;white-space:pre-wrap;}
+  .entry.err {background:#ffe9eb;color:#9a1934;}
+  html[data-theme="dark"] .entry.err {background:#401e2b;color:#ffb8c5;}
+  @media(max-width:520px) {.dashboard {grid-template-columns:1fr;} .settings {margin:14px;} body {padding:10px;} }
+
 </style>
 </head>
 <body>
 <div class="card">
   <div class="header">
     <div class="dot" id="dot"></div>
-    <h1>Bale Proxy</h1>
+    <h1>BaleVPN</h1>
     <span id="selfName" style="margin-left:auto; font-size:.85rem; color:rgba(255,255,255,.85); font-weight:500"></span>
   </div>
 
@@ -175,7 +208,7 @@
        WS + tunnel) so users can tell exactly what's up at any moment. Hidden
        on the login screen — there's no WS to talk about until you sign in. -->
   <div id="wsBar" class="disconnected" style="display:none">
-    <span class="label">WebSocket</span>
+    <span class="label" data-label="Connection">Connection</span>
     <span id="wsStateText">disconnected</span>
   </div>
   <!-- Mode picker — shown FIRST. Login + tunnel sections
@@ -230,6 +263,12 @@
     <button class="refresh-btn" id="logoutBtn" style="border-color:#c62828; color:#c62828">Logout</button>
   </div>
   <div class="tunnel-body" id="tunnelBody">
+    <div id="securityBadge" role="status"></div>
+    <div class="dashboard" aria-label="Connection metrics">
+      <div class="metric"><span data-label="Download">Download</span><strong id="downloadRate">—</strong></div>
+      <div class="metric"><span data-label="Upload">Upload</span><strong id="uploadRate">—</strong></div>
+      <div class="metric"><span data-label="RTT / packet loss">RTT / packet loss</span><strong id="networkQuality">—</strong></div>
+    </div>
     <div id="clientFields" style="display:flex; flex-direction:column; gap:.85rem">
       <div class="tunnel-row">
         <div>
@@ -300,7 +339,36 @@
     <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7">Blocked callers</div>
     <div id="blacklistList"></div>
   </div>
+
+<details class="settings" id="settingsPanel">
+ <summary data-label="Security, performance and appearance">Security, performance and appearance</summary>
+ <div class="preferences-row">
+  <label><span data-label="Language">Language</span><select id="languageSelect"><option value="en">English</option><option value="fa">فارسی</option></select></label>
+  <label><span data-label="Appearance">Appearance</span><select id="themeSelect"><option value="light">Light / روشن</option><option value="dark">Dark / تیره</option></select></label>
+ </div>
+ <fieldset><legend data-label="Secure pairing">Secure pairing</legend>
+  <label><input type="checkbox" id="secureMode" checked><span data-label="Require verified encryption">Require verified encryption</span></label>
+  <p data-label="Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.">Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.</p>
+  <label for="publicCode" data-label="This device's public code">This device's public code</label><textarea id="publicCode" readonly spellcheck="false"></textarea>
+  <div id="keyFingerprint" class="technical" style="font-size:11px;overflow-wrap:anywhere;direction:ltr"></div>
+  <button class="refresh-btn" id="copyPublicCode" data-label="Copy public code">Copy public code</button>
+  <div id="serverTrust"><label for="serverCode" data-label="Trusted server's public code">Trusted server's public code</label><textarea id="serverCode" spellcheck="false"></textarea></div>
+  <div id="clientTrust"><label for="clientCodes" data-label="Trusted client public codes (one per line)">Trusted client public codes (one per line)</label><textarea id="clientCodes" spellcheck="false"></textarea></div>
+  <p id="credentialStorage"></p>
+  <p data-label="Turning verified encryption off enables legacy compatibility and permits relay impersonation.">Turning verified encryption off enables legacy compatibility and permits relay impersonation.</p>
+ </fieldset>
+ <fieldset><legend data-label="Performance and connection limits">Performance and connection limits</legend>
+  <label for="performanceProfile" data-label="Performance profile">Performance profile</label><select id="performanceProfile"><option value="balanced">Balanced — current transfer windows</option><option value="throughput">Throughput — larger windows, more memory</option></select>
+  <p data-label="No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.">No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.</p>
+  <div class="preferences-row"><label><span data-label="Minimum seconds between calls">Minimum seconds between calls</span><input id="retryDelay" type="number" min="5" max="120" value="10"></label><label><span data-label="Maximum calls per minute">Maximum calls per minute</span><input id="callBudget" type="number" min="1" max="6" value="3"></label></div>
+  <p data-label="These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.">These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.</p>
+ </fieldset>
+ <div class="settings-actions"><button id="saveSettings" data-label="Save settings">Save settings</button><button class="refresh-btn" id="showDiagnostics" data-label="Safe diagnostic report">Safe diagnostic report</button></div>
+ <div id="settingsFeedback" role="status" aria-live="polite"></div>
+ <textarea id="diagnosticReport" readonly hidden aria-label="Redacted diagnostic report"></textarea>
+</details>
 </div>
+
 <script>
 const dot        = document.getElementById('dot');
 const tokenInput = document.getElementById('tokenInput');
@@ -454,10 +522,10 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
 // the server (persisted to .bale-token, mode 0600) — never in the browser,
 // so XSS can't exfiltrate it via localStorage.
 function saveConfig() {
-  localStorage.setItem('bale_cfg', JSON.stringify({
+  try { localStorage.setItem('bale_cfg', JSON.stringify({
     peer:      document.getElementById('tunnelPeer').value,
     port:      document.getElementById('socks5Port').value,
-  }));
+  })); } catch {}
 }
 
 function loadConfig() {
@@ -550,6 +618,7 @@ function applyState() {
   document.getElementById('wsBar'        ).style.display = (hasMode &&  tok)   ? ''     : 'none';
 
   renderSelf(s.self);
+  renderDashboard(s);
 
   // WebSocket state bar — connected / paused-in-room / connecting / disconnected.
   // Check the "paused" branch BEFORE wsConnecting so a transient
@@ -557,7 +626,9 @@ function applyState() {
   // the rule engine is about to re-pause the loop.
   const bar = document.getElementById('wsBar');
   const txt = document.getElementById('wsStateText');
-  if (s.wsReady) {
+  if (s.clientRoomReady) {
+    bar.className='connected';txt.textContent=translated('Tunnel connected','تونل متصل است');
+  } else if (s.wsReady) {
     bar.className = 'connected';     txt.textContent = 'connected';
   } else if (s.wsPaused) {
     // Rule engine pauses WS while a client call is up — calm
@@ -584,6 +655,23 @@ function applyState() {
   if (_tunnelMode === 'server' && s.wsReady) { pollClients(); pollPending(); pollAdmission(); pollBlacklist(); pollMaxClients(); }
 
   if (s.wsReady) loadPeers();   // refresh lazily; loadPeers no-ops if already populated
+}
+
+function translated(en, fa) { return document.documentElement?.lang === 'fa' ? fa : en; }
+function renderDashboard(s) {
+  const badge=document.getElementById('securityBadge');
+  badge.textContent=s.secureMode ? (s.peerAuthenticated ? translated('TLS 1.3 · peer identity verified','TLS 1.3 · هویت طرف مقابل تأیید شده') : translated('Verified encryption required · waiting for authentication','رمزگذاری تأییدشده الزامی است · در انتظار احراز هویت')) : translated('Legacy mode · peer identity is NOT verified','حالت سازگاری قدیمی · هویت طرف مقابل تأیید نشده');
+  document.getElementById('serverTrust').style.display=s.mode==='client'?'':'none';
+  document.getElementById('clientTrust').style.display=s.mode==='server'?'':'none';
+  const now=Date.now(),rx=s.cliRxBytes||0,tx=s.cliTxBytes||0;
+  if (_trafficSample && now>_trafficSample.at) {
+    const seconds=(now-_trafficSample.at)/1000;
+    document.getElementById('downloadRate').textContent=fmtRate(Math.max(0,rx-_trafficSample.rx)/seconds);
+    document.getElementById('uploadRate').textContent=fmtRate(Math.max(0,tx-_trafficSample.tx)/seconds);
+  }
+  _trafficSample={at:now,rx,tx};
+  const m=s.metrics;
+  document.getElementById('networkQuality').textContent=m?`${Math.round(m.rttMs)} ms · ${m.sentPackets?((m.lostPackets/m.sentPackets)*100).toFixed(1):'0.0'}%`: '—';
 }
 
 function applyTunnelUI(s) {
@@ -662,7 +750,8 @@ function refreshActivateBtn() {
   // Don't override the busy-state label set by lockBtn while a request is in flight.
   if (_busy) return;
   const alive = isAlive();
-  btn.textContent = alive ? 'Disconnect' : 'Connect';
+  btn.disabled = !alive && !!_state?.retryAfterSeconds;
+  btn.textContent = alive ? translated('Disconnect','قطع اتصال') : _state?.retryAfterSeconds ? translated('Retry in ','تلاش مجدد پس از ') + _state.retryAfterSeconds + 's' : translated('Connect','اتصال');
   btn.className   = alive ? 'conn-btn disconnect' : '';
 }
 
@@ -811,6 +900,7 @@ document.getElementById('peerSearch').addEventListener('keydown', e => {
 // to decide between the client (peer-based) and server (sticky-flag) flow.
 let _tunnelMode = null;
 let _activationError = null;
+let _trafficSample = null;
 
 function setTunnelMode(mode) {
   // Keep "no role selected" distinct from Client. Otherwise the first
@@ -1196,6 +1286,65 @@ pollState();
 // Save on any field change (token field intentionally not wired — it's not persisted client-side)
 document.getElementById('socks5Port').addEventListener('input', saveConfig);
 document.getElementById('tunnelPeer').addEventListener('change', saveConfig);
+
+
+const translations={
+ 'Client — relay my traffic through a peer':'کلاینت — اتصال از طریق سرور','Server — accept calls and relay for them':'سرور — پذیرش اتصال کلاینت‌ها','↺ Refresh':'بازخوانی','↻ Refresh':'بازخوانی','Connection':'اتصال','Phone number':'شماره تلفن','Verification code':'کد تأیید','Or paste token manually':'یا توکن را دستی وارد کنید','Server peer':'حساب سرور','SOCKS5 port':'پورت SOCKS5','Find peer by phone number':'پیدا کردن حساب با شماره تلفن','Login':'ورود','Logout':'خروج از حساب','Verify':'تأیید','Search':'جست‌وجو','Download':'دریافت','Upload':'ارسال','RTT / packet loss':'زمان رفت‌وبرگشت / افت بسته',
+ 'Security, performance and appearance':'امنیت، سرعت و ظاهر','Language':'زبان','Appearance':'ظاهر',
+ 'Secure pairing':'جفت‌سازی امن','Require verified encryption':'رمزگذاری با تأیید هویت الزامی باشد',
+ "This device's public code":'کد عمومی این دستگاه',"Trusted server's public code":'کد عمومی سرور مورد اعتماد',
+ 'Trusted client public codes (one per line)':'کدهای عمومی کلاینت‌های مورد اعتماد؛ هر خط یک کد',
+ 'Copy public code':'کپی کد عمومی','Performance and connection limits':'کارایی و محدودیت اتصال','Performance profile':'حالت کارایی',
+ 'Minimum seconds between calls':'حداقل فاصلهٔ تماس‌ها، ثانیه','Maximum calls per minute':'حداکثر تماس در دقیقه',
+ 'Save settings':'ذخیرهٔ تنظیمات','Safe diagnostic report':'گزارش عیب‌یابی بدون اطلاعات حساس',
+ 'Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.':'کدهای عمومی را از طریق SSH یا مسیر مطمئن مبادله کنید. پوشهٔ داده و کلید خصوصی را به اشتراک نگذارید.',
+ 'Turning verified encryption off enables legacy compatibility and permits relay impersonation.':'خاموش کردن این گزینه سازگاری با نسخه‌های قدیمی را فعال می‌کند و امکان جعل هویت توسط واسطه را باقی می‌گذارد.',
+ 'No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.':'فشرده‌سازی یا رمزگذاری اضافی روی بسته‌ها انجام نمی‌شود. تغییر تنظیمات پس از قطع اتصال و برای اتصال بعدی اعمال می‌شود.',
+ 'These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.':'این‌ها محدودیت‌های محافظتی همین برنامه‌اند؛ سهمیهٔ بله یا تضمین ضدبن نیستند. فرادادهٔ تماس برای بله قابل مشاهده است.'
+};
+function applyAppearance() {
+ const language=document.getElementById('languageSelect').value;
+ document.documentElement.lang=language;document.documentElement.dir=language==='fa'?'rtl':'ltr';
+ document.documentElement.dataset.theme=document.getElementById('themeSelect').value;
+ for (const element of document.querySelectorAll('label,button')) {if(element.children.length===0 && translations[element.textContent] && !element.dataset.label)element.dataset.label=element.textContent;}
+ for (const element of document.querySelectorAll('[data-label]')) { const en=element.dataset.label;element.textContent=language==='fa'?(translations[en]||en):en; }
+ try {localStorage.setItem('bale_appearance',JSON.stringify({language,theme:document.documentElement.dataset.theme}));}catch{}
+ if (_state) applyState();
+}
+async function loadSettings() {
+ try {
+  const response=await fetch('/settings');const d=await response.json();const p=d.preferences;
+  document.getElementById('secureMode').checked=p.secureMode;
+  document.getElementById('publicCode').value=d.publicCode;
+  document.getElementById('keyFingerprint').textContent='SHA-256: '+d.fingerprint;
+  document.getElementById('credentialStorage').textContent=d.credentialStorage;
+  document.getElementById('serverCode').value=p.serverCode;
+  document.getElementById('clientCodes').value=p.clientCodes.join('\n');
+  document.getElementById('performanceProfile').value=p.profile;
+  document.getElementById('retryDelay').value=p.retryDelaySecs;
+  document.getElementById('callBudget').value=p.maxCallsPerMinute;
+ }catch {document.getElementById('settingsFeedback').textContent='Could not load settings. Check the application version.';}
+}
+document.getElementById('saveSettings').onclick=async event=>{
+ event.target.disabled=true;const feedback=document.getElementById('settingsFeedback');
+ try {
+  const preferences={secureMode:document.getElementById('secureMode').checked,serverCode:document.getElementById('serverCode').value.trim(),clientCodes:document.getElementById('clientCodes').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),profile:document.getElementById('performanceProfile').value,retryDelaySecs:Number(document.getElementById('retryDelay').value),maxCallsPerMinute:Number(document.getElementById('callBudget').value)};
+  const response=await fetch('/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)});const result=await response.json();
+  feedback.textContent=result.ok?translated('Settings saved. Use Connect when both devices are paired.','تنظیمات ذخیره شد. پس از جفت‌سازی دو دستگاه، اتصال را بزنید.'):result.error||'Could not save settings';await pollState();
+ }catch(error){feedback.textContent=error.message;}finally{event.target.disabled=false;}
+};
+document.getElementById('copyPublicCode').onclick=async()=>{
+ const field=document.getElementById('publicCode');
+ try {await navigator.clipboard.writeText(field.value);}catch {field.select();document.execCommand('copy');}
+ document.getElementById('settingsFeedback').textContent=translated('Public code copied. Share it through a trusted channel.','کد عمومی کپی شد؛ آن را از مسیر مطمئن مبادله کنید.');
+};
+document.getElementById('showDiagnostics').onclick=async()=>{
+ try {const r=await fetch('/diagnostics');const d=await r.json();const box=document.getElementById('diagnosticReport');box.value=JSON.stringify(d,null,2);box.hidden=false;box.select();}
+ catch {document.getElementById('settingsFeedback').textContent='Could not load diagnostic report';}
+};
+try {const saved=JSON.parse(localStorage.getItem('bale_appearance')||'{}');document.getElementById('languageSelect').value=saved.language||'en';document.getElementById('themeSelect').value=saved.theme||'light';}catch{}
+document.getElementById('languageSelect').onchange=applyAppearance;document.getElementById('themeSelect').onchange=applyAppearance;
+applyAppearance();loadSettings();
 
 setInterval(pollState, 2000);
 </script>

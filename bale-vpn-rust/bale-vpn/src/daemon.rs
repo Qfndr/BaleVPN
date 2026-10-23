@@ -11,7 +11,6 @@ use lk_signaling::{
     CallDecision, IncomingHandler, PeerId, PlaceCallError, Signaling, TokenStore,
 };
 use std::error::Error;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, watch, RwLock};
@@ -19,6 +18,9 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    _directory_lock: std::fs::File,
+    pub identity: Arc<lktunnel::security::Identity>,
+    pub attempts: parking_lot::Mutex<crate::settings::Attempts>,
     /// Bale signaling client. Lifecycle is process-scoped: one
     /// instance from daemon start to daemon exit; the WS run
     /// loop inside handles reconnects.
@@ -70,12 +72,25 @@ pub async fn run_with_shutdown(
     cfg:      Resolved,
     shutdown: oneshot::Receiver<()>,
 ) -> Result<(), Box<dyn Error>> {
+    run_with_startup(cfg,shutdown,None).await
+}
+
+pub async fn run_with_startup(
+    cfg: Resolved,
+    shutdown: oneshot::Receiver<()>,
+    ready: Option<std::sync::mpsc::SyncSender<Result<(),String>>>,
+) -> Result<(), Box<dyn Error>> {
     // Boot the lktunnel mio reactor. The CLI / Android JNI shim
     // both do this — the binary `bale-vpn` was missing it, so
     // `attach_tun` / NAT host-socket registration silently failed
     // with "dispatcher not running". Idempotent.
     lktunnel::dispatcher::init();
 
+    // Bind before migrating credentials: a busy port must not modify data
+    // belonging to an already-running older application.
+    let http_listener=tokio::net::TcpListener::bind(("127.0.0.1",cfg.port)).await?;
+    let directory_lock=crate::vault::lock_directory(&cfg.config_dir)?;
+    let identity = crate::settings::identity(&cfg.config_dir)?;
     let config_file = Arc::new(ConfigFile::new(cfg.config_dir.clone()));
     // Snapshot the persisted lists / cap so ServerState starts
     // pre-seeded — the UI handlers write through to disk on
@@ -88,7 +103,7 @@ pub async fn run_with_shutdown(
     // automatically (no waiting for an explicit /connect call).
     signaling.auto_load_token();
     let auth        = BaleAuth::new();
-    let http_port   = cfg.port;
+
     let (mode_tx, _) = watch::channel(cfg.mode.clone());
 
     // Client-mode: start idle. The persisted `peer_id` is the
@@ -102,6 +117,9 @@ pub async fn run_with_shutdown(
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        _directory_lock: directory_lock,
+        identity,
+        attempts: Default::default(),
         signaling:   signaling.clone(),
         auth,
         token_store,
@@ -120,13 +138,16 @@ pub async fn run_with_shutdown(
     // HTTP UI runs for the whole daemon lifetime. Bound to
     // 127.0.0.1 so off-host access requires an explicit
     // ssh-tunnel — matches the Node app's policy.
-    let http_addr: SocketAddr = format!("127.0.0.1:{http_port}").parse()?;
+
     let http_state = state.clone();
     let http_task  = tokio::spawn(async move {
-        if let Err(e) = crate::ui::serve(http_state, http_addr).await {
+        if let Err(e) = crate::ui::serve(http_state, http_listener).await {
             log::error!("HTTP UI exited: {e}");
         }
     });
+    // Prove readiness through an in-process channel, not by connecting to an
+    // arbitrary process that happens to have occupied the configured port.
+    if let Some(ready)=ready { let _=ready.send(Ok(())); }
 
     // The per-mode work runs in parallel with the HTTP UI. The
     // mode task exiting is NOT a daemon-shutdown signal — it
@@ -229,9 +250,11 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
         };
         log::info!("entering mode={mode}");
 
+        let mut mode_changed=false;
         let outcome: Result<(), Box<dyn Error + Send + Sync>> = tokio::select! {
             r = run_one_mode(&state, &mode) => r,
             r = mode_rx.changed()           => {
+                mode_changed=true;
                 if r.is_err() {
                     log::info!("mode channel closed — exiting run_mode");
                     teardown_mode(&state).await;
@@ -241,6 +264,7 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
                 Ok(())
             }
         };
+        let completed_normally=outcome.is_ok();
         if let Err(e) = outcome {
             log::warn!("mode {mode} ended with error: {e}");
             // On client error, clear the configured peer so the
@@ -250,10 +274,16 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
             // user has to press Connect again from the UI, which
             // re-POSTs /tunnel/config and gives them a chance to
             // pick a different peer.
+            if mode != "client" { tokio::time::sleep(Duration::from_secs(5)).await; }
             if mode == "client" {
+                state.attempts.lock().failed(&e.to_string(),std::time::Instant::now());
                 state.client.set_error(e.to_string());
                 state.cfg.write().await.peer_id = None;
             }
+        }
+        if mode=="client" && completed_normally && !mode_changed && !mode_rx.has_changed().unwrap_or(false) {
+            state.cfg.write().await.peer_id=None;
+            state.client.set_error("Connection closed. Press Connect to start another call.".into());
         }
         teardown_mode(&state).await;
     }
@@ -325,6 +355,9 @@ async fn run_server(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     // below (and =false in its Drop), so no explicit push here.
 
     let nat_mode = state.cfg.read().await.nat_mode.clone();
+    let preferences = state.cfg.read().await.preferences.clone();
+    if preferences.secure_mode && nat_mode == "kernel" { return Err("Authenticated SOCKS5 requires userspace mode; raw TUN has no end-to-end protection".into()); }
+    let options = preferences.options(&state.identity, true)?;
     if nat_mode == "kernel" {
         // Kernel TUN is Unix-only; Windows has no device we ship.
         #[cfg(not(unix))]
@@ -354,19 +387,15 @@ async fn run_server(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     // AdmissionHandler), drains accepted_sessions to build
     // LkTunnels, and surfaces per-peer Connected / Disconnected
     // on its `events()` stream.
-    let mgr = lktunnel::manager::ServerTunnelManager::new(
+    let mgr = lktunnel::manager::ServerTunnelManager::new_with_options(
         state.signaling.clone(),
         state.activation.clone(),
+        options,
     );
     mgr.set_admission(std::sync::Arc::new(AdmissionDecider {
         server: state.server.clone(),
     }));
     let mut events = mgr.events();
-    // Prepare the account-wide incoming-call permission only for Server mode.
-    // Keep tunnel admission installed before allowing new callers through Bale.
-    if let Err(error) = state.server.allow_bale_calls(&state.signaling).await {
-        log::warn!("server: could not verify Bale call privacy: {error}");
-    }
     let state_for_loop   = state.clone();
     let nat_mode_for_loop = nat_mode.clone();
     tokio::spawn(async move {
@@ -420,6 +449,11 @@ async fn run_server(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     // ignored so a transient WS hiccup (cardinality re-subscribes,
     // brief WS reconnect) can't drop a live LK session.
 
+    // The event collector is already running: a slow account-settings RPC
+    // must not stall a ready client's TLS handshake or transfer.
+    if let Err(error) = state.server.allow_bale_calls(&state.signaling).await {
+        log::warn!("server: could not verify Bale call privacy: {error}");
+    }
     log::info!("server: ready — parking until shutdown");
     std::future::pending::<()>().await;
     Ok(())
@@ -436,7 +470,7 @@ async fn handle_server_session(
     nat_mode: String,
     peer: lk_signaling::PeerId,
     tunnel: Arc<lktunnel::LkTunnel>,
-    done: tokio::sync::oneshot::Receiver<()>,
+    mut done: tokio::sync::oneshot::Receiver<()>,
 ) {
     let peer_id = peer.id_str().to_string();
     log::info!("server: session up for {peer_id}");
@@ -504,12 +538,20 @@ async fn handle_server_session(
         tunnel.disconnect();
         return;
     }
-    st.server.install_client(peer_id.clone(), tunnel, display, slot_used).await;
+    st.server.install_client(peer_id.clone(), tunnel.clone(), display, slot_used).await;
 
     // Park until the main events loop signals Disconnected for
     // this peer. Either an `Err` (sender dropped) or `Ok(())`
     // means the session is over — clean up either way.
-    let _ = done.await;
+    if st.cfg.read().await.preferences.secure_mode {
+        tokio::select! {
+            _ = &mut done => {},
+            _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                if tunnel.is_peer_authenticated() { let _ = done.await; }
+                else { tunnel.disconnect(); log::warn!("server: unverified session expired"); }
+            }
+        }
+    } else { let _ = done.await; }
     log::info!("server: {peer_id} disconnected");
     st.server.remove_client(&peer_id).await;
 }
@@ -550,6 +592,7 @@ impl lk_signaling::IncomingHandler for AdmissionDecider {
             return CallDecision::Accept;
         }
 
+        if self.server.pending_list().await.len() >= 16 { return CallDecision::SilentlyIgnore; }
         // Park for user decision. The UI calls
         // `/server/pending/<peer>/accept|reject` to resolve.
         // 60 s default timeout matches the Android UX.
@@ -586,6 +629,9 @@ async fn run_client(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     };
     log::info!("client: placing call to peer {peer_id_str}");
 
+    let preferences = state.cfg.read().await.preferences.clone();
+    if preferences.secure_mode && client_tun { return Err("Authenticated mode supports SOCKS5; raw TUN is disabled".into()); }
+    let options = preferences.options(&state.identity, false)?;
     let peer = state.signaling.resolve_peer(&peer_id_str).await
         .ok_or("client: unknown peer (resolve_peer returned None)")?;
 
@@ -610,12 +656,14 @@ async fn run_client(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     // `events()` call; the manager's internal watcher emits
     // Connected as soon as the engine reaches it, which is
     // potentially within the same task tick on a fast path).
-    let mgr = lktunnel::manager::ClientTunnelManager::new(
+    let mgr = lktunnel::manager::ClientTunnelManager::new_with_options(
         state.signaling.clone(),
         state.activation.clone(),
+        options,
     );
     let mut mgr_events = mgr.events();
 
+    state.attempts.lock().admit(&preferences,std::time::Instant::now())?;
     match mgr.place_call(peer.clone()).await {
         Ok(())                                 => {}
         Err(PlaceCallError::Rejected)          => return Err("call rejected by peer".into()),
@@ -666,6 +714,7 @@ async fn run_client(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
 
     let bound = tunnel.enable_socks5_server(socks5_port).await
         .map_err(|e| -> Box<dyn Error + Send + Sync> { e.to_string().into() })?;
+    tunnel.ensure_quic_client().await.map_err(|e| format!("Secure transport: {e}"))?;
     log::info!("client: SOCKS5 listening on {bound}");
 
     // Optional TUN attach. Lets the host route traffic through
@@ -708,6 +757,7 @@ async fn run_client(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
     // flips back to the activate prompt.
     let _ = lk_done_rx.await;
     state.client.clear();
+    if let Some(error)=tunnel.transport_error() { return Err(error.into()); }
     Ok(())
 }
 

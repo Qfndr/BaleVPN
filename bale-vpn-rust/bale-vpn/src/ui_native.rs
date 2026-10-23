@@ -20,9 +20,7 @@
 
 use crate::config::Resolved;
 use std::cell::Cell;
-use std::net::TcpStream;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
@@ -48,21 +46,23 @@ pub fn run_gui(cfg: Resolved) -> Result<(), Box<dyn std::error::Error>> {
         .thread_name("bale-vpn-rt")
         .build()
         .expect("tokio runtime");
+    let (ready_tx,ready_rx)=std::sync::mpsc::sync_channel(1);
+    let ready_error=ready_tx.clone();
+    let (ended_tx,ended_rx)=oneshot::channel();
     let daemon_handle = rt.spawn(async move {
-        if let Err(e) = crate::daemon::run_with_shutdown(cfg, shutdown_rx).await {
+        if let Err(e) = crate::daemon::run_with_startup(cfg, shutdown_rx, Some(ready_tx)).await {
+            let _=ready_error.send(Err(e.to_string()));
             log::error!("daemon task exited with error: {e}");
         }
+        let _=ended_tx.send(());
     });
 
-    // Wait for the HTTP UI to start accepting connections —
-    // axum's bind+serve is fast but not instant. Poll for a
-    // few seconds with a tight cadence; bail with a clear
-    // message if it never comes up.
-    if !wait_for_port(port, Duration::from_secs(5)) {
-        return Err(format!(
-            "HTTP UI on 127.0.0.1:{port} didn't come up within 5s — \
-             check the daemon-thread logs for the bind failure"
-        ).into());
+    // Wait only for this daemon to initialize its own listener. A busy
+    // localhost port must never cause the GUI to display another process.
+    match ready_rx.recv_timeout(Duration::from_secs(15)) {
+        Ok(Ok(()))=>{},
+        Ok(Err(error))=>return Err(error.into()),
+        Err(_)=>return Err("The local backend could not start; no external page was opened".into()),
     }
 
     // Native window + webview. The webview just navigates to
@@ -100,6 +100,10 @@ pub fn run_gui(cfg: Resolved) -> Result<(), Box<dyn std::error::Error>> {
         .build(&event_loop)?;
     let _webview = WebViewBuilder::new(&window)
         .with_url(&format!("http://127.0.0.1:{port}"))
+        .with_navigation_handler(move |url| {
+            let origin=format!("http://127.0.0.1:{port}");
+            url==origin || url.starts_with(&(origin+"/")) || url=="about:blank"
+        })
         // Right-click → Inspect Element so UI bugs are debuggable
         // without rebuilding. Cheap in release mode (the WKWebView
         // / WebView2 / WebKitGTK devtools are bundled).
@@ -112,6 +116,8 @@ pub fn run_gui(cfg: Resolved) -> Result<(), Box<dyn std::error::Error>> {
     // (which tears down its select!) but the main-thread event
     // loop keeps running with a torn-down daemon underneath.
     let proxy = event_loop.create_proxy();
+    let backend_proxy=proxy.clone();
+    rt.spawn(async move { let _=ended_rx.await; let _=backend_proxy.send_event(()); });
     rt.spawn(async move {
         if tokio::signal::ctrl_c().await.is_ok() {
             log::info!("gui: SIGINT — closing window");
@@ -209,19 +215,3 @@ fn install_app_menu() {
     }
 }
 
-/// Probe the loopback port until something accepts a TCP
-/// connection or the deadline expires.
-fn wait_for_port(port: u16, budget: Duration) -> bool {
-    let deadline = Instant::now() + budget;
-    let addr = format!("127.0.0.1:{port}");
-    while Instant::now() < deadline {
-        if TcpStream::connect_timeout(
-            &addr.parse().expect("loopback addr"),
-            Duration::from_millis(200),
-        ).is_ok() {
-            return true;
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    false
-}

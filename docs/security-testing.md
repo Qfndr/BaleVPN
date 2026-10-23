@@ -1,4 +1,17 @@
-# Security verification for 2.1.3
+# Security verification
+
+The 2.2 desktop/headless development path uses mutual TLS 1.3 with persisted
+identities and trusted public certificates. See [secure setup](secure-pairing-fa.md).
+The historical 2.1.3 results below are not evidence of a live 2.2 deployment.
+
+New checks cover actual QUIC handshakes (paired, wrong server, unknown client,
+and missing client certificate), real authenticated SOCKS5/TCP/QUIC transfer,
+plaintext-token migration, protected storage tampering/context binding,
+exclusive data-directory ownership, pairing persistence and malformed input,
+call budgets, cooldown UI, diagnostic redaction, and desktop/mobile browser UI.
+The release-mode offline transfer comparison reports throughput; it is not a
+Bale internet-capacity benchmark or a zero-regression guarantee on every path.
+
 
 The automated checks cover local code and dependencies. They do not establish that the VPN is anonymous, authenticated end to end, or free of vulnerabilities.
 
@@ -37,7 +50,7 @@ guard. It does not request a live OTP or establish an account-to-account tunnel.
 
 ## Remaining limits
 
-- Raw IP mode is not end-to-end encrypted against the SFU. QUIC uses self-signed certificates without peer identity verification; an active relay can impersonate peers. Use application TLS for confidentiality. The existing README describes this threat model.
+- Raw IP, older releases and explicit legacy compatibility retain the unauthenticated threat model. Authenticated 2.2 desktop SOCKS5 rejects unpaired peers and disables the raw-IP bypass. The exit server, compromised endpoints, metadata and stored-key access remain outside the tunnel encryption guarantee. Use application TLS for the destination leg.
 - Android LAN sharing is an unauthenticated proxy on the local network when explicitly enabled. Enable it only on a trusted network.
 - The Linux GTK3 GUI dependency chain still brings GLib 0.18 and older helper crates. RustSec informational warnings (including GLib VariantStrIter unsoundness, the older GUI dependency chain's rand warning, and unmaintained crates) remain visible; the application does not directly call VariantStrIter. These warnings are not suppressed or represented as fixed.
 - Unit tests and CI builds do not replace a two-device test using actual Bale accounts, a physical Android device, or a review of Bale infrastructure. No third-party systems are penetration-tested by these checks.

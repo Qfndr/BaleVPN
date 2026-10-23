@@ -32,72 +32,32 @@ There is no commercial relationship with Bale.
 
 ## ⚠️ Privacy & encryption
 
-The LiveKit data channel is encrypted with **DTLS**, so traffic is opaque to passive observers on the network and to ISP middleboxes. **However, Bale's LiveKit server is the SFU/TURN node and has access to the plaintext of the data flowing through the call.** That means:
+The Rust desktop/headless **2.2 development build** requires authenticated
+SOCKS5 encryption by default. Both devices keep a private TLS identity and
+exchange public pairing codes through a trusted channel, such as SSH. TLS 1.3
+inside QUIC verifies both certificates and handshake signatures. Unpaired peers
+are rejected, and the app does not silently downgrade to the old protocol.
+See the [Persian secure setup guide](docs/secure-pairing-fa.md).
 
-- Bale can see **who relays for whom** — every tunnel session is a Bale voice call between two accounts, so Bale's call records reveal the social graph (which account uses which relay, when, for how long).
-- Bale can see **which destinations you connect to** (IP and port, plus the hostname embedded in the TLS SNI of any HTTPS request).
-- Bale can read the **contents of any traffic that isn't itself end-to-end encrypted**. If you only browse `https://` sites, the payload is opaque to them; if you access plaintext HTTP / DNS / FTP / etc. through the tunnel, they can read it.
+The WebRTC carrier uses DTLS-SRTP through Bale's SFU. Authenticated QUIC protects
+SOCKS5 contents between the paired client and server even against an active
+relay without the paired private keys. The exit server decrypts the tunnel;
+use HTTPS for the server-to-destination leg. This is not an anonymity guarantee:
+Bale still sees the accounts, call existence, connection IPs, timing and volume.
+Local call limits are safeguards, not a guarantee against account restrictions.
 
-**SOCKS5 mode (QUIC) note.** When you use SOCKS5 instead of full VPN, the tunnel carries client↔server traffic inside a QUIC channel that adds its own TLS-1.3 encryption on top of the LK data channel. **This is end-to-end encrypted between the two BaleVPN peers** and would in principle shield the contents from Bale's SFU. **But there is no certificate authority** — both ends generate self-signed certificates at startup and accept whatever the peer presents. Anyone who can inject themselves into the QUIC handshake path (which includes whoever operates the SFU you're routing through — Bale) can perform a transparent MITM by handing each side their own cert. The QUIC layer protects against passive eavesdropping by other tenants on the SFU; it does **not** protect against an active adversary at the relay. Treat the threat model as identical to the VPN-mode case above: rely on app-level TLS (HTTPS, etc.) for actual confidentiality, not on the QUIC layer.
+**Legacy and raw-IP modes:** older builds, Android's current unpaired path,
+and explicitly selected compatibility mode do not authenticate the QUIC peer.
+Raw IP mode is not end-to-end encrypted against the SFU. The authenticated
+2.2 desktop path disables raw IP/TUN rather than leave an authentication bypass.
+Do not treat those older modes as equivalent to verified pairing.
 
-Treat this tunnel like a corporate VPN whose operator you don't fully trust — fine for IP-level reachability (uncensoring), **not adequate as an anonymity or end-to-end privacy layer**. Use TLS at the application level (HTTPS, encrypted DNS, etc.).
-
-### 📌 Recommendation from the author
-
-Register the Bale account used with this tool on a **virtual phone number** rather than your primary one, so the call metadata above can't be tied back to your real identity.
-
-**Bale accepts non-Iranian numbers** — and for those, **Bale's verification code is delivered through Telegram**, not by SMS. (Iranian SMS gateways often can't reliably deliver to international numbers, so Bale uses Telegram as the OTP channel for them.) Step-by-step:
-
-1. Get a virtual phone number that can receive SMS. [Sonetel](https://app.sonetel.com/) works well; other reliable options include [JMP.chat](https://jmp.chat/) (with XMPP), [MySudo](https://mysudo.com/), [Hushed](https://hushed.com/), or [Twilio](https://www.twilio.com/) if you're comfortable with their dashboard. Avoid free "throwaway" SMS sites — Telegram and Bale block most of them.
-2. **Register a Telegram account on that number first.** Telegram's OTP arrives via SMS, which works on real virtual numbers. Set a username so Bale's OTP message can find you.
-3. **Register Bale on the same number.** Bale detects it's a non-Iranian number, **doesn't send SMS**, and instead sends the verification code as a Telegram message to your account from there.
-4. Enter the code in the BaleVPN app → done.
-
-A few notes:
-
-- You only need Telegram during Bale sign-up. After that, the BaleVPN app talks to Bale directly; Telegram isn't in the loop.
-- Keep paying for the virtual number — losing it means losing the Bale account (recovery on a number you don't control is hard).
-- The Bale account is tied to that number forever. Pick a number you're willing to keep.
-- The same recipe also lets non-Iranian Telegram users sign up for Bale in general, not just for this project.
-
-<div dir="rtl">
-
-### ⚠️ امنیت و رمزنگاری
-
-کانال دادهٔ LiveKit با **DTLS** رمزنگاری می‌شود؛ بنابراین ترافیک از دید ناظرهای مسیر و میدلباکس‌های ISP پنهان است. **اما سرور LiveKit بله نقش SFU/TURN را بازی می‌کند و به دادهٔ رمزگشایی‌شدهٔ تماس دسترسی دارد.** یعنی:
-
-- بله می‌تواند ببیند **چه کسی برای چه کسی رله می‌کند** — هر جلسهٔ تونل یک تماس صوتی بله بین دو حساب است، پس سوابق تماس بله گرافِ اجتماعی را افشا می‌کند (چه حسابی از چه رله‌ای، چه زمانی، چقدر استفاده کرده).
-- بله می‌تواند ببیند **شما به چه مقصدی وصل می‌شوید** (IP و پورت، به‌علاوهٔ نام میزبانی که در فیلد SNI درخواست‌های HTTPS قرار می‌گیرد).
-- بله می‌تواند **محتوای هر ترافیکی را که خودش رمزنگاری انتها به انتها نشده** بخواند. اگر فقط روی `https://` بگردید، محتوا برایشان مبهم است؛ اما اگر از پروتکل‌های متنی (HTTP/DNS/FTP/…) استفاده کنید، قابل خواندن خواهد بود.
-
-**نکته در مورد حالت SOCKS5 (QUIC).** وقتی به‌جای VPN کامل از SOCKS5 استفاده می‌کنید، ترافیک کلاینت↔سرور داخل یک کانال QUIC حمل می‌شود که روی کانال دادهٔ LK یک لایهٔ TLS 1.3 اضافه می‌گذارد. **این لایه میان دو نقطهٔ BaleVPN انتها به انتها رمزنگاری شده است** و در ظاهر باید محتوا را از دید SFU بله پنهان کند. **اما هیچ مرجع گواهی (CA) در کار نیست** — هر دو طرف در زمان راه‌اندازی یک گواهی self-signed تولید می‌کنند و هرچه طرف مقابل ارائه دهد را می‌پذیرند. هر کسی که بتواند خود را در مسیر دست‌دهی QUIC قرار دهد (که شامل گردانندهٔ SFU‌ای که از طریق آن مسیریابی می‌شوید نیز می‌شود — یعنی بله) می‌تواند با ارائهٔ گواهی خودش به هر طرف، یک MITM شفاف انجام دهد. لایهٔ QUIC در برابر شنود غیرفعال سایر کاربران SFU محافظت می‌کند؛ اما **در برابر یک مهاجم فعال در رله محافظت نمی‌کند**. مدل تهدید را همان حالت VPN در نظر بگیرید: برای محرمانگی واقعی به TLS سطح برنامه (HTTPS و…) تکیه کنید، نه به لایهٔ QUIC.
-
-این تونل را مثل VPN شرکتی‌ای ببینید که گرداننده‌اش را کاملاً نمی‌شناسید — برای دسترسی IP (دور زدن مسدودی) خوب است، **اما برای ناشناسی یا حریم خصوصی انتها به انتها کافی نیست**. در سطح برنامه از TLS (HTTPS، DNS رمزنگاری‌شده و…) استفاده کنید.
-
-### 📌 توصیهٔ نویسنده
-
-برای حساب بله‌ای که با این ابزار استفاده می‌کنید، از یک **شمارهٔ تلفن مجازی** استفاده کنید نه شمارهٔ اصلی‌تان، تا متادیتای تماس بالا به هویت واقعی شما گره نخورد.
-
-**بله شماره‌های غیرایرانی را هم می‌پذیرد** و برای این شماره‌ها **کد تأیید بله از طریق تلگرام تحویل داده می‌شود، نه SMS.** (سرویس‌های SMS ایرانی معمولاً نمی‌توانند به شماره‌های بین‌المللی پیامک ارسال کنند، پس بله از تلگرام به‌عنوان کانال OTP استفاده می‌کند.) مرحله‌به‌مرحله:
-
-۱. یک شمارهٔ تلفن مجازی تهیه کنید که SMS دریافت کند. [Sonetel](https://app.sonetel.com/) خوب کار می‌کند؛ گزینه‌های دیگر شامل [JMP.chat](https://jmp.chat/) (با XMPP)، [MySudo](https://mysudo.com/)، [Hushed](https://hushed.com/) یا [Twilio](https://www.twilio.com/) اگر با داشبورد آن راحت هستید. از سایت‌های "SMS رایگان یک‌بارمصرف" بپرهیزید — تلگرام و بله بیشترشان را مسدود می‌کنند.
-
-۲. **اول با همان شماره روی تلگرام ثبت‌نام کنید.** OTP تلگرام با SMS می‌آید و روی شماره‌های مجازی واقعی به‌خوبی کار می‌کند. حتماً یک نام کاربری (username) ست کنید تا پیام OTP بله بتواند شما را پیدا کند.
-
-۳. **با همان شماره روی بله ثبت‌نام کنید.** بله تشخیص می‌دهد شماره غیرایرانی است، **SMS نمی‌فرستد** و در عوض کد تأیید را به‌صورت پیام تلگرامی از حساب رسمی خودش روی تلگرام برای شما ارسال می‌کند.
-
-۴. کد را در اپ BaleVPN وارد کنید → تمام.
-
-نکات:
-
-- تلگرام را فقط برای ثبت‌نام بله لازم دارید. پس از آن، اپ BaleVPN مستقیماً با بله حرف می‌زند و تلگرام در مسیر نیست.
-- اشتراک شمارهٔ مجازی را تمدید کنید — از دست دادنش یعنی از دست دادن حساب بله (بازیابی روی شماره‌ای که در اختیار شما نیست، دشوار است).
-- حساب بله برای همیشه به آن شماره گره خورده است. شماره‌ای انتخاب کنید که حاضرید نگه دارید.
-- همین روش به کاربران تلگرام در خارج از ایران اجازه می‌دهد به‌طور کلی در بله ثبت‌نام کنند، نه فقط برای این پروژه.
-
-</div>
-
----
+Windows protects stored tokens and private identities with user-bound DPAPI.
+Linux uses AES-256-GCM with a private key file or an externally supplied/systemd
+credential key. A local key backed up alongside its ciphertext does not protect
+against theft of the whole folder. Keep data and backups private; see the guide
+for migration, recovery limits, and external-key setup. Local builds are test
+artifacts; this change does not publish a GitHub release.
 
 ## ⚠️ Responsible use
 
@@ -201,7 +161,7 @@ Apps choose between them by configuring SOCKS5 vs. using the system VPN route.
 
 **Server NAT** owns egress to the open internet. The SFU only relays the media carrier; it never sees the unwrapped tunnel data and doesn't route to the internet itself.
 
-**Privacy.** The relay sees the IP addresses your traffic reaches and any plaintext-protocol payloads. The SOCKS5/QUIC layer adds TLS 1.3 between client and server, but with **self-signed certs and no CA validation**, so an active adversary at the relay can transparently MITM it. Treat the tunnel as "IP reachability," not end-to-end privacy — use HTTPS at the app level. Details in the [privacy note](#%EF%B8%8F-privacy--encryption) above.
+**Privacy.** Use authenticated pairing in the 2.2 desktop test build. Legacy/raw-IP paths retain their older threat model; use HTTPS in every mode. See the [privacy note](#%EF%B8%8F-privacy--encryption) and [secure setup](docs/secure-pairing-fa.md).
 
 ---
 

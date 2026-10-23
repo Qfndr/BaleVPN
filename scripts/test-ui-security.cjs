@@ -50,7 +50,7 @@ function stateHarness() {
   const noop = () => {};
   const context = vm.createContext({ document: { getElementById: get }, window: {}, dot: get('dot'),
     _busy: null, renderSelf: noop, loadPeers: noop, pollClients: noop, pollPending: noop,
-    pollAdmission: noop, pollBlacklist: noop, pollMaxClients: noop, fmtKB: String });
+    pollAdmission: noop, pollBlacklist: noop, pollMaxClients: noop, fmtRate: String, fmtKB: String });
   vm.runInContext(modeScript + '\n' + stateScript, context);
   return { get, render: state => {
     context.nextState = { mode: null, tokenSet: false, wsReady: false, ...state };
@@ -124,6 +124,21 @@ test('server call privacy reports checking, verified Everyone, or an actionable 
   assert.equal(h.get('callPrivacyStatus').className, 'entry err');
   assert.equal(h.get('retryCallPrivacy').style.display, '');
   assert.equal(h.get('retryCallPrivacy').disabled, false);
+});
+
+test('secure status requires actual peer authentication and cooldown does not disable Disconnect', () => {
+  const h = stateHarness();
+  h.render({ mode: 'client', tokenSet: true, secureMode: true, peerAuthenticated: false, retryAfterSeconds: 10 });
+  assert.match(h.get('securityBadge').textContent, /waiting for authentication/);
+  assert.match(h.get('tunnelApply').textContent, /Retry in 10/);
+  assert.equal(h.get('tunnelApply').disabled, true);
+  h.render({ mode: 'client', tokenSet: true, secureMode: true, peerAuthenticated: true, clientActivated: true, clientRoomReady: true, retryAfterSeconds: 9 });
+  assert.match(h.get('securityBadge').textContent, /peer identity verified/);
+  assert.equal(h.get('tunnelApply').disabled, false);
+  assert.equal(h.get('tunnelApply').textContent, 'Disconnect');
+  assert.equal(h.get('wsStateText').textContent, 'Tunnel connected');
+  h.render({ mode: 'client', tokenSet: true, secureMode: false, peerAuthenticated: false });
+  assert.match(h.get('securityBadge').textContent, /NOT verified/);
 });
 
 function authHarness(reply) {

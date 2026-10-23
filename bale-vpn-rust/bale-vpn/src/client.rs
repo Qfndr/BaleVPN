@@ -53,7 +53,7 @@ impl ClientState {
     pub async fn snapshot(&self) -> Option<ClientSnapshot> {
         let inner = self.inner.lock();
         let i = inner.as_ref()?;
-        let connected = i.tunnel.is_connected();
+        let connected = i.tunnel.is_proxy_ready();
         let stats = i.tunnel.stats();
         Some(ClientSnapshot {
             socks5_port: i.socks5_port,

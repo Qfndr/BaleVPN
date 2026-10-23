@@ -302,7 +302,9 @@ impl quinn::UdpPoller for DrainPoller {
 /// so each datagram fits in an Opus frame alongside the 1-byte 'Q'
 /// tag + 2-byte packing length prefix (1200 + 3 = 1203 ≤ 1275).
 /// Disable PMTU discovery — there's no real path to probe.
-fn transport_config() -> Arc<quinn::TransportConfig> {
+fn transport_config() -> Arc<quinn::TransportConfig> { transport_config_for(false) }
+
+pub(crate) fn transport_config_for(throughput: bool) -> Arc<quinn::TransportConfig> {
     let mut tc = quinn::TransportConfig::default();
     // Cap the initial MTU below Opus' 1275-byte ceiling and disable
     // PMTU discovery — the virtual path has no ICMP, probes can't
@@ -333,7 +335,7 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
     // No magic constants here — these derive from the existing
     // shared upper bounds. Tune the *carrier* (SEND_QUEUE_CAP) and
     // these follow automatically.
-    let carrier_buffer = (crate::SEND_QUEUE_CAP * crate::rtp::MAX_FRAME_BYTES) as u32;
+    let carrier_buffer = (crate::SEND_QUEUE_CAP * crate::rtp::MAX_FRAME_BYTES * if throughput { 4 } else { 1 }) as u32;
     tc.stream_receive_window(quinn::VarInt::from_u32(carrier_buffer).into());
     // Per-connection receive sums across all streams; allow a few
     // concurrent flows to share the same connection without one
@@ -346,11 +348,8 @@ fn transport_config() -> Arc<quinn::TransportConfig> {
     Arc::new(tc)
 }
 
-/// Build a [`quinn::ServerConfig`] backed by a fresh, throwaway
-/// self-signed certificate. The outer LK channel already provides
-/// peer identity (only the two Bale callers can talk), so the QUIC
-/// TLS layer's cert validation is functionally redundant — we just
-/// need *a* cert to satisfy TLS 1.3's protocol requirement.
+/// Legacy compatibility server. New desktop applications use persisted
+/// identities and mutual authentication from [`crate::security`].
 pub fn make_server_config() -> Result<quinn::ServerConfig, QuicConfigError> {
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 
@@ -368,11 +367,9 @@ pub fn make_server_config() -> Result<quinn::ServerConfig, QuicConfigError> {
     Ok(server)
 }
 
-/// Build a [`quinn::ClientConfig`] that **skips certificate
-/// verification entirely**. Safe in this context because the LK
-/// transport authenticates the peer (only the two Bale callers can
-/// talk), so the QUIC TLS layer's cert validation would be a
-/// redundant identity check at best.
+/// Legacy compatibility client: checks handshake signatures but trusts any
+/// certificate. Vulnerable to an active relay; never use as a fallback from
+/// authenticated mode. New desktop applications use [`crate::security`].
 pub fn make_client_config() -> Result<quinn::ClientConfig, QuicConfigError> {
     let crypto = rustls::ClientConfig::builder()
         .dangerous()
@@ -407,8 +404,8 @@ impl std::fmt::Display for QuicConfigError {
 impl std::error::Error for QuicConfigError {}
 
 /// rustls [`ServerCertVerifier`] that approves every certificate.
-/// Used on the client side to bypass cert validation — the outer
-/// LK channel does the real authentication.
+/// Used only for legacy compatibility. The SFU does not establish trusted
+/// end-to-end identity; this verifier does not protect against relay MITM.
 #[derive(Debug)]
 struct SkipServerVerify {
     /// rustls insists on a list of supported signature algorithms;
@@ -440,7 +437,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerify {
         _cert:    &rustls::pki_types::CertificateDer<'_>,
         _dss:     &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls12_signature(_message, _cert, _dss, &self.provider.signature_verification_algorithms)
     }
 
     fn verify_tls13_signature(
@@ -449,7 +446,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerify {
         _cert:    &rustls::pki_types::CertificateDer<'_>,
         _dss:     &rustls::DigitallySignedStruct,
     ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+        rustls::crypto::verify_tls13_signature(_message, _cert, _dss, &self.provider.signature_verification_algorithms)
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
@@ -464,6 +461,7 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerify {
 /// down the endpoint and closes all live connections. Use
 /// `endpoint.accept().await` to receive incoming peer connections.
 pub struct QuicServer {
+    pub(crate) authenticated_sessions: Arc<std::sync::atomic::AtomicUsize>,
     pub endpoint: quinn::Endpoint,
 }
 
@@ -542,6 +540,7 @@ pub(crate) async fn keeper_task(
         // 30s ceiling keeps recovery fast once the underlying issue
         // clears.
         let mut backoff = Duration::from_millis(500);
+        let mut failures=0;
         loop {
             // Bail if the LK tunnel was torn down while we slept.
             let Some(tunnel) = weak.upgrade() else { return };
@@ -549,7 +548,7 @@ pub(crate) async fn keeper_task(
                 log::info!("quic: tunnel torn down mid-reconnect, keeper exiting");
                 return;
             }
-            let connect_result = tunnel.connect_quic_to_peer().await;
+            let connect_result = tokio::time::timeout(Duration::from_secs(20),tunnel.connect_quic_to_peer()).await.unwrap_or_else(|_|Err(QuicEndpointError::Io(io::Error::new(io::ErrorKind::TimedOut,"Reconnect timed out"))));
             drop(tunnel);
 
             match connect_result {
@@ -560,6 +559,11 @@ pub(crate) async fn keeper_task(
                     break;
                 }
                 Err(e) => {
+                    failures+=1;
+                    if failures>=3 {
+                        if let Some(inner)=weak.upgrade() { inner.fail_transport(format!("Transport stopped after 3 failed recovery attempts: {e}. Check pairing and reconnect manually.")); }
+                        return;
+                    }
                     log::warn!("quic: reconnect failed: {e} — retry in {backoff:?}");
                     if let Some(inner) = weak.upgrade() {
                         *inner.quic_rx_tx.lock() = None;

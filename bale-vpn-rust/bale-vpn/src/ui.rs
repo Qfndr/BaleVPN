@@ -27,7 +27,6 @@ use axum::extract::Request;
 use bale_signaling::auth::{AuthOutcome, StartResult};
 use lk_signaling::Signaling;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -37,6 +36,8 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/",              get(index))
         .route("/config",        get(get_config).post(set_config))
+        .route("/settings",      get(get_settings).post(set_settings))
+        .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
         .route("/connect",       post(connect))
         .route("/disconnect",    post(disconnect))
@@ -72,6 +73,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .layer(middleware::from_fn(protect_management_ui))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"),
         ))
         .layer(TraceLayer::new_for_http())
         // Blanket `Cache-Control: no-store` on every response.
@@ -131,9 +138,8 @@ async fn protect_management_ui(request: Request, next: Next) -> axum::response::
 }
 
 /// Bind + serve forever. Returns on listener accept-loop exit.
-pub async fn serve(state: Arc<AppState>, addr: SocketAddr) -> std::io::Result<()> {
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    log::info!("HTTP UI listening on http://{addr}");
+pub async fn serve(state: Arc<AppState>, listener: tokio::net::TcpListener) -> std::io::Result<()> {
+    log::info!("HTTP UI listening on http://{}",listener.local_addr()?);
     axum::serve(listener, router(state)).await
 }
 
@@ -177,6 +183,38 @@ async fn get_config(State(s): State<Arc<AppState>>) -> Json<ConfigBody> {
     })
 }
 
+async fn get_settings(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let preferences = s.cfg.read().await.preferences.clone();
+    Json(serde_json::json!({"preferences":preferences,
+        "publicCode":crate::settings::code(&s.identity.certificate),
+        "fingerprint":crate::settings::hex(ring::digest::digest(&ring::digest::SHA256,&s.identity.certificate).as_ref()),
+        "credentialStorage":if cfg!(windows) {"Windows DPAPI (current OS user)"} else {"AES-256-GCM; private master key or BALEVPN_MASTER_KEY_FILE"}}))
+}
+
+async fn set_settings(State(s): State<Arc<AppState>>, Json(preferences): Json<crate::settings::Preferences>) -> Result<Json<OkBody>,ApiError> {
+    preferences.validate(&s.identity).map_err(ApiError::Internal)?;
+    // Applying settings must not silently terminate a working session.
+    if s.cfg.read().await.peer_id.is_some() || s.server.client_count().await>0 {
+        return Err(ApiError::Internal("Disconnect the tunnel before changing security or performance settings".into()));
+    }
+    s.config_file.update(|c| c.preferences=preferences.clone()).map_err(|_|ApiError::Internal("Could not save settings".into()))?;
+    let mode = { let mut cfg=s.cfg.write().await; cfg.preferences=preferences; cfg.mode.clone() };
+    let _ = s.mode_tx.send(mode);
+    Ok(Json(OkBody {ok:true}))
+}
+
+async fn diagnostics(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let cfg=s.cfg.read().await;
+    let snap=s.client.snapshot().await;
+    // Whitelist only: no account ID, IP, destinations, certificates, token,
+    // private key, raw error body or configuration-file contents.
+    Json(serde_json::json!({"applicationVersion":env!("CARGO_PKG_VERSION"),"mode":cfg.mode,
+        "secureMode":cfg.preferences.secure_mode,"peerAuthenticated":s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,"profile":cfg.preferences.profile,
+        "websocketReady":s.signaling.is_connected(),"proxyReady":snap.as_ref().is_some_and(|x|x.connected),
+        "socks5Port":cfg.socks5_port,"metrics":s.client.tunnel().and_then(|t|t.connection_metrics()),
+        "retryAfterSeconds":s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now())}))
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SetConfigBody {
@@ -208,6 +246,15 @@ async fn set_config(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<SetConfigBody>,
 ) -> Result<Json<OkBody>, ApiError> {
+    if body.server_peer_id.is_some() {
+        let cfg = s.cfg.read().await;
+        if cfg.mode.as_deref()!=Some("client") { return Err(ApiError::Internal("Select Client mode before dialing".into())); }
+        if cfg.preferences.secure_mode { cfg.preferences.options(&s.identity,false).map_err(ApiError::Internal)?; }
+        if cfg.peer_id.is_none() {
+            let wait=s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now());
+            if wait>0 {return Err(ApiError::Internal(format!("Wait {wait}s before another call attempt")));}
+        }
+    }
     if body.mode.as_deref().is_some_and(|m| !matches!(m, "client" | "server"))
         || body.nat_mode.as_deref().is_some_and(|m| !matches!(m, "kernel" | "userspace"))
         || body.socks5_port == Some(0)
@@ -283,6 +330,10 @@ async fn set_config(
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct StateBody {
+    secure_mode: bool,
+    peer_authenticated: bool,
+    retry_after_seconds: u64,
+    metrics: Option<serde_json::Value>,
     server_call_privacy: Option<crate::server::CallPrivacySnapshot>,
     /// Token persisted? Drives login-vs-VPN view in the UI.
     token_set:          bool,
@@ -405,6 +456,10 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
     // way to render "Paused (in call)" instead of "Disconnected".
     let ws_paused = is_client && client_room_ready && !ws_ready;
     Json(StateBody {
+        secure_mode: cfg.preferences.secure_mode,
+        peer_authenticated: s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,
+        retry_after_seconds: s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()),
+        metrics: s.client.tunnel().and_then(|t|t.connection_metrics()),
         server_call_privacy: if cfg.mode.as_deref() == Some("server") { Some(s.server.call_privacy()) } else { None },
         token_set,
         mode:              cfg.mode.clone(),
@@ -936,6 +991,7 @@ async fn tunnel_status(State(s): State<Arc<AppState>>) -> Json<TunnelStatus> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TunnelClientRow {
+    peer_authenticated: bool,
     call_key:    String,
     caller_id:   String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -952,6 +1008,7 @@ struct TunnelClientRow {
 async fn tunnel_clients(State(s): State<Arc<AppState>>) -> Json<Vec<TunnelClientRow>> {
     let infos = s.server.client_infos().await;
     Json(infos.into_iter().map(|c| TunnelClientRow {
+        peer_authenticated: c.authenticated,
         call_key:    c.peer_id.clone(),
         caller_id:   c.peer_id,
         caller_name: c.display_name.filter(|n| !n.is_empty()),

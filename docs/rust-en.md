@@ -1,5 +1,8 @@
 # Rust application — Linux / macOS / Windows
 
+> The 2.2 desktop/headless test build requires public-key pairing on both devices. Read the [secure setup and migration guide (Persian)](secure-pairing-fa.md) before connecting.
+
+
 > Persian / فارسی: [راهنمای نسخهٔ Rust](rust-fa.md)
 
 > Linux server + Windows client: [complete Persian walkthrough](linux-server-windows-client-fa.md), including SSH access, authentication, admission, SOCKS5/DNS, systemd, updates, and troubleshooting.

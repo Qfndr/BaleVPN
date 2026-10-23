@@ -34,6 +34,8 @@ def running(binary, directory, work):
                         html = response.read().decode()
                         assert "Verification code" in html
                         assert response.headers["X-Frame-Options"] == "DENY"
+                        assert response.headers["Referrer-Policy"] == "no-referrer"
+                        assert "connect-src 'self'" in response.headers["Content-Security-Policy"]
                     break
                 except (urllib.error.URLError, TimeoutError):
                     if process.poll() is not None:
@@ -77,6 +79,43 @@ def main():
             assert not directory.exists()
             with running(binary, directory, work) as base:
                 assert request(base, "/config")["mode"] is None
+                settings = request(base, "/settings")
+                public_code = settings["publicCode"]
+                assert public_code.startswith("bvp1:")
+                preferences = settings["preferences"]
+                assert preferences["secureMode"] is True
+                preferences["serverCode"] = public_code
+                preferences["clientCodes"] = [public_code]
+                assert request(base, "/settings", preferences)["ok"] is True
+                try:
+                    request(base, "/settings", {**preferences, "secureMode": False}, origin="https://attacker.invalid")
+                except urllib.error.HTTPError as error:
+                    assert error.code == 403
+                else:
+                    raise AssertionError("Hostile Origin changed encryption settings")
+                invalid_preferences = {**preferences, "serverCode": "bvp1:" + "☃" * 128}
+                assert request(base, "/settings", invalid_preferences)["ok"] is False
+                assert request(base, "/settings")["preferences"] == preferences
+                diagnostics = request(base, "/diagnostics")
+                for secret in ("token", "privateKey", "publicCode", "serverCode", "clientCodes", "phone"):
+                    assert secret not in diagnostics
+                # A second process must not migrate/replace keys in this data
+                # directory, even if it tries another management port.
+                with socket.socket() as probe:
+                    probe.bind(("127.0.0.1", 0))
+                    second_port = probe.getsockname()[1]
+                second = subprocess.run([str(binary), "--headless", "--port", str(second_port),
+                    "--config-dir", str(directory)], capture_output=True, timeout=10)
+                assert second.returncode != 0
+                assert request(base, "/settings")["publicCode"] == public_code
+                # GUI builds must refuse an occupied port before creating a
+                # webview or migrating credentials, not navigate to that port.
+                blocked = work / "blocked-start" / "data"
+                occupied_port = base.rsplit(":", 1)[1]
+                other = subprocess.run([str(binary), "--port", occupied_port,
+                    "--config-dir", str(blocked)], capture_output=True, timeout=20)
+                assert other.returncode != 0
+                assert not blocked.exists()
                 # Same requests the mode picker and settings screen make.
                 assert request(base, "/config", {"mode": mode})["ok"] is True
                 assert request(base, "/config", {"socks5Port": 1081})["ok"] is True
@@ -103,6 +142,8 @@ def main():
                     raise AssertionError("Hostile Origin accepted")
             with running(binary, directory, work) as base:
                 restored = request(base, "/config")
+                assert request(base, "/settings")["publicCode"] == public_code
+                assert request(base, "/settings")["preferences"] == preferences
                 assert restored["mode"] == mode and restored["socks5_port"] == 1081
             print(f"PASS: fresh {mode} selection, repeated saves, restart, auth validation, Origin guard")
     report = {
@@ -110,6 +151,10 @@ def main():
         "fresh_server_selection": True, "repeated_config_saves": True,
         "restart_persistence": True, "ui": True, "invalid_auth_rejected": True,
         "hostile_origin_rejected": True, "live_account_login_tested": False,
+        "secure_defaults": True, "pairing_persistence": True,
+        "malformed_pairing_rejected": True, "redacted_diagnostics": True,
+        "client_privacy_change_rejected": True,
+        "second_instance_rejected": True, "hostile_settings_downgrade_rejected": True,
     }
     if args.report:
         args.report.write_text(json.dumps(report, indent=2), encoding="utf-8")

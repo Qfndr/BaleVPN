@@ -333,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "bale-vpn"
-version = "2.1.5"
+version = "2.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -346,6 +346,7 @@ dependencies = [
  "log",
  "muda",
  "parking_lot",
+ "ring",
  "serde",
  "serde_json",
  "tao",

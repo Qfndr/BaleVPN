@@ -28,8 +28,10 @@ const CONFIG_FILENAME: &str = ".bale-vpn_config.json";
 /// On-disk config. Field names match the Node app's JSON keys
 /// where present. `serde(default)` everywhere so a partial
 /// file from an old version round-trips cleanly.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(default)]
+    pub preferences: crate::settings::Preferences,
     // ── Node-app keys (preserved verbatim) ───────────────────
     /// Bale `access_token` cookie value. Empty / missing means
     /// unauthenticated. Read by the [`FileTokenStore`] adapter.
@@ -86,6 +88,7 @@ fn default_max_clients() -> u32    { 5 }
 impl Default for Config {
     fn default() -> Self {
         Self {
+            preferences: Default::default(),
             token: String::new(), admission: Vec::new(), blacklist: Vec::new(),
             max_clients: default_max_clients(), mode: None, nat_mode: None,
             port: default_port(), peer_id: None, socks5_port: default_socks5_port(),
@@ -141,6 +144,7 @@ impl Config {
 /// overrides. This is what the daemon actually operates on.
 #[derive(Debug, Clone)]
 pub struct Resolved {
+    pub preferences: crate::settings::Preferences,
     /// `Some("client" | "server")`, or `None` until the user
     /// picks one in the UI. The daemon parks in `run_mode` when
     /// `None`; the UI surfaces a picker.
@@ -183,6 +187,7 @@ impl Resolved {
         let config_dir = config_dir(None).unwrap_or_else(|_| PathBuf::from("."));
         Self {
             mode,
+            preferences: cfg.preferences.clone(),
             nat_mode,
             port: cli_port.unwrap_or(cfg.port),
             peer_id: cfg.peer_id.clone(),
@@ -271,13 +276,25 @@ impl ConfigFile {
 pub struct FileTokenStore {
     file:  Arc<ConfigFile>,
     cache: Mutex<Option<Vec<u8>>>,
+    vault: crate::vault::Vault,
 }
 
 impl FileTokenStore {
     pub fn new(file: Arc<ConfigFile>) -> Self {
-        let cfg     = file.load();
-        let initial = if cfg.token.is_empty() { None } else { Some(cfg.token.into_bytes()) };
-        Self { file, cache: Mutex::new(initial) }
+        let cfg = file.load();
+        let vault = crate::vault::Vault::new(file.dir());
+        let initial = match vault.read("token.bin") {
+            Ok(Some(bytes)) => { if !cfg.token.is_empty() { let _ = file.update(|c| c.token.clear()); } Some(bytes) },
+            Ok(None) if !cfg.token.is_empty() => {
+                match vault.write("token.bin", cfg.token.as_bytes()) {
+                    Ok(()) => { let _ = file.update(|c| c.token.clear()); Some(cfg.token.into_bytes()) },
+                    Err(_) => { log::error!("Could not migrate legacy token to protected storage"); None }
+                }
+            },
+            Ok(None) => None,
+            Err(_) => { log::error!("Could not unlock protected token; no credentials loaded"); None }
+        };
+        Self { file, cache: Mutex::new(initial), vault }
     }
 
     pub fn into_arc(self) -> Arc<dyn TokenStore> { Arc::new(self) }
@@ -287,15 +304,16 @@ impl TokenStore for FileTokenStore {
     fn load(&self) -> Option<Vec<u8>> { self.cache.lock().clone() }
 
     fn save(&self, bytes: &[u8]) {
-        *self.cache.lock() = Some(bytes.to_vec());
-        let token = String::from_utf8_lossy(bytes).to_string();
-        if let Err(e) = self.file.update(|c| c.token = token) {
-            log::warn!("token save: {e}");
+        if self.vault.write("token.bin", bytes).is_err() {
+            log::error!("Could not persist protected token"); return;
         }
+        *self.cache.lock() = Some(bytes.to_vec());
+        if self.file.update(|c| c.token.clear()).is_err() { log::error!("Could not clear legacy token field"); }
     }
 
     fn clear(&self) {
         *self.cache.lock() = None;
+        if self.vault.clear("token.bin").is_err() { log::error!("Could not remove protected token"); }
         if let Err(e) = self.file.update(|c| c.token.clear()) {
             log::warn!("token clear: {e}");
         }
@@ -363,6 +381,18 @@ mod tests {
         let file = ConfigFile::new(dir.path().to_path_buf());
         assert!(file.update(|c| c.token.clear()).is_err());
         assert_eq!(fs::read_to_string(path).unwrap(), "{broken");
+    }
+
+    #[test]
+    fn legacy_token_migrates_out_of_json_and_logout_removes_protected_copy() {
+        let dir=tempfile::tempdir().unwrap(); let file=Arc::new(ConfigFile::new(dir.path().to_owned()));
+        file.update(|c|c.token="fixture-migration-token".into()).unwrap();
+        let store=FileTokenStore::new(file.clone());
+        assert_eq!(store.load().unwrap(),b"fixture-migration-token");
+        assert!(file.load().token.is_empty());
+        assert!(dir.path().join("token.bin").exists());
+        let reopened=FileTokenStore::new(file.clone());assert_eq!(store.load(),reopened.load());
+        reopened.clear();assert!(FileTokenStore::new(file).load().is_none());
     }
 
     #[cfg(unix)]

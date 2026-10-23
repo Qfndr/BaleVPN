@@ -16,6 +16,8 @@ use std::path::PathBuf;
 
 mod client;
 mod config;
+mod vault;
+mod settings;
 mod daemon;
 mod server;
 // Kernel-TUN device open/configure — Unix-only (uses `std::os::fd::RawFd`
@@ -94,7 +96,7 @@ fn main() {
             // error. The condition itself is fine; quinn just
             // logs noisily about it. Bump back to `warn` if you
             // need to debug a real quinn endpoint issue.
-            "info,lktunnel=info,bale_signaling=info,bale_vpn=info,\
+            "warn,lktunnel=warn,bale_signaling=warn,bale_vpn=warn,\
              webrtc=warn,livekit_api=warn,\
              quinn::endpoint=off",
         ),

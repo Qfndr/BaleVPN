@@ -37,6 +37,7 @@ pub struct PendingCallSnapshot {
 
 #[derive(Clone)]
 pub struct ClientInfo {
+    pub authenticated: bool,
     pub peer_id:       String,
     pub display_name:  Option<String>,
     pub rx_bytes:      u64,
@@ -273,10 +274,13 @@ impl ServerState {
         self.pending.lock().clear();
     }
 
+    pub fn authenticated_count(&self) -> usize { self.clients.lock().values().filter(|c|c.tunnel.is_peer_authenticated()).count() }
+
     pub async fn client_infos(&self) -> Vec<ClientInfo> {
         self.clients.lock().iter().map(|(peer_id, c)| {
             let stats = c.tunnel.stats();
             ClientInfo {
+                authenticated: c.tunnel.is_peer_authenticated(),
                 peer_id:      peer_id.clone(),
                 display_name: c.display_name.clone(),
                 // stats: [rx_pkts, rx_bytes, tx_pkts, tx_bytes]
