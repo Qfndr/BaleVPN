@@ -203,4 +203,5 @@ jobs:
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
           mkdir "$RUNNER_TEMP/security-snapshot"
           git archive HEAD | tar -x -C "$RUNNER_TEMP/security-snapshot"
-          "$RUNNER_TEMP/gitleaks" dir "$RUNNER_TEMP/security-snapshot" --config .gitleaks.toml --redact --no-banner
+          cd "$RUNNER_TEMP/security-snapshot"
+          "$RUNNER_TEMP/gitleaks" dir . --config .gitleaks.toml --redact --no-banner
