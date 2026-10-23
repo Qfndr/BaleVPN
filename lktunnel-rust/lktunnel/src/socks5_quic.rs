@@ -209,6 +209,7 @@ pub(crate) struct QuicServerHandle {
 /// SOCKS5 client requests pick up the freshly-reconnected QUIC.
 pub(crate) async fn enable_listener(
     tunnel: Arc<LkTunnel>,
+    bind_ip: Ipv4Addr,
     port:   u16,
 ) -> Result<Socks5Handle, Socks5Error> {
     // Use TcpSocket so we can set SO_REUSEADDR before bind.
@@ -218,7 +219,7 @@ pub(crate) async fn enable_listener(
     // Observed on every client mode reconnect: session 1's
     // listener task gets aborted, but the bound socket lingers
     // a few seconds and session 2's bind fails until then.
-    let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port);
+    let bind_addr = SocketAddr::new(IpAddr::V4(bind_ip), port);
     let socket = tokio::net::TcpSocket::new_v4().map_err(Socks5Error::Bind)?;
     socket.set_reuseaddr(true).map_err(Socks5Error::Bind)?;
     socket.bind(bind_addr).map_err(Socks5Error::Bind)?;

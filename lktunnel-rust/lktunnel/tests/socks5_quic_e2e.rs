@@ -46,7 +46,7 @@ async fn socks5_over_quic_loopback_roundtrip() {
     b.start_server().expect("start_server");
 
     // 3. Peer A = "client side". Enable SOCKS5 on an OS-assigned
-    //    port. Bound on 0.0.0.0 — for the test, we connect via
+    //    port. Bound on 127.0.0.1 — for the test, we connect via
     //    127.0.0.1 (same machine).
     let socks_port = tokio::time::timeout(
         Duration::from_secs(15),
@@ -248,4 +248,18 @@ async fn ssrf_filter_blocks_loopback_target() {
 
     a.disable_socks5_server();
     drop(a); drop(b);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn socks5_defaults_to_loopback_and_requires_explicit_lan_bind() {
+    let (a, b) = lktunnel::connect_loopback();
+    let local = a.enable_socks5_server(0).await.unwrap();
+    assert_eq!(local.ip(), std::net::Ipv4Addr::LOCALHOST);
+    assert!(a.enable_socks5_server_on(std::net::Ipv4Addr::UNSPECIFIED, local.port()).await.is_err());
+    a.disable_socks5_server();
+    let lan = a.enable_socks5_server_on(std::net::Ipv4Addr::UNSPECIFIED, 0).await.unwrap();
+    assert_eq!(lan.ip(), std::net::Ipv4Addr::UNSPECIFIED);
+    a.disable_socks5_server();
+    a.disconnect();
+    b.disconnect();
 }

@@ -189,7 +189,7 @@ pub extern "system" fn Java_ai_bale_proxy_LkTunnelNative_nativeEnsureQuicClient<
     ok
 }
 
-/// Enable the LAN-facing SOCKS5 listener on `127.0.0.1:port`. Async on
+/// Enable the opt-in LAN-facing SOCKS5 listener on `0.0.0.0:port`. Async on
 /// the Rust side (it has to dial QUIC to the peer); we block here on
 /// the lktunnel runtime so Kotlin gets a sync return.
 ///
@@ -203,7 +203,7 @@ pub extern "system" fn Java_ai_bale_proxy_LkTunnelNative_nativeEnableSocks5<'l>(
     let mut result: jint = 0;
     with_tunnel(handle, |t| {
         let t = t.clone();
-        result = match lktunnel::runtime().block_on(t.enable_socks5_server(port)) {
+        result = match lktunnel::runtime().block_on(t.enable_socks5_server_on(std::net::Ipv4Addr::UNSPECIFIED, port)) {
             Ok(addr) => addr.port() as jint,
             Err(e)   => { log::warn!("nativeEnableSocks5: {e}"); 0 }
         };

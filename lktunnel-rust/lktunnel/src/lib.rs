@@ -1008,7 +1008,7 @@ impl LkTunnel {
         Ok(())
     }
 
-    /// Start a SOCKS5 listener on `0.0.0.0:port` that pumps each
+    /// Start a SOCKS5 listener on `127.0.0.1:port` that pumps each
     /// accepted connection through a QUIC stream to the peer. Uses
     /// the persistent QUIC client established by
     /// [`Self::ensure_quic_client`] (calls it if not already up).
@@ -1023,6 +1023,14 @@ impl LkTunnel {
     pub async fn enable_socks5_server(self: &Arc<Self>, port: u16)
         -> Result<std::net::SocketAddr, socks5_quic::Socks5Error>
     {
+        self.enable_socks5_server_on(std::net::Ipv4Addr::LOCALHOST, port).await
+    }
+
+    /// Explicit bind address for opt-in LAN sharing (Android). The default
+    /// desktop proxy has no authentication and must stay on loopback.
+    pub async fn enable_socks5_server_on(self: &Arc<Self>, bind_ip: std::net::Ipv4Addr, port: u16)
+        -> Result<std::net::SocketAddr, socks5_quic::Socks5Error>
+    {
         // Idempotent for the common "already enabled on the same
         // port" case. Apps can drift out of sync with the native
         // listener state — UI toggle race, startup auto-enable
@@ -1034,7 +1042,8 @@ impl LkTunnel {
         {
             let g = self.socks5_handle.lock();
             if let Some(h) = g.as_ref() {
-                if port == 0 || h.local_addr.port() == port {
+                if h.local_addr.ip() == std::net::IpAddr::V4(bind_ip)
+                    && (port == 0 || h.local_addr.port() == port) {
                     return Ok(h.local_addr);
                 }
                 return Err(socks5_quic::Socks5Error::AlreadyEnabled);
@@ -1048,7 +1057,7 @@ impl LkTunnel {
         // up yet (see `enable_listener`), and the keeper / client-role
         // auto-warm brings it online in the background, so binding ahead
         // of QUIC is safe.
-        let handle = socks5_quic::enable_listener(self.clone(), port).await?;
+        let handle = socks5_quic::enable_listener(self.clone(), bind_ip, port).await?;
         let addr = handle.local_addr;
         {
             let mut slot = self.socks5_handle.lock();
@@ -1060,7 +1069,12 @@ impl LkTunnel {
                 let existing_addr = existing.local_addr;
                 handle.listener_abort.abort();
                 handle.abort_all_conns();
-                return Ok(existing_addr);
+                return if existing_addr.ip() == std::net::IpAddr::V4(bind_ip)
+                    && (port == 0 || existing_addr.port() == port) {
+                    Ok(existing_addr)
+                } else {
+                    Err(socks5_quic::Socks5Error::AlreadyEnabled)
+                };
             }
             *slot = Some(handle);
         }
