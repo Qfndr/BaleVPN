@@ -25,12 +25,8 @@ tokio       = { version = "1", features = [
 # without configuration.
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-webpki-roots", "http2",
-    # `cookies` lets the auth client hold a `cookie::Jar`. The
-    # `/set-cookie/` exchange mirrors the web app's
-    # `credentials: "include"` fetch — the browser captures the
-    # `access_token` HttpOnly cookie across the redirect chain into
-    # its jar. Scraping `Set-Cookie` off a single response misses
-    # it whenever the endpoint 3xx-redirects; the jar doesn't.
+    # Match the web app's credentials: "include" transport: capture
+    # the access_token HttpOnly cookie issued by authentication RPCs.
     "cookies",
 ] }
 

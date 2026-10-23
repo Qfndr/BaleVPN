@@ -100,7 +100,15 @@ class OtpActivity : BaseActivity() {
                 startActivity(Intent(this@OtpActivity, MainActivity::class.java))
                 finishAffinity()
             } catch (e: Exception) {
-                Toast.makeText(this@OtpActivity, e.message ?: "Error", Toast.LENGTH_LONG).show()
+                if (e.message?.contains("PHONE_CODE_EXPIRED") == true) {
+                    Toast.makeText(this@OtpActivity, "This code has expired. Request a new code.", Toast.LENGTH_LONG).show()
+                    finish() // Return to PhoneAuthActivity for a fresh transaction.
+                    return@launch
+                }
+                val message = if (e.message?.contains("PHONE_CODE_INVALID") == true)
+                    "Incorrect code. Check the latest code you received."
+                else e.message ?: "Error"
+                Toast.makeText(this@OtpActivity, message, Toast.LENGTH_LONG).show()
                 btnVerify.isEnabled = true; progress.visibility = View.GONE
             }
         }

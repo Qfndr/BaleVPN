@@ -26,6 +26,7 @@ use crate::grpc_web::{self, GrpcError};
 use crate::proto::{ProtoError, ProtoReader, ProtoWriter};
 use rand::RngCore;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use reqwest::cookie::{CookieStore, Jar};
 
 pub const AUTH_HOST:     &str = "next-ws.bale.ai";
@@ -66,8 +67,6 @@ pub enum AuthError {
     /// a JWT and we couldn't classify it as `NeedsSignupName`.
     Malformed(&'static str),
     InvalidPhone,
-    /// `/set-cookie/` didn't return an `access_token=…` header.
-    NoAccessTokenCookie,
     Http(reqwest::Error),
 }
 
@@ -78,7 +77,6 @@ impl std::fmt::Display for AuthError {
             Self::Proto(e)             => write!(f, "auth proto: {e}"),
             Self::Malformed(s)         => write!(f, "auth malformed: {s}"),
             Self::InvalidPhone         => f.write_str("Enter a valid international phone number, including country code (for example +98912...)."),
-            Self::NoAccessTokenCookie  => f.write_str("auth: /set-cookie/ returned no access_token"),
             Self::Http(e)              => write!(f, "auth HTTP: {e}"),
         }
     }
@@ -91,15 +89,16 @@ impl From<reqwest::Error> for AuthError { fn from(e: reqwest::Error) -> Self { S
 
 /// Bale auth client. Holds a `reqwest::Client` and runs the three
 /// auth RPCs against `next-ws.bale.ai`. The shared `jar` captures
-/// the `access_token` cookie from the `/set-cookie/` exchange —
-/// mirrors the web app's `credentials: "include"` fetch (the
-/// cookie is `HttpOnly`, so it only lives in the jar, never in a
-/// header we could scrape post-redirect).
+/// HttpOnly cookies from the auth RPC responses, just as the web
+/// client's `credentials: "include"` transport does.
 pub struct BaleAuth {
     http: reqwest::Client,
     jar:  Arc<Jar>,
     endpoint: String,
     device_hash: Vec<u8>,
+    // Serialize auth attempts and retain one successful result briefly so a
+    // repeated Verify click cannot consume the same one-time code twice.
+    completed: tokio::sync::Mutex<Option<(String, String, Instant)>>,
 }
 
 impl BaleAuth {
@@ -110,7 +109,7 @@ impl BaleAuth {
 
     /// Construct with a caller-supplied client. The caller is
     /// responsible for attaching the same `jar` as its
-    /// `cookie_provider`, or the `/set-cookie/` exchange won't
+    /// `cookie_provider`, or the authentication RPCs won't
     /// capture the `access_token`.
     pub fn with_client(http: reqwest::Client, jar: Arc<Jar>) -> Self {
         // The web client sends the UTF-8 bytes of a UUID, reused on retries.
@@ -120,7 +119,7 @@ impl BaleAuth {
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let uuid = format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..]);
-        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes() }
+        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), completed: tokio::sync::Mutex::new(None) }
     }
 
     /// Step 1: request a code using Bale's default delivery channel.
@@ -129,9 +128,12 @@ impl BaleAuth {
     /// through `submit_otp` / `submit_signup_name`, and a hint
     /// whether the phone is already registered.
     pub async fn start_phone_auth(&self, phone: &str) -> Result<StartResult, AuthError> {
+        let mut completed = self.completed.lock().await;
         let payload = encode_start_phone_auth(normalize_phone(phone)?, &self.device_hash);
         let resp = self.rpc("StartPhoneAuth", &payload).await?;
-        decode_start_phone_auth(&resp)
+        let result = decode_start_phone_auth(&resp)?;
+        *completed = None;
+        Ok(result)
     }
 
     async fn rpc(&self, method: &str, payload: &[u8]) -> Result<Vec<u8>, GrpcError> {
@@ -148,6 +150,9 @@ impl BaleAuth {
         transaction_hash: &str,
         code:             &str,
     ) -> Result<AuthOutcome, AuthError> {
+        let mut completed = self.completed.lock().await;
+        if let Some(outcome) = cached_auth(&completed, transaction_hash) { return Ok(outcome); }
+        let previous_cookie = self.access_token_cookie();
         let is_jwt = ProtoWriter::new().bool_(1, true).build();
         let payload = ProtoWriter::new()
             .string(1, transaction_hash)
@@ -166,26 +171,14 @@ impl BaleAuth {
             Err(e) => return Err(e.into()),
         };
 
-        let jwt = decode_auth_response_jwt(&buf)?;
-        match jwt {
-            Some(j) => {
-                log::info!("auth: ValidateCode returned a JWT — finalizing");
-                self.finalize_authenticated(j).await
+        match self.response_token(&buf, previous_cookie.as_deref())? {
+            Some(token) => {
+                *completed = Some((transaction_hash.to_owned(), token.clone(), Instant::now()));
+                Ok(AuthOutcome::Authenticated { access_token: token })
             }
-            None => {
-                // No JWT in a 2xx/grpc-status-0 response. Two
-                // meanings collide here: a genuinely-unknown phone
-                // (→ signup), or a wrong/expired code for a known
-                // phone (→ should be an error). We can't tell them
-                // apart from the response alone — log it so the
-                // ambiguity is visible, and let the caller decide
-                // using the `is_registered` hint from StartPhoneAuth.
-                log::info!("auth: ValidateCode returned no JWT — \
-                            treating as NeedsSignupName (could also be a wrong/expired code)");
-                Ok(AuthOutcome::NeedsSignupName {
-                    transaction_hash: transaction_hash.to_string(),
-                })
-            }
+            None => Ok(AuthOutcome::NeedsSignupName {
+                transaction_hash: transaction_hash.to_string(),
+            }),
         }
     }
 
@@ -196,6 +189,9 @@ impl BaleAuth {
         transaction_hash: &str,
         name:             &str,
     ) -> Result<AuthOutcome, AuthError> {
+        let mut completed = self.completed.lock().await;
+        if let Some(outcome) = cached_auth(&completed, transaction_hash) { return Ok(outcome); }
+        let previous_cookie = self.access_token_cookie();
         let payload = ProtoWriter::new()
             .string(1, transaction_hash)
             .string(2, name)
@@ -203,9 +199,12 @@ impl BaleAuth {
 
         let buf = self.rpc("SignUp", &payload).await?;
 
-        match decode_auth_response_jwt(&buf)? {
-            Some(j) => self.finalize_authenticated(j).await,
-            None    => Err(AuthError::Malformed("SignUp returned no JWT")),
+        match self.response_token(&buf, previous_cookie.as_deref())? {
+            Some(token) => {
+                *completed = Some((transaction_hash.to_owned(), token.clone(), Instant::now()));
+                Ok(AuthOutcome::Authenticated { access_token: token })
+            }
+            None => Err(AuthError::Malformed("SignUp returned no authentication token")),
         }
     }
 
@@ -221,39 +220,26 @@ impl BaleAuth {
         // with the SMS flow.
     }
 
-    /// Exchange the per-flow JWT for a long-lived `access_token`
-    /// cookie. Bale serves this from `/set-cookie/` with the JWT
-    /// in `Authorization: Bearer <jwt>`. The `Set-Cookie` response
-    /// header contains the actual token we want to persist.
-    async fn finalize_authenticated(&self, jwt: String) -> Result<AuthOutcome, AuthError> {
-        let url = format!("https://{AUTH_HOST}/set-cookie/");
-        let resp = self.http.get(&url)
-            .header("Authorization", format!("Bearer {jwt}"))
-            .send()
-            .await?
-            .error_for_status()?;
-        let status = resp.status();
-        // Drain the body so the connection (and any redirect chain)
-        // fully completes before we read the jar.
-        let _ = resp.bytes().await;
-
-        // The `access_token` is HttpOnly — reqwest stored it in the
-        // jar (across any redirect), never in a header on the final
-        // response. Read it back the same way the browser would.
-        let parsed = url.parse::<reqwest::Url>().ok();
-        let token = parsed
-            .as_ref()
-            .and_then(|u| self.jar.cookies(u))
-            .and_then(|hv| hv.to_str().ok().and_then(extract_access_token_from_cookie_header));
-
-        match token {
-            Some(t) => Ok(AuthOutcome::Authenticated { access_token: t }),
-            None    => {
-                log::warn!("auth: /set-cookie/ status={status} but no access_token in jar");
-                Err(AuthError::NoAccessTokenCookie)
-            }
-        }
+    // Authentication completes in the RPC itself. Never require an extra
+    // /set-cookie/ GET: that endpoint can reject a valid login with HTTP 403
+    // after its OTP has already been consumed. A newly issued HttpOnly cookie
+    // takes precedence; otherwise the RPC's JWT is the native client's token.
+    fn response_token(&self, body: &[u8], previous_cookie: Option<&str>) -> Result<Option<String>, AuthError> {
+        let jwt = decode_auth_response_jwt(body)?;
+        let cookie = self.access_token_cookie().filter(|c| Some(c.as_str()) != previous_cookie);
+        Ok(cookie.or(jwt))
     }
+
+    fn access_token_cookie(&self) -> Option<String> {
+        format!("{}/ws/", self.endpoint).parse::<reqwest::Url>().ok().as_ref()
+            .and_then(|u| self.jar.cookies(u))
+            .and_then(|hv| hv.to_str().ok().and_then(extract_access_token_from_cookie_header))
+    }
+}
+
+fn cached_auth(completed: &Option<(String, String, Instant)>, transaction_hash: &str) -> Option<AuthOutcome> {
+    completed.as_ref().filter(|(tx, _, at)| tx == transaction_hash && at.elapsed() < Duration::from_secs(300))
+        .map(|(_, token, _)| AuthOutcome::Authenticated { access_token: token.clone() })
 }
 
 impl Default for BaleAuth {
@@ -358,7 +344,7 @@ fn decode_wrapped_string(buf: &[u8]) -> Result<String, ProtoError> {
 fn extract_access_token_from_cookie_header(header: &str) -> Option<String> {
     for part in header.split(';') {
         if let Some(value) = part.trim().strip_prefix("access_token=") {
-            return Some(value.to_string());
+            return (!value.is_empty()).then(|| value.to_string());
         }
     }
     None
@@ -383,10 +369,15 @@ mod tests {
     // sending a code to a real phone number. The field numbers and enums are
     // checked against the official web client (see docs/auth-protocol.md).
     fn mock_auth(headers: &str, body: Vec<u8>) -> (BaleAuth, std::thread::JoinHandle<Vec<u8>>) {
+        mock_auth_method("StartPhoneAuth", headers, body)
+    }
+
+    fn mock_auth_method(method: &str, headers: &str, body: Vec<u8>) -> (BaleAuth, std::thread::JoinHandle<Vec<u8>>) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let headers = headers.to_owned();
+        let method = method.to_ascii_lowercase();
         let server = std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().unwrap();
             socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
@@ -403,7 +394,7 @@ mod tests {
                 }
             }
             let head = String::from_utf8_lossy(&request[..body_start]).to_ascii_lowercase();
-            assert!(head.starts_with("post /bale.auth.v1.auth/startphoneauth http/1.1"));
+            assert!(head.starts_with(&format!("post /bale.auth.v1.auth/{method} http/1.1")));
             assert!(head.contains("content-type: application/grpc-web+proto"));
             assert!(head.contains("origin: https://web.bale.ai"));
             let length: usize = head.lines().find_map(|line| line.strip_prefix("content-length: ")).unwrap().parse().unwrap();
@@ -417,9 +408,91 @@ mod tests {
             socket.write_all(&body).unwrap();
             request[body_start..].to_vec()
         });
-        let mut auth = BaleAuth::with_client(reqwest::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(10)).build().unwrap(), Arc::new(Jar::default()));
+        let jar = Arc::new(Jar::default());
+        let mut auth = BaleAuth::with_client(reqwest::Client::builder().no_proxy().cookie_provider(jar.clone()).timeout(std::time::Duration::from_secs(10)).build().unwrap(), jar);
         auth.endpoint = format!("http://{address}");
         (auth, server)
+    }
+
+    fn jwt_response(token: &str) -> Vec<u8> {
+        grpc_web::encode_frame(&ProtoWriter::new().bytes(4, &ProtoWriter::new().string(1, token).build()).build())
+    }
+
+    fn assert_authenticated(outcome: AuthOutcome, expected: &str) {
+        assert!(matches!(outcome, AuthOutcome::Authenticated { access_token } if access_token == expected));
+    }
+
+    #[tokio::test]
+    async fn otp_jwt_completes_without_cookie_exchange_and_duplicate_rpc() {
+        let (auth, server) = mock_auth_method("ValidateCode", "", jwt_response("fixture.jwt.token"));
+        let (first, duplicate) = tokio::join!(auth.submit_otp("fixture-tx", "123456"), auth.submit_otp("fixture-tx", "123456"));
+        assert_authenticated(first.unwrap(), "fixture.jwt.token");
+        assert_authenticated(duplicate.unwrap(), "fixture.jwt.token");
+        server.join().unwrap();
+        // The one-request server is now closed. A UI retry must still succeed
+        // without submitting the already-consumed OTP or making a GET request.
+        assert_authenticated(auth.submit_otp("fixture-tx", "123456").await.unwrap(), "fixture.jwt.token");
+        assert!(auth.submit_otp("different-tx", "123456").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn otp_accepts_httponly_rpc_cookie_without_jwt() {
+        let (auth, server) = mock_auth_method("ValidateCode", "Set-Cookie: access_token=fixture-cookie; Path=/; HttpOnly\r\n", grpc_web::encode_frame(&[]));
+        assert_authenticated(auth.submit_otp("fixture-tx", "123456").await.unwrap(), "fixture-cookie");
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_cookie_takes_precedence_over_rpc_jwt() {
+        let (auth, server) = mock_auth_method("ValidateCode", "Set-Cookie: access_token=new-cookie; Path=/; HttpOnly\r\n", jwt_response("fixture.jwt.token"));
+        auth.jar.add_cookie_str("access_token=stale-cookie; Path=/", &auth.endpoint.parse().unwrap());
+        assert_authenticated(auth.submit_otp("fixture-tx", "123456").await.unwrap(), "new-cookie");
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn stale_cookie_is_not_a_successful_verification() {
+        let (auth, server) = mock_auth_method("ValidateCode", "", grpc_web::encode_frame(&[]));
+        auth.jar.add_cookie_str("access_token=stale-cookie; Path=/", &auth.endpoint.parse().unwrap());
+        assert!(matches!(auth.submit_otp("fixture-tx", "123456").await.unwrap(), AuthOutcome::NeedsSignupName { .. }));
+        assert!(auth.completed.lock().await.is_none());
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn signup_accepts_jwt_or_fresh_cookie_and_preserves_completed_result() {
+        for (headers, body, expected) in [
+            ("", jwt_response("signup.jwt.token"), "signup.jwt.token"),
+            ("Set-Cookie: access_token=signup-cookie; Path=/; HttpOnly\r\n", grpc_web::encode_frame(&[]), "signup-cookie"),
+        ] {
+            let (auth, server) = mock_auth_method("SignUp", headers, body);
+            assert_authenticated(auth.submit_signup_name("signup-tx", "Fixture").await.unwrap(), expected);
+            server.join().unwrap();
+            assert_authenticated(auth.submit_signup_name("signup-tx", "Fixture").await.unwrap(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn expired_otp_is_an_error_without_cached_credentials() {
+        let (auth, server) = mock_auth_method("ValidateCode", "grpc-status: 3\r\ngrpc-message: PHONE_CODE_EXPIRED\r\n", vec![]);
+        assert!(auth.submit_otp("expired-tx", "123456").await.unwrap_err().to_string().contains("PHONE_CODE_EXPIRED"));
+        assert!(auth.completed.lock().await.is_none());
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_phone_attempt_clears_completed_verification() {
+        let (auth, server) = mock_auth("", grpc_web::encode_frame(&ProtoWriter::new().string(1, "new-tx").build()));
+        *auth.completed.lock().await = Some(("old-tx".into(), "old-token".into(), Instant::now()));
+        auth.start_phone_auth("+989121234567").await.unwrap();
+        assert!(auth.completed.lock().await.is_none());
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn completed_verification_expires() {
+        let completed = Some(("fixture-tx".into(), "fixture-token".into(), Instant::now() - Duration::from_secs(301)));
+        assert!(cached_auth(&completed, "fixture-tx").is_none());
     }
 
     #[tokio::test]

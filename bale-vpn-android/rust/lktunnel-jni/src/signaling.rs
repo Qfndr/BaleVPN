@@ -764,9 +764,8 @@ fn build_string_array<'l>(env: &mut JNIEnv<'l>, strings: Vec<String>) -> jobject
 
 // ─── BaleAuth ───────────────────────────────────────────────────────────
 
-/// Shared stateless `BaleAuth` instance. The auth methods are
-/// pure RPC dispatchers — no per-caller state — so one instance
-/// is fine.
+/// Shared `BaleAuth` instance, including its cookie jar and short-lived
+/// completed-verification cache. All platforms use the same auth flow.
 fn auth() -> &'static BaleAuth {
     static AUTH: once_cell::sync::OnceCell<BaleAuth> = once_cell::sync::OnceCell::new();
     AUTH.get_or_init(BaleAuth::new)
@@ -806,8 +805,9 @@ pub extern "system" fn Java_ai_bale_proxy_bale_BaleAuthNative_nativeSubmitOtp<'l
     jni_shared::spawn_with_continuation(
         cont,
         async move {
-            let encoded = auth().submit_otp(&tx, &code).await.ok().map(encode_outcome);
-            Ok::<_, String>(encoded)
+            auth().submit_otp(&tx, &code).await
+                .map(|outcome| Some(encode_outcome(outcome)))
+                .map_err(|e| e.to_string())
         },
         jni_shared::marshal_string_opt,
     );
@@ -823,8 +823,9 @@ pub extern "system" fn Java_ai_bale_proxy_bale_BaleAuthNative_nativeSubmitSignup
     jni_shared::spawn_with_continuation(
         cont,
         async move {
-            let encoded = auth().submit_signup_name(&tx, &name).await.ok().map(encode_outcome);
-            Ok::<_, String>(encoded)
+            auth().submit_signup_name(&tx, &name).await
+                .map(|outcome| Some(encode_outcome(outcome)))
+                .map_err(|e| e.to_string())
         },
         jni_shared::marshal_string_opt,
     );

@@ -346,6 +346,22 @@ function showAuthStatus(msg, cls) {
   el.textContent = msg;
 }
 
+function showAuthFailure(error) {
+  let message = error || 'Sign-in failed. Please retry.';
+  if (message.includes('PHONE_CODE_EXPIRED')) {
+    _txHash = '';
+    _isRegistered = false;
+    document.getElementById('otpInput').value = '';
+    document.getElementById('otpRow').style.display = 'none';
+    document.getElementById('signupRow').style.display = 'none';
+    document.getElementById('verifyBtn').disabled = true;
+    message = 'This code has expired. Request a new code when the retry timer finishes.';
+  } else if (message.includes('PHONE_CODE_INVALID')) {
+    message = 'Incorrect code. Check the latest code you received and try again.';
+  }
+  showAuthStatus(message, 'err');
+}
+
 document.getElementById('sendOtpBtn').addEventListener('click', async (e) => {
   const phone = document.getElementById('phoneInput').value.trim();
   if (!phone) return;
@@ -400,8 +416,8 @@ document.getElementById('verifyBtn').addEventListener('click', async (e) => {
       showAuthStatus('New user — enter your name to register.', 'info');
       e.target.disabled = false;
     } else {
-      showAuthStatus(d.error || 'Invalid code', 'err');
-      e.target.disabled = false;
+      showAuthFailure(d.error || 'Invalid code');
+      e.target.disabled = !_txHash;
     }
   } catch (ex) { showAuthStatus(ex.message, 'err'); e.target.disabled = false; }
 });
@@ -423,7 +439,7 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
       showAuthStatus('Account created — logging in…', 'info');
       await pollState();
     } else {
-      showAuthStatus(d.error || 'Registration failed', 'err');
+      showAuthFailure(d.error || 'Registration failed');
       e.target.disabled = false;
     }
   } catch (ex) { showAuthStatus(ex.message, 'err'); e.target.disabled = false; }

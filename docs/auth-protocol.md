@@ -41,11 +41,33 @@ produce a local error rather than silently sending phone number zero.
 
 ## Verification and limits
 
+Authentication completion uses the successful `ValidateCode` or `SignUp` RPC
+response directly: a newly issued `access_token` HttpOnly cookie takes precedence,
+otherwise the returned JWT is the native client's token. The official web bundle
+uses `CrossBrowserHttpTransport({withCredentials: true})`; its validation handler
+saves the authenticated user without making a separate `/set-cookie/` request.
+The old mandatory GET to that endpoint could return HTTP 403 after consuming a
+valid OTP, and submitting the same OTP again then produced `PHONE_CODE_EXPIRED`.
+There is now no cookie-exchange HTTP request in the auth flow.
+
+The shared Rust client serializes auth operations and retains one completed
+transaction in memory for up to five minutes. Retrying that transaction returns
+its completed result without consuming the OTP again. A new successful phone
+request clears this cache; expired entries and other transaction hashes are not
+reused. Cookies left over from an earlier attempt cannot turn an empty validation
+response into success. Desktop and Android consume this same implementation.
+The desktop UI discards an expired transaction while retaining the server's
+resend cooldown. Android propagates RPC failures through JNI and returns to the
+phone screen for an expired code instead of repeatedly verifying it.
+
 The HTTP regression fixtures exercise real reqwest requests to a loopback
 server: gRPC framing, request capabilities, delivery metadata, cooldown,
 header-only errors, and empty successful responses. Browser tests exercise
 Telegram messaging, rejection of false success, retry, and replacement of an
-old login attempt. They do not contact real phone numbers.
+old login attempt. Additional HTTP fixtures cover JWT-only and cookie-only OTP
+and signup completion, cookie precedence, stale cookies, concurrent duplicate
+verification, cache expiry, and expired-code errors. They do not contact real
+phone numbers.
 
 An explicit network health check uses the invalid phone number zero:
 

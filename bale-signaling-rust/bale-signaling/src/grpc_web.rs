@@ -194,8 +194,7 @@ pub fn build_client() -> reqwest::Client {
 }
 
 /// Same as [`build_client`] but with a `cookie_provider` jar so
-/// `Set-Cookie` responses (notably the `/set-cookie/` auth
-/// exchange) are captured into `jar` across the redirect chain —
+/// `Set-Cookie` authentication RPC responses are captured into `jar` —
 /// mirroring the web app's `credentials: "include"` fetch.
 pub fn build_client_with_jar(jar: std::sync::Arc<reqwest::cookie::Jar>) -> reqwest::Client {
     reqwest::Client::builder()

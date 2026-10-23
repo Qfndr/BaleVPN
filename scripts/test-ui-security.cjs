@@ -88,3 +88,36 @@ test('starting a replacement OTP request clears the previous code and signup sta
   assert.match(h.get('authStatus').textContent, /Check Bale/);
   assert.equal(h.timers.size, 0);
 });
+
+test('expired OTP clears the consumed transaction and respects resend cooldown', async () => {
+  const h = authHarness({ ok: true, transactionHash: 'expired-tx', isRegistered: true,
+    sentCodeType: 12, nextSendCodeWaitTime: 2 });
+  await h.send();
+  let attempts = 0;
+  h.context.fetch = async () => { attempts++; return { json: async () => ({ ok: false,
+    error: 'auth gRPC: gRPC code=3 message=PHONE_CODE_EXPIRED' }) }; };
+  h.get('otpInput').value = '123456';
+  await h.get('verifyBtn').click({ target: h.get('verifyBtn') });
+  assert.match(h.get('authStatus').textContent, /Request a new code/);
+  assert.equal(h.get('otpInput').value, '');
+  assert.equal(h.get('otpRow').style.display, 'none');
+  assert.equal(h.get('verifyBtn').disabled, true);
+  assert.equal(h.get('sendOtpBtn').disabled, true);
+  h.get('otpInput').value = '123456';
+  await h.get('verifyBtn').click({ target: h.get('verifyBtn') });
+  assert.equal(attempts, 1);
+  for (let i = 0; i < 2; i++) [...h.timers.values()].forEach(callback => callback());
+  assert.equal(h.get('sendOtpBtn').disabled, false);
+});
+
+test('wrong OTP permits correction within the same transaction', async () => {
+  const h = authHarness({ ok: true, transactionHash: 'live-tx', isRegistered: true,
+    sentCodeType: 12, nextSendCodeWaitTime: 60 });
+  await h.send();
+  h.context.fetch = async () => ({ json: async () => ({ ok: false, error: 'PHONE_CODE_INVALID' }) });
+  h.get('otpInput').value = '123456';
+  await h.get('verifyBtn').click({ target: h.get('verifyBtn') });
+  assert.match(h.get('authStatus').textContent, /Incorrect code/);
+  assert.equal(h.get('otpRow').style.display, '');
+  assert.equal(h.get('verifyBtn').disabled, false);
+});
