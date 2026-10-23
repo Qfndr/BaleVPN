@@ -139,8 +139,17 @@ pub async fn call(
     access_token: Option<&str>,
 ) -> Result<Vec<u8>, GrpcError> {
     let url = format!("https://{host}/{service}/{method}");
+    call_endpoint(client, &url, payload, access_token).await
+}
+
+pub(crate) async fn call_endpoint(
+    client: &reqwest::Client,
+    url: &str,
+    payload: &[u8],
+    access_token: Option<&str>,
+) -> Result<Vec<u8>, GrpcError> {
     let mut req = client
-        .post(&url)
+        .post(url)
         .header("Content-Type", "application/grpc-web+proto")
         .header("X-Grpc-Web",   "1")
         .header("Origin",       ORIGIN)
@@ -157,6 +166,17 @@ pub async fn call(
             status:  status.as_u16(),
             snippet: snippet.chars().take(200).collect(),
         });
+    }
+    // A trailers-only gRPC error can be returned in HTTP headers with a
+    // completely empty body. Ignoring these headers turns failures into success.
+    if let Some(value) = resp.headers().get("grpc-status") {
+        let code: i32 = value.to_str().ok().and_then(|s| s.parse().ok())
+            .ok_or_else(|| GrpcError::Malformed("invalid grpc-status header".into()))?;
+        if code != 0 {
+            let message = resp.headers().get("grpc-message")
+                .and_then(|s| s.to_str().ok()).map(str::to_owned);
+            return Err(GrpcError::Status { code, message });
+        }
     }
     let body = resp.bytes().await?;
     decode_response(&body)

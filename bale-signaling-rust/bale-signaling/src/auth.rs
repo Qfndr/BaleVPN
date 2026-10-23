@@ -1,5 +1,5 @@
 //! BaleAuth — the Bale-shaped sign-in flow. Doesn't fit a generic
-//! trait (phone + SMS OTP + conditional signup), so it lives
+//! trait (phone + OTP + conditional signup), so it lives
 //! outside `lk_signaling::Signaling` and is consumed directly by
 //! the app's auth UI.
 //!
@@ -7,7 +7,7 @@
 //! `/auth/*` endpoints into a single async API.
 //!
 //! Flow:
-//! 1. `start_phone_auth(phone)` → server sends an SMS code, returns
+//! 1. `start_phone_auth(phone)` → server selects a code delivery channel, returns
 //!    a `transaction_hash` and an `is_registered` flag.
 //! 2. `submit_otp(tx, code)` → either
 //!      - [`AuthOutcome::Authenticated { access_token }`] for known
@@ -31,15 +31,18 @@ use reqwest::cookie::{CookieStore, Jar};
 pub const AUTH_HOST:     &str = "next-ws.bale.ai";
 const AUTH_APP_ID:       i32  = 4;
 const AUTH_API_KEY:      &str = "C28D46DC4C3A7A26564BFCC48B929086A95C93C98E789A19847BEE8627DE4E7D";
-const SENDCODE_SMS:      i32  = 3;
+const SENDCODE_DEFAULT:  i32  = 1;
 const DEFAULT_LANGUAGE:  &str = "fa";
-const CLIENT_LABEL:      &str = "Bale Android";
+const CLIENT_LABEL:      &str = "BaleVPN";
 
 /// Outcome of `start_phone_auth`.
 #[derive(Debug, Clone)]
 pub struct StartResult {
     pub transaction_hash: String,
     pub is_registered:    bool,
+    /// Bale's AuthSendCodeType: 2 = Bale, 3 = SMS, 9/12 = Telegram.
+    pub sent_code_type: i32,
+    pub next_send_code_wait_time: Option<u64>,
 }
 
 /// Outcome of `submit_otp` / `submit_signup_name`.
@@ -62,6 +65,7 @@ pub enum AuthError {
     /// Server returned 2xx but the response shape didn't include
     /// a JWT and we couldn't classify it as `NeedsSignupName`.
     Malformed(&'static str),
+    InvalidPhone,
     /// `/set-cookie/` didn't return an `access_token=…` header.
     NoAccessTokenCookie,
     Http(reqwest::Error),
@@ -73,6 +77,7 @@ impl std::fmt::Display for AuthError {
             Self::Grpc(e)              => write!(f, "auth gRPC: {e}"),
             Self::Proto(e)             => write!(f, "auth proto: {e}"),
             Self::Malformed(s)         => write!(f, "auth malformed: {s}"),
+            Self::InvalidPhone         => f.write_str("Enter a valid international phone number, including country code (for example +98912...)."),
             Self::NoAccessTokenCookie  => f.write_str("auth: /set-cookie/ returned no access_token"),
             Self::Http(e)              => write!(f, "auth HTTP: {e}"),
         }
@@ -93,12 +98,14 @@ impl From<reqwest::Error> for AuthError { fn from(e: reqwest::Error) -> Self { S
 pub struct BaleAuth {
     http: reqwest::Client,
     jar:  Arc<Jar>,
+    endpoint: String,
+    device_hash: Vec<u8>,
 }
 
 impl BaleAuth {
     pub fn new() -> Self {
         let jar = Arc::new(Jar::default());
-        Self { http: grpc_web::build_client_with_jar(jar.clone()), jar }
+        Self::with_client(grpc_web::build_client_with_jar(jar.clone()), jar)
     }
 
     /// Construct with a caller-supplied client. The caller is
@@ -106,40 +113,33 @@ impl BaleAuth {
     /// `cookie_provider`, or the `/set-cookie/` exchange won't
     /// capture the `access_token`.
     pub fn with_client(http: reqwest::Client, jar: Arc<Jar>) -> Self {
-        Self { http, jar }
+        // The web client sends the UTF-8 bytes of a UUID, reused on retries.
+        let mut bytes = [0u8; 16];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let uuid = format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..]);
+        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes() }
     }
 
-    /// Step 1: send an SMS code to `phone` (any format — non-digits
-    /// stripped). Returns the transaction hash to be threaded
+    /// Step 1: request a code using Bale's default delivery channel.
+    /// Accepts international numbers and Iranian local mobile numbers.
+    /// Returns the transaction hash to be threaded
     /// through `submit_otp` / `submit_signup_name`, and a hint
     /// whether the phone is already registered.
     pub async fn start_phone_auth(&self, phone: &str) -> Result<StartResult, AuthError> {
-        let digits: String = phone.chars().filter(char::is_ascii_digit).collect();
-        let digits_int = digits.parse::<i64>().unwrap_or(0);
-
-        let mut device_hash = vec![0u8; 16];
-        rand::thread_rng().fill_bytes(&mut device_hash);
-
-        let payload = ProtoWriter::new()
-            .int64 (1, digits_int)
-            .int32 (2, AUTH_APP_ID)
-            .string(3, AUTH_API_KEY)
-            .bytes (4, &device_hash)
-            .string(5, CLIENT_LABEL)
-            .string(7, DEFAULT_LANGUAGE)
-            .int32 (9, SENDCODE_SMS)
-            .build();
-
-        let resp = grpc_web::call(
-            &self.http, AUTH_HOST,
-            "bale.auth.v1.Auth", "StartPhoneAuth",
-            &payload, None,
-        ).await?;
-
-        decode_start_phone_auth(&resp).map_err(AuthError::Proto)
+        let payload = encode_start_phone_auth(normalize_phone(phone)?, &self.device_hash);
+        let resp = self.rpc("StartPhoneAuth", &payload).await?;
+        decode_start_phone_auth(&resp)
     }
 
-    /// Step 2: submit the SMS code. For unknown phones Bale used to
+    async fn rpc(&self, method: &str, payload: &[u8]) -> Result<Vec<u8>, GrpcError> {
+        grpc_web::call_endpoint(&self.http,
+            &format!("{}/bale.auth.v1.Auth/{method}", self.endpoint), payload, None).await
+    }
+
+    /// Step 2: submit the verification code. For unknown phones Bale used to
     /// return a `PHONE_NUMBER_UNOCCUPIED` gRPC error; current API
     /// behaviour is to succeed with an empty `jwt` field. Both
     /// shapes resolve to `AuthOutcome::NeedsSignupName`.
@@ -155,11 +155,7 @@ impl BaleAuth {
             .bytes (3, &is_jwt)
             .build();
 
-        let buf = match grpc_web::call(
-            &self.http, AUTH_HOST,
-            "bale.auth.v1.Auth", "ValidateCode",
-            &payload, None,
-        ).await {
+        let buf = match self.rpc("ValidateCode", &payload).await {
             Ok(b)  => b,
             Err(GrpcError::Status { code: _, message: Some(m) })
                     if m.contains("PHONE_NUMBER_UNOCCUPIED") => {
@@ -205,11 +201,7 @@ impl BaleAuth {
             .string(2, name)
             .build();
 
-        let buf = grpc_web::call(
-            &self.http, AUTH_HOST,
-            "bale.auth.v1.Auth", "SignUp",
-            &payload, None,
-        ).await?;
+        let buf = self.rpc("SignUp", &payload).await?;
 
         match decode_auth_response_jwt(&buf)? {
             Some(j) => self.finalize_authenticated(j).await,
@@ -238,7 +230,8 @@ impl BaleAuth {
         let resp = self.http.get(&url)
             .header("Authorization", format!("Bearer {jwt}"))
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         let status = resp.status();
         // Drain the body so the connection (and any redirect chain)
         // fully completes before we read the jar.
@@ -269,19 +262,64 @@ impl Default for BaleAuth {
 
 // ─── Response decoders ──────────────────────────────────────────────────
 
-fn decode_start_phone_auth(buf: &[u8]) -> Result<StartResult, ProtoError> {
+fn decode_start_phone_auth(buf: &[u8]) -> Result<StartResult, AuthError> {
     let mut r = ProtoReader::new(buf);
     let mut hash       = String::new();
     let mut registered = false;
+    let mut sent_code_type = 0;
+    let mut next_send_code_wait_time = None;
     while r.has_more() {
         let (f, w) = r.tag()?;
         match f {
-            1 => hash       = r.string()?.to_string(),
-            2 => registered = r.varint()? != 0,
+            1 if w == 2 => hash = r.string()?.to_string(),
+            2 if w == 0 => registered = r.varint()? != 0,
+            5 if w == 0 => sent_code_type = r.varint()? as i32,
+            8 if w == 2 => {
+                let mut wrapped = ProtoReader::new(r.bytes()?);
+                let mut wait = 0;
+                while wrapped.has_more() {
+                    let (field, wire) = wrapped.tag()?;
+                    if field == 1 && wire == 0 { wait = wrapped.varint()?; }
+                    else { wrapped.skip(wire)?; }
+                }
+                // Reject negative int64 values encoded as unsigned varints.
+                if wait <= i64::MAX as u64 { next_send_code_wait_time = Some(wait); }
+            }
             _ => r.skip(w)?,
         }
     }
-    Ok(StartResult { transaction_hash: hash, is_registered: registered })
+    if hash.trim().is_empty() {
+        return Err(AuthError::Malformed("StartPhoneAuth returned no transaction hash; code delivery was not confirmed"));
+    }
+    Ok(StartResult { transaction_hash: hash, is_registered: registered, sent_code_type, next_send_code_wait_time })
+}
+
+fn encode_start_phone_auth(phone: i64, device_hash: &[u8]) -> Vec<u8> {
+    // Official web client: DEFAULT delivery lets Bale choose the channel;
+    // packed field 10 advertises Telegram Gateway (0) and six-digit OTP (1).
+    ProtoWriter::new().int64(1, phone).int32(2, AUTH_APP_ID)
+        .string(3, AUTH_API_KEY).bytes(4, device_hash).string(5, CLIENT_LABEL)
+        .string(7, DEFAULT_LANGUAGE).int32(9, SENDCODE_DEFAULT)
+        .bytes(10, &[0, 1]).build()
+}
+
+fn normalize_phone(phone: &str) -> Result<i64, AuthError> {
+    let mut digits = String::new();
+    for (index, c) in phone.trim().chars().enumerate() {
+        match c {
+            '0'..='9' => digits.push(c),
+            '\u{06f0}'..='\u{06f9}' => digits.push(char::from(b'0' + (c as u32 - 0x06f0) as u8)),
+            '\u{0660}'..='\u{0669}' => digits.push(char::from(b'0' + (c as u32 - 0x0660) as u8)),
+            '+' if index == 0 => {},
+            ' ' | '-' | '(' | ')' => {},
+            _ => return Err(AuthError::InvalidPhone),
+        }
+    }
+    if let Some(international) = digits.strip_prefix("00") { digits = international.to_string(); }
+    // Accept the common Iranian local mobile format as well as E.164.
+    if digits.len() == 11 && digits.starts_with("09") { digits = format!("98{}", &digits[1..]); }
+    if !(7..=15).contains(&digits.len()) || digits.starts_with('0') { return Err(AuthError::InvalidPhone); }
+    digits.parse().map_err(|_| AuthError::InvalidPhone)
 }
 
 /// Returns the JWT string from `AuthResponse { 2: user, 4: jwt-wrapped }`.
@@ -329,6 +367,122 @@ fn extract_access_token_from_cookie_header(header: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "Live Bale health check; sends only invalid phone 0, never a real number"]
+    async fn live_auth_endpoint_rejects_invalid_phone() {
+        let auth = BaleAuth::new();
+        let payload = encode_start_phone_auth(0, &auth.device_hash);
+        let response = auth.rpc("StartPhoneAuth", &payload).await;
+        assert!(matches!(&response, Err(GrpcError::Status { message: Some(message), .. })
+            if message.contains("PHONE_NUMBER_INVALID")),
+            "Expected PHONE_NUMBER_INVALID for phone 0, got {response:?}");
+    }
+
+    // HTTP fixtures exercise the real request framing and transport, without
+    // sending a code to a real phone number. The field numbers and enums are
+    // checked against the official web client (see docs/auth-protocol.md).
+    fn mock_auth(headers: &str, body: Vec<u8>) -> (BaleAuth, std::thread::JoinHandle<Vec<u8>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let headers = headers.to_owned();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            let mut request = Vec::new();
+            let body_start;
+            loop {
+                let mut buf = [0u8; 4096];
+                let n = socket.read(&mut buf).unwrap();
+                assert_ne!(n, 0);
+                request.extend_from_slice(&buf[..n]);
+                if let Some(index) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    body_start = index + 4;
+                    break;
+                }
+            }
+            let head = String::from_utf8_lossy(&request[..body_start]).to_ascii_lowercase();
+            assert!(head.starts_with("post /bale.auth.v1.auth/startphoneauth http/1.1"));
+            assert!(head.contains("content-type: application/grpc-web+proto"));
+            assert!(head.contains("origin: https://web.bale.ai"));
+            let length: usize = head.lines().find_map(|line| line.strip_prefix("content-length: ")).unwrap().parse().unwrap();
+            while request.len() < body_start + length {
+                let mut buf = [0u8; 4096];
+                let n = socket.read(&mut buf).unwrap();
+                assert_ne!(n, 0);
+                request.extend_from_slice(&buf[..n]);
+            }
+            write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/grpc-web+proto\r\nConnection: close\r\n{}\r\n", body.len(), headers).unwrap();
+            socket.write_all(&body).unwrap();
+            request[body_start..].to_vec()
+        });
+        let mut auth = BaleAuth::with_client(reqwest::Client::builder().no_proxy().timeout(std::time::Duration::from_secs(10)).build().unwrap(), Arc::new(Jar::default()));
+        auth.endpoint = format!("http://{address}");
+        (auth, server)
+    }
+
+    #[tokio::test]
+    async fn start_auth_advertises_telegram_and_decodes_delivery_over_http() {
+        let wait = ProtoWriter::new().int64(1, 60).build();
+        let response = ProtoWriter::new().string(1, "test-transaction").bool_(2, true)
+            .int32(5, 12).bytes(8, &wait).build();
+        let (auth, server) = mock_auth("", grpc_web::encode_frame(&response));
+        let result = auth.start_phone_auth("+98 912 123 4567").await.unwrap();
+        assert_eq!(result.transaction_hash, "test-transaction");
+        assert!(result.is_registered);
+        assert_eq!(result.sent_code_type, 12);
+        assert_eq!(result.next_send_code_wait_time, Some(60));
+        let frame = server.join().unwrap();
+        let payload = grpc_web::decode_response(&frame).unwrap();
+        let mut r = ProtoReader::new(&payload);
+        let mut delivery = None;
+        let mut options = None;
+        while r.has_more() {
+            let (field, wire) = r.tag().unwrap();
+            match field {
+                1 => assert_eq!(r.varint().unwrap(), 989121234567),
+                4 => assert_eq!(r.bytes().unwrap(), auth.device_hash),
+                9 => delivery = Some(r.varint().unwrap()),
+                10 => options = Some(r.bytes().unwrap().to_vec()),
+                _ => r.skip(wire).unwrap(),
+            }
+        }
+        assert_eq!(delivery, Some(1)); // DEFAULT, never force SMS
+        assert_eq!(options, Some(vec![0, 1])); // packed Telegram Gateway + six-digit OTP
+        assert_eq!(auth.device_hash.len(), 36); // UUID text, same value on retries
+    }
+
+    #[tokio::test]
+    async fn header_only_auth_errors_are_not_success() {
+        for (status, expected) in [("7", "PHONE_NUMBER_NOT_IN_TELEGRAM"), ("8", "phone auth limit exceeded"), ("invalid", "invalid grpc-status header")] {
+            let headers = format!("grpc-status: {status}\r\ngrpc-message: {expected}\r\n");
+            let (auth, server) = mock_auth(&headers, vec![]);
+            let error = auth.start_phone_auth("+989121234567").await.unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+            server.join().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_success_is_not_a_sent_code() {
+        for body in [vec![], grpc_web::encode_frame(&[]), grpc_web::encode_frame(&ProtoWriter::new().bool_(2, true).build())] {
+            let (auth, server) = mock_auth("grpc-status: 0\r\n", body);
+            assert!(matches!(auth.start_phone_auth("+989121234567").await, Err(AuthError::Malformed(_))));
+            server.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn phone_numbers_are_normalized_without_silently_dropping_characters() {
+        for phone in ["+98 912-123-4567", "00989121234567", "09121234567", "+۹۸۹۱۲۱۲۳۴۵۶۷", "٠٩١٢١٢٣٤٥٦٧"] {
+            assert_eq!(normalize_phone(phone).unwrap(), 989121234567);
+        }
+        assert_eq!(normalize_phone("+44 (7700) 900123").unwrap(), 447700900123);
+        for phone in ["", "abc989121234567", "0", "++989121234567", "+0123456789", "9999999999999999", "0912x1234567"] {
+            assert!(matches!(normalize_phone(phone), Err(AuthError::InvalidPhone)), "{phone}");
+        }
+    }
 
     #[test]
     fn decode_start_phone_auth_full() {

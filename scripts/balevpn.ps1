@@ -311,7 +311,7 @@ read_line() {
 # ── Auth (SMS OTP) ──────────────────────────────────────────────────────────
 do_login() {
   echo
-  info "${C_BOLD}Sign in${C_RESET} — Bale SMS one-time-password"
+  info "${C_BOLD}Sign in${C_RESET} — Bale verification code (Bale / Telegram / SMS)"
   local phone resp thash registered code verify needs name
   phone="$(prompt 'Phone number (e.g. 989123456789): ')"
   [ -n "$phone" ] || { warn "no phone entered"; return 1; }
@@ -323,9 +323,14 @@ do_login() {
   fi
   thash="$(jq -r '.transactionHash' <<<"$resp")"
   registered="$(jq -r '.isRegistered' <<<"$resp")"
-  ok "code sent. (registered account: ${registered})"
+  case "$(jq -r '.sentCodeType' <<<"$resp")" in
+    2) info "Check Bale for your code." ;;
+    3) info "Check SMS for your code." ;;
+    9|12) info "Check Telegram for your code." ;;
+    *) info "Check Bale, Telegram or SMS for your code." ;;
+  esac
 
-  code="$(prompt 'Enter the SMS code: ')"
+  code="$(prompt 'Enter the verification code: ')"
   verify="$(api_post /auth/verify \
     "$(jq -nc --arg t "$thash" --arg c "$code" --argjson r "$registered" \
         '{transactionHash:$t, code:$c, isRegistered:$r}')")" \
@@ -368,7 +373,7 @@ reauth() {
   echo
   cat <<EOF
 ${C_BOLD}Re-authenticate${C_RESET}
-  1) Sign in with SMS code
+  1) Sign in with verification code
   2) Paste an access_token cookie
   3) Cancel
 EOF
@@ -661,7 +666,7 @@ main_menu() {
 
     if [ "$tok" != true ]; then
       tui_menu status_banner "Not signed in" \
-        "Sign in with SMS code" \
+        "Sign in with verification code" \
         "Paste an access_token cookie" \
         "Upgrade binary" \
         "Stop the binary" \
@@ -963,14 +968,19 @@ function Wait-Key { Read-Host -Prompt '(press enter)' | Out-Null }
 # ── Auth (SMS OTP) ───────────────────────────────────────────────────────────
 function Invoke-Login {
   Write-Host ''
-  Info 'Sign in — Bale SMS one-time-password'
+  Info 'Sign in — Bale verification code (Bale / Telegram / SMS)'
   $phone = Read-Prompt 'Phone number (e.g. 989123456789)'
   if (-not $phone) { Warn 'no phone entered'; return }
   try { $resp = Invoke-ApiPost '/auth/start' @{ phone = $phone } } catch { Warn 'auth/start request failed'; return }
   if (-not $resp.ok) { Warn "auth/start: $($resp.error)"; return }
-  Ok "code sent. (registered account: $($resp.isRegistered))"
+  switch ($resp.sentCodeType) {
+    2 { Info 'Check Bale for your code.' }
+    3 { Info 'Check SMS for your code.' }
+    { $_ -in 9, 12 } { Info 'Check Telegram for your code.' }
+    default { Info 'Check Bale, Telegram or SMS for your code.' }
+  }
 
-  $code = Read-Prompt 'Enter the SMS code'
+  $code = Read-Prompt 'Enter the verification code'
   try {
     $verify = Invoke-ApiPost '/auth/verify' @{
       transactionHash = $resp.transactionHash; code = $code; isRegistered = [bool]$resp.isRegistered
@@ -1000,7 +1010,7 @@ function Set-Token {
 function Invoke-Reauth {
   Write-Host ''
   Write-Host 'Re-authenticate'
-  Write-Host '  1) Sign in with SMS code'
+  Write-Host '  1) Sign in with verification code'
   Write-Host '  2) Paste an access_token cookie'
   Write-Host '  3) Cancel'
   switch (Read-Prompt 'choice>') {
@@ -1280,7 +1290,7 @@ function Show-MainMenu {
 
     if (-not $st.tokenSet) {
       Show-TuiMenu { Get-StatusBanner } 'Not signed in' @(
-        'Sign in with SMS code',
+        'Sign in with verification code',
         'Paste an access_token cookie',
         'Upgrade binary',
         'Stop the binary',

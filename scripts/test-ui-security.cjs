@@ -33,3 +33,58 @@ for (const [poll, key] of [['pollClients', 'clientsList'], ['pollPending', 'pend
     }
   });
 }
+
+const authScript = script.slice(script.indexOf("let _txHash = ''"), script.indexOf('// ── LocalStorage persistence'));
+function authHarness(reply) {
+  const elements = new Map();
+  const timers = new Map();
+  let nextTimer = 0;
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { value: '', style: {}, disabled: false,
+      textContent: '', focus() {}, addEventListener(type, handler) { this[type] = handler; } });
+    return elements.get(id);
+  };
+  const context = vm.createContext({ document: { getElementById: get },
+    fetch: async () => ({ json: async () => reply }),
+    setInterval: callback => { timers.set(++nextTimer, callback); return nextTimer; },
+    clearInterval: timer => timers.delete(timer),
+  });
+  vm.runInContext(authScript, context);
+  get('phoneInput').value = '+989121234567';
+  return { get, timers, context, send: () => get('sendOtpBtn').click({ target: get('sendOtpBtn') }) };
+}
+
+test('auth shows Telegram delivery and restores resend after the server cooldown', async () => {
+  const h = authHarness({ ok: true, transactionHash: 'test-tx', isRegistered: true,
+    sentCodeType: 12, nextSendCodeWaitTime: 2 });
+  await h.send();
+  assert.match(h.get('authStatus').textContent, /Telegram/);
+  assert.equal(h.get('otpRow').style.display, '');
+  assert.equal(h.get('sendOtpBtn').disabled, true);
+  for (let i = 0; i < 2; i++) [...h.timers.values()].forEach(callback => callback());
+  assert.equal(h.get('sendOtpBtn').disabled, false);
+  assert.equal(h.timers.size, 0);
+});
+
+test('auth never claims delivery for an empty transaction or server error', async () => {
+  for (const reply of [{ ok: true, transactionHash: '' }, { ok: false, error: 'PHONE_NUMBER_NOT_IN_TELEGRAM' }]) {
+    const h = authHarness(reply);
+    await h.send();
+    assert.equal(h.get('authStatus').className, 'entry err');
+    assert.equal(h.get('otpRow').style.display, 'none');
+    assert.equal(h.get('sendOtpBtn').disabled, false);
+  }
+});
+
+test('starting a replacement OTP request clears the previous code and signup state', async () => {
+  const h = authHarness({ ok: true, transactionHash: 'new-tx', isRegistered: false, sentCodeType: 2, nextSendCodeWaitTime: 0 });
+  h.get('otpInput').value = 'old-code';
+  h.get('signupRow').style.display = '';
+  h.get('verifyBtn').disabled = true;
+  await h.send();
+  assert.equal(h.get('otpInput').value, '');
+  assert.equal(h.get('signupRow').style.display, 'none');
+  assert.equal(h.get('verifyBtn').disabled, false);
+  assert.match(h.get('authStatus').textContent, /Check Bale/);
+  assert.equal(h.timers.size, 0);
+});

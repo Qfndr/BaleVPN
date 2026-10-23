@@ -495,6 +495,8 @@ struct AuthStartReply {
     ok:                bool,
     transaction_hash:  String,
     is_registered:     bool,
+    sent_code_type:    i32,
+    next_send_code_wait_time: Option<u64>,
 }
 
 async fn auth_start(
@@ -507,6 +509,8 @@ async fn auth_start(
         ok:                true,
         transaction_hash:  r.transaction_hash,
         is_registered:     r.is_registered,
+        sent_code_type:    r.sent_code_type,
+        next_send_code_wait_time: r.next_send_code_wait_time,
     }))
 }
 

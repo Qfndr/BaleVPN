@@ -784,11 +784,10 @@ pub extern "system" fn Java_ai_bale_proxy_bale_BaleAuthNative_nativeStartPhoneAu
     jni_shared::spawn_with_continuation(
         cont,
         async move {
-            Ok::<_, String>(
-                auth().start_phone_auth(&phone).await.ok()
-                    .map(|r| format!("{}:{}", r.transaction_hash,
-                                     if r.is_registered { "1" } else { "0" })),
-            )
+            auth().start_phone_auth(&phone).await
+                .map(|r| Some(format!("{}:{}", r.transaction_hash,
+                                     if r.is_registered { "1" } else { "0" })))
+                .map_err(|e| e.to_string())
         },
         jni_shared::marshal_string_opt,
     );

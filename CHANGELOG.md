@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.4 — 2026-10-23
+
+- Match the current Bale login request: default delivery, Telegram Gateway capability and six-digit OTP support instead of forcing SMS.
+- Use one UTF-8 UUID device identity per auth client, including retries.
+- Normalize Iranian local mobile numbers and Persian/Arabic digits; reject invalid input before network access.
+- Reject missing login transactions and surface header-only gRPC errors instead of falsely reporting code delivery.
+- Show the server-selected delivery channel and restore desktop retry after the server cooldown.
+- Report Android start-auth errors through the coroutine error path.
+- Add real HTTP login fixtures, browser auth regression tests and an opt-in live endpoint check using invalid phone 0.
+
+
 ## 2.1.3 — 2026-10-23
 
 - Fix the contacts refresh button calling a nonexistent API endpoint.

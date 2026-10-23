@@ -200,7 +200,7 @@
         <button id="sendOtpBtn" class="conn-btn" style="white-space:nowrap">Send OTP</button>
       </div>
       <div id="otpRow" style="display:none; margin-top:.6rem">
-        <label>SMS code</label>
+        <label>Verification code</label>
         <div class="row">
           <input id="otpInput" type="text" inputmode="numeric" placeholder="Code" maxlength="8">
           <button id="verifyBtn" class="conn-btn" style="white-space:nowrap">Verify</button>
@@ -317,6 +317,27 @@ function populatePeerSelect(sel, peers, prevVal) {
 
 let _txHash = '';
 let _isRegistered = false;
+let _otpRetryTimer = null;
+
+function codeDeliveryMessage(type) {
+  const channels = { 2: 'Bale', 3: 'SMS', 4: 'a phone call', 5: 'email',
+    6: 'a missed call', 8: 'WhatsApp', 9: 'Telegram', 12: 'Telegram', 13: 'a flash call' };
+  return channels[type] ? 'Bale accepted the request. Check ' + channels[type] + ' for your code.'
+    : 'Bale accepted the request. Check Bale, Telegram or SMS for your code.';
+}
+
+function scheduleOtpRetry(button, seconds) {
+  if (_otpRetryTimer) clearInterval(_otpRetryTimer);
+  let remaining = Number.isFinite(seconds) ? Math.max(0, Math.min(86400, Math.ceil(seconds))) : 120;
+  const update = () => {
+    button.disabled = remaining > 0;
+    button.textContent = remaining > 0 ? 'Retry in ' + remaining + 's' : 'Send OTP';
+    if (remaining <= 0) { clearInterval(_otpRetryTimer); _otpRetryTimer = null; }
+    remaining--;
+  };
+  _otpRetryTimer = setInterval(update, 1000);
+  update();
+}
 
 function showAuthStatus(msg, cls) {
   const el = document.getElementById('authStatus');
@@ -328,6 +349,11 @@ function showAuthStatus(msg, cls) {
 document.getElementById('sendOtpBtn').addEventListener('click', async (e) => {
   const phone = document.getElementById('phoneInput').value.trim();
   if (!phone) return;
+  _txHash = '';
+  document.getElementById('otpRow').style.display = 'none';
+  document.getElementById('signupRow').style.display = 'none';
+  document.getElementById('otpInput').value = '';
+  document.getElementById('verifyBtn').disabled = false;
   e.target.disabled = true;
   showAuthStatus('Sending…', 'info');
   try {
@@ -337,14 +363,15 @@ document.getElementById('sendOtpBtn').addEventListener('click', async (e) => {
       body: JSON.stringify({ phone }),
     });
     const d = await r.json();
-    if (d.ok) {
+    if (d.ok && typeof d.transactionHash === 'string' && d.transactionHash.trim()) {
       _txHash = d.transactionHash;
       _isRegistered = !!d.isRegistered;
       document.getElementById('otpRow').style.display = '';
       document.getElementById('otpInput').focus();
-      showAuthStatus(d.isRegistered ? 'Code sent.' : 'Code sent — new account will be created.', 'ok');
+      showAuthStatus(codeDeliveryMessage(d.sentCodeType), 'info');
+      scheduleOtpRetry(e.target, d.nextSendCodeWaitTime ?? 120);
     } else {
-      showAuthStatus(d.error || 'Failed', 'err');
+      showAuthStatus(d.error || 'Bale did not confirm a code request. Please retry.', 'err');
       e.target.disabled = false;
     }
   } catch (ex) { showAuthStatus(ex.message, 'err'); e.target.disabled = false; }
