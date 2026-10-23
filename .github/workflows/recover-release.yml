@@ -1,0 +1,78 @@
+name: Recover release from verified builds
+
+# Reuse completed desktop builds if duplicate tagged jobs are delayed or fail
+# during runner acquisition/cache handling. Never publish another commit's files.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        type: string
+      build_run:
+        description: Desktop build run with the exact same source commit
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: recover-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      BUILD_RUN: ${{ inputs.build_run }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+
+      - name: Verify source commit and successful build steps
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+          test "$(tr -d '\r\n' < VERSION)" = "${RELEASE_TAG#v}"
+          source_sha=$(git rev-parse HEAD)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > build-run.json
+          jq -e --arg sha "$source_sha" '.head_sha == $sha and .path == ".github/workflows/bale-vpn-rust.yml"' build-run.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN/jobs?per_page=100" > build-jobs.json
+          # All four platforms must have built both variants and uploaded them.
+          # A later cache-upload failure cannot invalidate these completed builds.
+          python3 - <<'PY'
+          import json
+          jobs = {job['name']: job for job in json.load(open('build-jobs.json'))['jobs']}
+          for os in ['ubuntu-latest', 'windows-latest', 'macos-latest', 'macos-26-intel']:
+              steps = jobs[f'build ({os})']['steps']
+              builds = [s for s in steps if s['name'].startswith('cargo build --release')]
+              assert len(builds) == 2 and all(s['conclusion'] == 'success' for s in builds), os
+              assert any(s['name'] == 'Upload artifacts' and s['conclusion'] == 'success' for s in steps), os
+          PY
+
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run }}
+          pattern: bale-vpn-*
+          merge-multiple: true
+          path: release-staging
+
+      - name: Verify all variants and attach to the existing release
+        shell: bash
+        run: |
+          for variant in gui headless; do
+            for platform in linux-x86_64 macos-aarch64 macos-x86_64 windows-x86_64.exe; do
+              test -s "release-staging/bale-vpn-$variant-$platform"
+            done
+          done
+          sha256sum release-staging/*
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" release-staging/* --clobber --repo "$GITHUB_REPOSITORY"
