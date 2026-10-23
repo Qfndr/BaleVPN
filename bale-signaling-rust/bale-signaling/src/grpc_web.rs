@@ -92,7 +92,10 @@ pub fn decode_response(body: &[u8]) -> Result<Vec<u8>, GrpcError> {
         let frame = &body[pos..end];
         pos = end;
 
-        if flag & 0x80 == 0 {
+        if flag != 0 && flag != 0x80 {
+            return Err(GrpcError::Malformed(format!("unsupported frame flag {flag}")));
+        }
+        if flag == 0 {
             // Data frame. Multiple data frames would mean a streaming RPC;
             // Bale's calls are unary, so the last one wins is the practical
             // outcome — matching the Kotlin / Node behaviour.
@@ -105,7 +108,7 @@ pub fn decode_response(body: &[u8]) -> Result<Vec<u8>, GrpcError> {
             let mut message: Option<String> = None;
             for line in trailer.lines() {
                 if let Some(rest) = line.strip_prefix("grpc-status:") {
-                    status = rest.trim().parse().unwrap_or(0);
+                    status = rest.trim().parse().map_err(|_| GrpcError::Malformed("invalid grpc-status".into()))?;
                 } else if let Some(rest) = line.strip_prefix("grpc-message:") {
                     message = Some(rest.trim().to_string());
                 }
@@ -116,6 +119,9 @@ pub fn decode_response(body: &[u8]) -> Result<Vec<u8>, GrpcError> {
         }
     }
 
+    if pos != body.len() {
+        return Err(GrpcError::Malformed("truncated frame header".into()));
+    }
     Ok(data.unwrap_or_default())
 }
 
@@ -233,5 +239,34 @@ mod tests {
     fn decode_response_empty_body_returns_empty() {
         let data = decode_response(&[]).unwrap();
         assert!(data.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod malformed_response_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_partial_frame_headers() {
+        for n in 1..5 {
+            assert!(decode_response(&vec![0; n]).is_err());
+            let mut valid = encode_frame(b"payload");
+            valid.extend_from_slice(&vec![0; n]);
+            assert!(decode_response(&valid).is_err());
+        }
+    }
+
+    #[test]
+    fn rejects_compression_and_unknown_flags() {
+        for flag in [1, 2, 0x81, 0xff] {
+            assert!(decode_response(&[flag, 0, 0, 0, 0]).is_err());
+        }
+    }
+
+    #[test]
+    fn invalid_grpc_status_is_not_success() {
+        let mut frame = encode_frame(b"grpc-status: invalid\r\n");
+        frame[0] = 0x80;
+        assert!(decode_response(&frame).is_err());
     }
 }

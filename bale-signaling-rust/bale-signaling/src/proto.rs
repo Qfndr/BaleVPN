@@ -66,6 +66,7 @@ pub struct ProtoReader<'a> {
 #[derive(Debug)]
 pub enum ProtoError {
     Eof,
+    VarintOverflow,
     UnsupportedWireType(u32),
     InvalidUtf8,
     TruncatedLength { need: usize, have: usize },
@@ -74,6 +75,7 @@ pub enum ProtoError {
 impl std::fmt::Display for ProtoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::VarintOverflow => f.write_str("proto: varint exceeds u64"),
             Self::Eof                            => f.write_str("proto: unexpected EOF"),
             Self::UnsupportedWireType(w)         => write!(f, "proto: unsupported wire type {w}"),
             Self::InvalidUtf8                    => f.write_str("proto: invalid utf-8 in string field"),
@@ -101,6 +103,7 @@ impl<'a> ProtoReader<'a> {
         while self.pos < self.buf.len() {
             let b = self.buf[self.pos];
             self.pos += 1;
+            if shift == 63 && b > 1 { return Err(ProtoError::VarintOverflow); }
             result |= ((b & 0x7F) as u64) << shift;
             if b & 0x80 == 0 {
                 return Ok(result);
@@ -118,7 +121,7 @@ impl<'a> ProtoReader<'a> {
     }
 
     pub fn bytes(&mut self) -> Result<&'a [u8], ProtoError> {
-        let len = self.varint()? as usize;
+        let len = usize::try_from(self.varint()?).map_err(|_| ProtoError::VarintOverflow)?;
         let end = self.pos.checked_add(len).ok_or(ProtoError::Eof)?;
         if end > self.buf.len() {
             return Err(ProtoError::TruncatedLength { need: len, have: self.buf.len() - self.pos });
@@ -141,7 +144,7 @@ impl<'a> ProtoReader<'a> {
         match wire {
             0 => { self.varint()?; Ok(()) }
             1 => { self.advance(8) }
-            2 => { let n = self.varint()? as usize; self.advance(n) }
+            2 => { let n = usize::try_from(self.varint()?).map_err(|_| ProtoError::VarintOverflow)?; self.advance(n) }
             5 => { self.advance(4) }
             _ => Err(ProtoError::UnsupportedWireType(wire)),
         }
@@ -160,6 +163,21 @@ impl<'a> ProtoReader<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_overflowing_varints() {
+        let overflow = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02];
+        assert!(matches!(ProtoReader::new(&overflow).varint(), Err(ProtoError::VarintOverflow)));
+        let max = ProtoWriter::new().varint(u64::MAX).build();
+        assert_eq!(ProtoReader::new(&max).varint().unwrap(), u64::MAX);
+    }
+
+    #[test]
+    fn rejects_oversized_length_prefixes() {
+        let buf = ProtoWriter::new().varint(u64::MAX).build();
+        assert!(ProtoReader::new(&buf).bytes().is_err());
+        assert!(ProtoReader::new(&buf).skip(2).is_err());
+    }
 
     #[test]
     fn round_trip_int32() {

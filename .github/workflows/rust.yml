@@ -117,6 +117,9 @@ jobs:
       # covered by bale-vpn-rust.yml, which does install them. Building
       # the headless binary here keeps the compile-time coverage (axum /
       # signaling / NAT wiring) without dragging webkit into the test job.
+      - name: UI injection regression tests
+        run: node --test scripts/test-ui-security.cjs
+
       - name: cargo test (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust
         run: cargo test -p bale-vpn --locked --no-default-features

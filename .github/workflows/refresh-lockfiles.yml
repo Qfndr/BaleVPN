@@ -1,0 +1,40 @@
+name: Refresh security lockfiles
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/security-maintenance]
+    paths: ['.github/workflows/refresh-lockfiles.yml']
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve patched dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust; do
+            args=(-p tokio)
+            if [[ "$workspace" != lk-signaling-rust ]]; then
+              args+=(-p rustls -p rustls-webpki -p quinn-proto -p webpki-roots@1.0.7)
+            fi
+            if [[ "$workspace" != lk-signaling-rust && "$workspace" != lktunnel-rust ]]; then
+              args+=(-p h2)
+            fi
+            if [[ "$workspace" != lk-signaling-rust && "$workspace" != bale-signaling-rust ]]; then
+              args+=(-p anyhow)
+            fi
+            cargo update --manifest-path "$workspace/Cargo.toml" "${args[@]}"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patched-lockfiles
+          path: |
+            lk-signaling-rust/Cargo.lock
+            bale-signaling-rust/Cargo.lock
+            lktunnel-rust/Cargo.lock
+            bale-vpn-rust/Cargo.lock
+            bale-vpn-android/rust/Cargo.lock
