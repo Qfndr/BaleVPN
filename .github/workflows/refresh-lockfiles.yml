@@ -17,16 +17,14 @@ jobs:
         run: |
           set -euo pipefail
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust; do
-            args=(-p tokio)
-            if [[ "$workspace" != lk-signaling-rust ]]; then
-              args+=(-p rustls -p rustls-webpki -p quinn-proto -p webpki-roots@1)
-            fi
-            if [[ "$workspace" != lk-signaling-rust ]]; then
-              args+=(-p h2)
-            fi
-            if [[ "$workspace" != lk-signaling-rust && "$workspace" != bale-signaling-rust ]]; then
-              args+=(-p anyhow)
-            fi
+            args=()
+            for package in tokio rustls rustls-webpki quinn-proto webpki-roots h2 anyhow; do
+              if grep -q "^name = \"$package\"$" "$workspace/Cargo.lock"; then
+                spec="$package"
+                if [[ "$package" == webpki-roots ]]; then spec="webpki-roots@1"; fi
+                args+=(-p "$spec")
+              fi
+            done
             cargo update --manifest-path "$workspace/Cargo.toml" "${args[@]}"
           done
       - uses: actions/upload-artifact@v4
