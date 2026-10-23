@@ -8,6 +8,7 @@ pub struct TunnelOptions {
     pub client: Option<quinn::ClientConfig>,
     pub server: Option<quinn::ServerConfig>,
     pub(crate) authenticated: bool,
+    pub(crate) throughput: bool,
 }
 
 pub struct Identity {
@@ -68,6 +69,7 @@ impl Identity {
             Ok(TunnelOptions {
                 server: Some(config),
                 authenticated: true,
+                throughput,
                 ..Default::default()
             })
         } else {
@@ -84,6 +86,7 @@ impl Identity {
             Ok(TunnelOptions {
                 client: Some(config),
                 authenticated: true,
+                throughput,
                 ..Default::default()
             })
         }

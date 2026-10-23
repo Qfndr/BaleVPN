@@ -335,7 +335,7 @@ pub(crate) fn transport_config_for(throughput: bool) -> Arc<quinn::TransportConf
     // No magic constants here — these derive from the existing
     // shared upper bounds. Tune the *carrier* (SEND_QUEUE_CAP) and
     // these follow automatically.
-    let carrier_buffer = (crate::SEND_QUEUE_CAP * crate::rtp::MAX_FRAME_BYTES * if throughput { 4 } else { 1 }) as u32;
+    let carrier_buffer = flow_window_bytes(throughput);
     tc.stream_receive_window(quinn::VarInt::from_u32(carrier_buffer).into());
     // Per-connection receive sums across all streams; allow a few
     // concurrent flows to share the same connection without one
@@ -346,6 +346,10 @@ pub(crate) fn transport_config_for(throughput: bool) -> Arc<quinn::TransportConf
     // locally than the carrier can ship.
     tc.send_window          (carrier_buffer as u64);
     Arc::new(tc)
+}
+
+pub(crate) fn flow_window_bytes(throughput: bool) -> u32 {
+    (crate::SEND_QUEUE_CAP * crate::rtp::MAX_FRAME_BYTES * if throughput { 4 } else { 1 }) as u32
 }
 
 /// Legacy compatibility server. New desktop applications use persisted

@@ -347,6 +347,7 @@ struct StateBody {
     peer_authenticated: bool,
     retry_after_seconds: u64,
     metrics: Option<serde_json::Value>,
+    traffic: crate::client::TrafficSnapshot,
     server_call_privacy: Option<crate::server::CallPrivacySnapshot>,
     /// Token persisted? Drives login-vs-VPN view in the UI.
     token_set:          bool,
@@ -440,7 +441,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
     };
 
     let (socks5_port, client_room_ready, cli_tx, cli_rx) = match s.client.snapshot().await {
-        Some(snap) => (snap.socks5_port, snap.connected, snap.rx_bytes, snap.tx_bytes),
+        Some(snap) => (snap.socks5_port, snap.connected, snap.tx_bytes, snap.rx_bytes),
         None       => (0, false, 0, 0),
     };
     let lk_rooms = s.server.client_count().await;
@@ -473,6 +474,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
         peer_authenticated: s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,
         retry_after_seconds: s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()),
         metrics: s.client.tunnel().and_then(|t|t.connection_metrics()),
+        traffic: s.client.traffic_snapshot(),
         server_call_privacy: if cfg.mode.as_deref() == Some("server") { Some(s.server.call_privacy()) } else { None },
         token_set,
         mode:              cfg.mode.clone(),

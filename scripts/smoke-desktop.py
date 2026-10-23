@@ -140,7 +140,10 @@ def main():
                     # call privacy while the application is in Client mode.
                     reply = request(base, "/server/call-privacy", {})
                     assert reply["ok"] is False and "Server mode" in reply["error"], reply
-                request(base, "/state")
+                state = request(base, "/state")
+                assert state["traffic"]["processReceivedBytes"] == 0
+                assert state["traffic"]["processSentBytes"] == 0
+                assert state["traffic"]["sessionId"] is None
                 invalid = request(base, "/auth/start", {"phone": "0"})
                 assert invalid["ok"] is False
                 assert "valid international phone" in invalid["error"]

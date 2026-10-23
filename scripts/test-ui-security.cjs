@@ -49,9 +49,9 @@ function stateHarness() {
   get('serverFields').style.display = 'none';
   const noop = () => {};
   const context = vm.createContext({ document: { getElementById: get }, window: {}, dot: get('dot'),
-    _busy: null, renderSelf: noop, loadPeers: noop, pollClients: noop, pollPending: noop,
+    _busy: null, renderTrafficDashboard: noop, renderSelf: noop, loadPeers: noop, pollClients: noop, pollPending: noop,
     pollAdmission: noop, pollBlacklist: noop, pollMaxClients: noop, fmtRate: String, fmtKB: String });
-  vm.runInContext(modeScript + '\n' + stateScript, context);
+  vm.runInContext(script.slice(script.indexOf('// ── Bounded traffic model'),script.indexOf('// ── Traffic rendering')) + modeScript + '\n' + stateScript, context);
   return { get, render: state => {
     context.nextState = { mode: null, tokenSet: false, wsReady: false, ...state };
     vm.runInContext('_state = nextState; applyState();', context);

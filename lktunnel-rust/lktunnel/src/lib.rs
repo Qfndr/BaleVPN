@@ -792,7 +792,9 @@ impl LkTunnel {
     pub fn connection_metrics(&self) -> Option<serde_json::Value> {
         let client=self.quic_client.lock(); let c=client.as_ref()?; let stats=c.connection.stats();
         Some(serde_json::json!({"rttMs":stats.path.rtt.as_secs_f64()*1000.0,"lostPackets":stats.path.lost_packets,
-            "sentPackets":stats.path.sent_packets,"congestionWindow":stats.path.cwnd}))
+            "sentPackets":stats.path.sent_packets,"congestionWindow":stats.path.cwnd,
+            "sendWindowBytes":quic_tunnel::flow_window_bytes(self.options.throughput),
+            "profile":if self.options.throughput {"throughput"} else {"balanced"}}))
     }
 
     /// Promote this tunnel to **server mode** — install a userspace

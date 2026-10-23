@@ -220,6 +220,37 @@
   [dir="rtl"] input:not([type="checkbox"]):not([type="color"]),.technical,#publicCode,#serverCode,#clientCodes,#diagnosticReport {direction:ltr;text-align:left;}
   @media(prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important;transition:none!important;}}
 
+
+  .traffic-panel {border:1px solid var(--line);border-radius:12px;padding:16px;margin:0 0 18px;min-width:0;}
+  .traffic-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+  .traffic-heading h2 {font-size:1rem;margin:0;}.traffic-heading span {font-size:.75rem;color:var(--muted);}
+  .live-pill {padding:4px 10px;border:1px solid var(--line);border-radius:30px;white-space:nowrap;}
+  .live-pill[data-active="true"] {color:var(--accent);}
+  .traffic-summary {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+  .traffic-tile {padding:12px;border:1px solid var(--line);border-radius:10px;min-width:0;}
+  .traffic-tile>span,.traffic-tile small {display:block;color:var(--muted);font-size:.7rem;overflow-wrap:anywhere;}
+  .traffic-tile strong {display:block;font-size:1.45rem;font-variant-numeric:tabular-nums;direction:ltr;margin:6px 0;overflow-wrap:anywhere;}
+  .chart-toolbar {display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:18px 0 12px;}
+  .chart-toolbar label {margin:0;flex:1;min-width:110px;}.chart-toolbar select {font-size:.75rem;padding:6px;}
+  .chart-legend {display:flex;align-items:center;gap:7px;font-size:.72rem;flex:2;min-width:170px;}
+  .chart-legend i {display:inline-block;width:12px;height:3px;}.legend-download {background:#168c83;}.legend-upload {background:#9561d4;}
+  #speedChart {display:block;width:100%;height:clamp(150px,24vw,220px);direction:ltr;overflow:hidden;}
+  #speedChart path {vector-effect:non-scaling-stroke;}
+  .chart-grid path {stroke:var(--line);stroke-width:1;fill:none;}
+  .chart-download {stroke:#168c83;stroke-width:2.5;fill:none;}.chart-upload {stroke:#9561d4;stroke-width:2;stroke-dasharray:6 3;fill:none;}
+  html[data-theme="dark"] .chart-download {stroke:#4ddbcf;}html[data-theme="dark"] .chart-upload {stroke:#c6a2ff;}
+  .chart-axis {display:flex;justify-content:space-between;font-size:.68rem;color:var(--muted);gap:8px;direction:ltr;}
+  .traffic-caption {font-size:.72rem;color:var(--muted);line-height:1.8;margin:10px 0 0;}
+  .traffic-details {display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;font-size:.7rem;color:var(--muted);}
+  #trafficExport {font:11px ui-monospace,monospace;direction:ltr;text-align:left;}
+  .traffic-panel .settings-actions button {font-size:.72rem;flex:1;min-width:100px;}
+  .metric strong {font-variant-numeric:tabular-nums;}
+  .traffic-help {font-size:.75rem;margin-top:12px;color:var(--muted);}.traffic-help summary {cursor:pointer;color:var(--accent);}
+  .rate-rising {animation:rateGlow .45s ease-out;}@keyframes rateGlow {from {text-shadow:0 0 14px var(--accent);opacity:.65;}to {text-shadow:none;opacity:1;}}
+  @keyframes rateGlowAlternate {from {text-shadow:0 0 14px var(--accent);opacity:.65;}to {text-shadow:none;opacity:1;}}
+  html[data-metrics="hidden"] .traffic-panel {display:none;}
+  @media(max-width:520px) {.traffic-panel {padding:12px;}.traffic-summary {grid-template-columns:1fr;}.traffic-tile strong {font-size:1.25rem;}.chart-toolbar {gap:8px;}}
+
 </style>
 </head>
 <body>
@@ -328,6 +359,31 @@
     </div>
     <button id="tunnelApply">Connect</button>
     <div id="tunnelStatus" class="entry info" style="display:none"></div>
+    <section class="traffic-panel" id="trafficAnalytics" aria-label="Traffic analytics">
+      <div class="traffic-heading"><div><h2 data-label="Traffic overview">Traffic overview</h2><span id="trafficSessionLabel">—</span></div><span class="live-pill" id="trafficLive">—</span></div>
+      <div class="traffic-summary">
+        <div class="traffic-tile"><span data-label="Downloaded this session">Downloaded this session</span><strong id="downloadTotal">0 B</strong><small id="downloadAverage">—</small><small id="downloadPeak">—</small></div>
+        <div class="traffic-tile"><span data-label="Uploaded this session">Uploaded this session</span><strong id="uploadTotal">0 B</strong><small id="uploadAverage">—</small><small id="uploadPeak">—</small></div>
+        <div class="traffic-tile"><span data-label="Connected duration">Connected duration</span><strong id="trafficDuration">00:00</strong><small id="trafficProcess">—</small><small id="trafficJitter">—</small></div>
+      </div>
+      <div class="chart-toolbar">
+        <span class="chart-legend"><i class="legend-download"></i><span data-label="Download">Download</span><i class="legend-upload"></i><span data-label="Upload">Upload</span></span>
+        <label><span data-label="Speed units">Speed units</span><select id="speedUnits"><option value="bytes">KB/s · MB/s</option><option value="bits">Mbps · kbps</option></select></label>
+        <label><span data-label="Chart range">Chart range</span><select id="chartRange"><option value="60" data-label="1 minute">1 minute</option><option value="300" data-label="5 minutes">5 minutes</option><option value="900" data-label="15 minutes">15 minutes</option></select></label>
+      </div>
+      <svg id="speedChart" viewBox="0 0 640 190" role="img" aria-label="Download and upload speed history" preserveAspectRatio="none">
+       <defs><linearGradient id="downloadFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#25b7ac" stop-opacity=".25"/><stop offset="100%" stop-color="#25b7ac" stop-opacity="0"/></linearGradient></defs>
+       <g class="chart-grid"><path d="M0 20H640 M0 60H640 M0 100H640 M0 140H640 M0 180H640"/></g>
+       <path id="downloadArea" fill="url(#downloadFill)"/><path id="downloadLine" class="chart-download"/><path id="uploadLine" class="chart-upload"/>
+      </svg>
+      <div class="chart-axis"><span id="chartStart">—</span><span id="chartScale">—</span><span data-label="Now">Now</span></div>
+      <p id="chartDescription" class="traffic-caption">—</p>
+      <div class="traffic-details"><span id="trafficWindows">—</span><span id="trafficWindowEstimate">—</span></div>
+      <div class="settings-actions"><button class="refresh-btn" id="pauseChart" data-label="Pause chart">Pause chart</button><button class="refresh-btn" id="clearChart" data-label="Clear chart">Clear chart</button><button class="refresh-btn" id="exportTraffic" data-label="Copy chart CSV">Copy chart CSV</button></div>
+      <p class="traffic-caption" data-label="Averages include idle time. Peaks and charts cover observed samples. Volumes include tunnel overhead and retransmissions; they are not file sizes or ISP billing.">Averages include idle time. Peaks and charts cover observed samples. Volumes include tunnel overhead and retransmissions; they are not file sizes or ISP billing.</p>
+      <details class="traffic-help"><summary data-label="Why can speed be limited?">Why can speed be limited?</summary><p data-label="400 KB/s is about 3.2 Mbps. RTT, packet loss, peer windows and the carrier can limit speed. Try Throughput on both peers after disconnecting. The window/RTT number is a local estimate, not a guaranteed ceiling. KB means 1,000 bytes. Charts pause while this window is hidden.">400 KB/s is about 3.2 Mbps. RTT, packet loss, peer windows and the carrier can limit speed. Try Throughput on both peers after disconnecting. The window/RTT number is a local estimate, not a guaranteed ceiling. KB means 1,000 bytes. Charts pause while this window is hidden.</p></details>
+      <p id="trafficFeedback" class="traffic-caption" role="status"></p><textarea id="trafficExport" readonly hidden aria-label="Traffic CSV without account details"></textarea>
+    </section>
   </div>
   </div>
 
@@ -615,11 +671,15 @@ const isAlive   = () => _tunnelMode === 'client' ? !!_state?.clientActivated : !
 const roomReady = () => !!_state?.clientRoomReady;
 
 async function pollState() {
+  if (_pollInFlight || document.hidden) return;
+  _pollInFlight=true;
+  const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),5000);
   try {
-    const r = await fetch('/state');
-    _state = await r.json();
-  } catch { return; }
-  applyState();
+    const r=await fetch('/state',{signal:controller.signal});if(!r.ok)throw new Error('Status unavailable');
+    _state=await r.json();_trafficStatusStale=false;
+    sampleTraffic(_telemetry,_state.traffic,performance.now(),_state.metrics);
+    applyState();
+  } catch {_trafficStatusStale=true;if(_state)renderTrafficDashboard(_state);} finally {clearTimeout(timeout);_pollInFlight=false;}
 }
 
 function applyState() {
@@ -712,13 +772,7 @@ function renderDashboard(s) {
   badge.textContent=s.secureMode ? (s.peerAuthenticated ? translated('TLS 1.3 · peer identity verified','TLS 1.3 · هویت طرف مقابل تأیید شده') : translated('Verified encryption required · waiting for authentication','رمزگذاری تأییدشده الزامی است · در انتظار احراز هویت')) : translated('Legacy mode · peer identity is NOT verified','حالت سازگاری قدیمی · هویت طرف مقابل تأیید نشده');
   document.getElementById('serverTrust').style.display=s.mode==='client'?'':'none';
   document.getElementById('clientTrust').style.display=s.mode==='server'?'':'none';
-  const now=Date.now(),rx=s.cliRxBytes||0,tx=s.cliTxBytes||0;
-  if (_trafficSample && now>_trafficSample.at) {
-    const seconds=(now-_trafficSample.at)/1000;
-    document.getElementById('downloadRate').textContent=fmtRate(Math.max(0,rx-_trafficSample.rx)/seconds);
-    document.getElementById('uploadRate').textContent=fmtRate(Math.max(0,tx-_trafficSample.tx)/seconds);
-  }
-  _trafficSample={at:now,rx,tx};
+  renderTrafficDashboard(s);
   const m=s.metrics;
   document.getElementById('networkQuality').textContent=m?`${Math.round(m.rttMs)} ms · ${m.sentPackets?((m.lostPackets/m.sentPackets)*100).toFixed(1):'0.0'}%`: '—';
 }
@@ -949,7 +1003,13 @@ document.getElementById('peerSearch').addEventListener('keydown', e => {
 // to decide between the client (peer-based) and server (sticky-flag) flow.
 let _tunnelMode = null;
 let _activationError = null;
-let _trafficSample = null;
+// Telemetry is sampled only after a successful state poll, never on repaint.
+let _telemetry = newTrafficModel();
+let _chartPaused = false;
+let _pollInFlight = false;
+let _trafficStatusStale = false;
+let _trafficUnits = 'bytes', _chartSeconds = 300;
+
 
 function setTunnelMode(mode) {
   // Keep "no role selected" distinct from Client. Otherwise the first
@@ -1337,7 +1397,86 @@ document.getElementById('socks5Port').addEventListener('input', saveConfig);
 document.getElementById('tunnelPeer').addEventListener('change', saveConfig);
 
 
+
+// ── Bounded traffic model (pure; independent of DOM and account data) ──
+function newTrafficModel() {return {sessionId:null,last:null,snapshot:null,rxRate:0,txRate:0,rxPeak:0,txPeak:0,jitter:0,lastRtt:null,points:[],at:0};}
+function trafficNumber(value) {return typeof value==='number'&&Number.isFinite(value)&&value>=0?Math.min(value,Number.MAX_SAFE_INTEGER):0;}
+function sampleTraffic(m,t,now,metrics) {
+ if(!t || !Number.isFinite(now))return;
+ if(t.sessionId!==m.sessionId){Object.assign(m,newTrafficModel());m.sessionId=t.sessionId;}
+ const rx=trafficNumber(t.receivedBytes),tx=trafficNumber(t.sentBytes);
+ m.snapshot={...t,receivedBytes:rx,sentBytes:tx,sessionElapsedMs:trafficNumber(t.sessionElapsedMs),processReceivedBytes:trafficNumber(t.processReceivedBytes),processSentBytes:trafficNumber(t.processSentBytes)};
+ m.at=now;
+ const previous=m.last,dt=previous?(now-previous.at)/1000:0;
+ if(previous&&dt>=0&&dt<.5)return; // Manual refresh / theme changes cannot invent speed spikes.
+ let gap=!previous || dt>10 || rx<(previous?.rx||0) || tx<(previous?.tx||0);
+ m.rxRate=t.active&&!gap?(rx-previous.rx)/dt:0;
+ m.txRate=t.active&&!gap?(tx-previous.tx)/dt:0;
+ m.rxPeak=Math.max(m.rxPeak,m.rxRate);m.txPeak=Math.max(m.txPeak,m.txRate);
+ const rtt=metrics&&typeof metrics.rttMs==='number'&&Number.isFinite(metrics.rttMs)?Math.max(0,metrics.rttMs):null;
+ if(rtt!==null&&m.lastRtt!==null&&!gap)m.jitter=m.jitter*.75+Math.abs(rtt-m.lastRtt)*.25;
+ m.lastRtt=rtt;
+ if(t.active || previous?.active)m.points.push({at:now,rx:m.rxRate,tx:m.txRate,rtt,gap});
+ if(m.points.length>451)m.points.splice(0,m.points.length-451);
+ m.last={at:now,rx,tx,active:!!t.active};
+}
+function trafficVolume(value) {
+ let n=trafficNumber(value);const units=['B','KB','MB','GB','TB'];let i=0;
+ while(n>=1000&&i<units.length-1){n/=1000;i++;}
+ return (i?n.toFixed(n>=100?0:n>=10?1:2):Math.round(n))+' '+units[i];
+}
+function trafficRate(value) {return _trafficUnits==='bits'?fmtRate(trafficNumber(value)):trafficVolume(value)+'/s';}
+function trafficDuration(value) {const seconds=Math.floor(trafficNumber(value)/1000);return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(v=>String(v).padStart(2,'0')).join(':');}
+function trafficCSV(m) {return 'elapsed_seconds,download_bytes_per_second,upload_bytes_per_second,rtt_ms,gap\n'+m.points.map(p=>[(p.at-(m.points[0]?.at||0))/1000,p.rx.toFixed(2),p.tx.toFixed(2),p.rtt===null?'':p.rtt.toFixed(2),p.gap?1:0].join(',')).join('\n');}
+// ── Traffic rendering (one small SVG redraw per existing 2-second poll) ──
+function renderTrafficDashboard(s) {
+ const panel=document.getElementById('trafficAnalytics');panel.hidden=s.mode!=='client';
+ if(panel.hidden){document.getElementById('downloadRate').textContent='—';document.getElementById('uploadRate').textContent='—';return;}
+ const m=_telemetry,t=m.snapshot||{},active=!!t.active;
+ for(const [id,value] of [['downloadRate',m.rxRate],['uploadRate',m.txRate]]) {
+  const element=document.getElementById(id),text=_trafficStatusStale?'—':trafficRate(value);
+  if(element.textContent!==text){element.textContent=text;element.classList.remove('rate-rising');if(active&&value>0){element.style.animationName=element.style.animationName==='rateGlow'?'rateGlowAlternate':'rateGlow';element.classList.add('rate-rising');}}
+ }
+ document.getElementById('downloadTotal').textContent=trafficVolume(t.receivedBytes);
+ document.getElementById('uploadTotal').textContent=trafficVolume(t.sentBytes);
+ const duration=trafficNumber(t.sessionElapsedMs)/1000;
+ document.getElementById('downloadAverage').textContent=translated('Average: ','میانگین: ')+(duration>=1?trafficRate(trafficNumber(t.receivedBytes)/duration):'—');
+ document.getElementById('uploadAverage').textContent=translated('Average: ','میانگین: ')+(duration>=1?trafficRate(trafficNumber(t.sentBytes)/duration):'—');
+ document.getElementById('downloadPeak').textContent=translated('Observed peak: ','اوج مشاهده‌شده: ')+trafficRate(m.rxPeak);
+ document.getElementById('uploadPeak').textContent=translated('Observed peak: ','اوج مشاهده‌شده: ')+trafficRate(m.txPeak);
+ document.getElementById('trafficDuration').textContent=trafficDuration(t.sessionElapsedMs);
+ document.getElementById('trafficProcess').textContent=translated('Since app start: ','از شروع برنامه: ')+'↓ '+trafficVolume(t.processReceivedBytes)+' · ↑ '+trafficVolume(t.processSentBytes);
+ document.getElementById('trafficJitter').textContent=translated('RTT variation: ','تغییرات RTT: ')+(m.lastRtt===null?'—':Math.round(m.jitter)+' ms');
+ document.getElementById('trafficSessionLabel').textContent=active?translated('Current connection','اتصال جاری'):translated('Last connection · no traffic now','آخرین اتصال · اکنون انتقالی نیست');
+ const live=document.getElementById('trafficLive');live.dataset.active=String(!_trafficStatusStale&&active&&s.clientRoomReady);live.textContent=_trafficStatusStale?translated('Status unavailable','وضعیت در دسترس نیست'):active?(s.clientRoomReady?translated('Live · 2s','زنده · ۲ ثانیه'):translated('Recovering','در حال بازیابی')):translated('Idle','غیرفعال');
+ const metrics=s.metrics,windowBytes=trafficNumber(metrics?.sendWindowBytes),rtt=trafficNumber(metrics?.rttMs);
+ document.getElementById('trafficWindows').textContent=metrics?translated('Local flow window: ','پنجرهٔ محلی: ')+trafficVolume(windowBytes)+' · cwnd '+trafficVolume(metrics.congestionWindow)+' · '+(metrics.profile||''):'—';
+ document.getElementById('trafficWindowEstimate').textContent=rtt&&windowBytes?translated('Local window / RTT ≈ ','پنجرهٔ محلی / RTT ≈ ')+trafficRate(windowBytes/(rtt/1000))+translated(' · estimate, not a speed test',' · تخمین، نه تست سرعت'):'';
+ document.getElementById('pauseChart').textContent=_chartPaused?translated('Resume chart','ادامهٔ نمودار'):translated('Pause chart','توقف نمودار');
+ if(_chartPaused || document.hidden)return;
+ const points=m.points.filter(p=>p.at>=m.at-_chartSeconds*1000);
+ const maximum=Math.max(1000,...points.map(p=>Math.max(p.rx,p.tx)))*1.15;
+ const x=p=>Math.max(0,Math.min(640,640*(1-(m.at-p.at)/(_chartSeconds*1000))));
+ const y=value=>180-160*Math.max(0,Math.min(1,value/maximum));
+ function path(key) {return points.map((p,i)=>(i===0||p.gap?'M':'L')+x(p).toFixed(1)+','+y(p[key]).toFixed(1)).join(' ');}
+ document.getElementById('downloadLine').setAttribute('d',path('rx'));
+ document.getElementById('uploadLine').setAttribute('d',path('tx'));
+ let area='';let start=null;
+ points.forEach((p,i)=>{if(i===0||p.gap){if(start!==null)area+='L'+x(points[i-1]).toFixed(1)+',180Z ';start=x(p);area+='M'+start.toFixed(1)+',180 L'+start.toFixed(1)+','+y(p.rx).toFixed(1)+' ';}else area+='L'+x(p).toFixed(1)+','+y(p.rx).toFixed(1)+' ';});
+ if(start!==null)area+='L'+x(points[points.length-1]).toFixed(1)+',180Z';
+ document.getElementById('downloadArea').setAttribute('d',area);
+ document.getElementById('chartStart').textContent=translated('Last ','آخرین ')+(_chartSeconds/60)+translated(' min',' دقیقه');
+ document.getElementById('chartScale').textContent=translated('Scale: ','مقیاس: ')+trafficRate(maximum);
+ const description=points.length>1?translated('Download ','دریافت ')+trafficRate(m.rxRate)+' · '+translated('Upload ','ارسال ')+trafficRate(m.txRate):translated('Waiting for traffic samples…','در انتظار نمونه‌های ترافیک…');
+ document.getElementById('chartDescription').textContent=description;
+ document.getElementById('speedChart').setAttribute('aria-label',description);
+}
+
 const translations={
+"Why can speed be limited?":"چرا سرعت ممکن است محدود شود؟","400 KB/s is about 3.2 Mbps. RTT, packet loss, peer windows and the carrier can limit speed. Try Throughput on both peers after disconnecting. The window/RTT number is a local estimate, not a guaranteed ceiling. KB means 1,000 bytes. Charts pause while this window is hidden.":"۴۰۰ کیلوبایت‌برثانیه حدود ۳٫۲ مگابیت‌برثانیه است. RTT، افت بسته، پنجره‌های دو طرف و مسیر حامل می‌توانند سرعت را محدود کنند. پس از قطع اتصال، Throughput را در هر دو سمت امتحان کنید. عدد پنجره/RTT تخمین محلی است، نه سقف تضمین‌شده. KB یعنی ۱۰۰۰ بایت. وقتی این پنجره مخفی است، نمونه‌گیری نمودار متوقف می‌شود.",
+
+"Traffic overview":"نمای کلی ترافیک","Downloaded this session":"دانلود این اتصال","Uploaded this session":"آپلود این اتصال","Connected duration":"مدت اتصال","Speed units":"واحد سرعت","Chart range":"بازهٔ نمودار","1 minute":"۱ دقیقه","5 minutes":"۵ دقیقه","15 minutes":"۱۵ دقیقه","Now":"اکنون","Pause chart":"توقف نمودار","Clear chart":"پاک کردن نمودار","Copy chart CSV":"کپی CSV نمودار","Averages include idle time. Peaks and charts cover observed samples. Volumes include tunnel overhead and retransmissions; they are not file sizes or ISP billing.":"میانگین شامل زمان بیکاری هم هست. اوج و نمودار مربوط به نمونه‌های مشاهده‌شده‌اند. حجم‌ها شامل سربار تونل و ارسال مجدد هستند و برابر حجم فایل یا صورت‌حساب اینترنت نیستند.",
+
 "Send OTP":"ارسال کد","Balanced — current transfer windows":"متعادل — پنجره‌های فعلی انتقال","Throughput — larger windows, more memory":"توان بیشتر — پنجرهٔ بزرگ‌تر و حافظهٔ بیشتر","Pending requests":"درخواست‌های منتظر","Connected clients":"کلاینت‌های متصل","Allowed callers":"حساب‌های مجاز","Blocked callers":"حساب‌های مسدود","Pick a mode to get started.":"برای شروع نقش دستگاه را انتخاب کنید.","Server mode: relay internet connections and auto-answer incoming calls (LiveKit WebRTC tunnel).":"حالت سرور: پذیرش اتصال کلاینت‌ها و انتقال اینترنت از طریق تونل WebRTC.","Max simultaneous clients:":"حداکثر کلاینت هم‌زمان:","Apply":"اعمال","Allow Bale calls":"مجاز کردن تماس بله","Name":"نام","Create account":"ساخت حساب",
 
 "Personalize your workspace":"شخصی‌سازی محیط","Device language":"زبان دستگاه","Follow system":"هماهنگ با سیستم","Light":"روشن","Dark":"تیره","Color palette":"پالت رنگ","Ocean blue":"آبی اقیانوسی","Emerald teal":"سبز زمردی","Violet":"بنفش","Rose":"صورتی","Warm amber":"کهربایی","Custom color":"رنگ دلخواه","Typeface":"فونت","Vazirmatn + Inter":"وزیرمتن + Inter","System fonts":"فونت سیستم","Text size":"اندازهٔ متن","Panel width":"عرض پنل","Narrow":"باریک","Standard":"استاندارد","Wide":"عریض","Spacing":"فاصله‌ها","Comfortable":"راحت","Compact":"فشرده","Corners":"گوشه‌ها","Rounded":"گرد","Soft":"نیمه‌گرد","Square":"مربعی","Gradient header":"سربرگ با طیف رنگ","Show connection metrics":"نمایش آمار اتصال","Reduce motion":"کاهش حرکت‌ها","Reset appearance":"بازنشانی ظاهر","Appearance saves automatically on this device without interrupting the connection.":"تنظیمات ظاهری خودکار روی همین دستگاه ذخیره می‌شوند و اتصال را قطع نمی‌کنند.",
@@ -1430,6 +1569,15 @@ document.getElementById('accentColor').addEventListener('input',()=>{document.ge
 document.getElementById('resetAppearance').onclick=()=>{fillAppearance(appearanceDefaults);applyAppearance();};
 if(systemTheme.addEventListener)systemTheme.addEventListener('change',()=>{if(document.getElementById('themeSelect').value==='system')applyAppearance();});
 applyAppearance();loadSettings();
+
+
+try {const p=JSON.parse(localStorage.getItem('bale_telemetry')||'{}');if(['bytes','bits'].includes(p.units))_trafficUnits=p.units;if([60,300,900].includes(p.range))_chartSeconds=p.range;}catch{}
+document.getElementById('speedUnits').value=_trafficUnits;document.getElementById('chartRange').value=String(_chartSeconds);
+for(const id of ['speedUnits','chartRange'])document.getElementById(id).onchange=()=>{_trafficUnits=document.getElementById('speedUnits').value;_chartSeconds=Number(document.getElementById('chartRange').value);try{localStorage.setItem('bale_telemetry',JSON.stringify({units:_trafficUnits,range:_chartSeconds}));}catch{}if(_state)renderTrafficDashboard(_state);};
+document.getElementById('pauseChart').onclick=()=>{_chartPaused=!_chartPaused;if(_state)renderTrafficDashboard(_state);};
+document.getElementById('clearChart').onclick=()=>{_telemetry.points=[];_telemetry.rxPeak=0;_telemetry.txPeak=0;if(_state)renderTrafficDashboard(_state);};
+document.getElementById('exportTraffic').onclick=async()=>{const box=document.getElementById('trafficExport');box.value=trafficCSV(_telemetry);try{await navigator.clipboard.writeText(box.value);box.hidden=true;document.getElementById('trafficFeedback').textContent=translated('Chart CSV copied; no account details.','CSV نمودار بدون اطلاعات حساب کپی شد.');}catch{box.hidden=false;box.select();document.getElementById('trafficFeedback').textContent=translated('Copy the selected CSV text.','متن CSV انتخاب‌شده را کپی کنید.');}};
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollState();});
 
 setInterval(pollState, 2000);
 </script>

@@ -4,6 +4,7 @@
 use lktunnel::LkTunnel;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Tracked client-mode session. `None` until [`Self::set_tunnel`]
 /// is called from the daemon's place-call success path.
@@ -11,23 +12,76 @@ use std::sync::Arc;
 pub struct ClientState {
     inner: Mutex<Option<Inner>>,
     last_error: Mutex<Option<String>>,
+    completed: Mutex<CompletedTraffic>,
+}
+
+#[derive(Default)]
+struct CompletedTraffic {
+    received: u64,
+    sent: u64,
+    elapsed: Duration,
+    last: Option<(u64, u64, u64, u64)>,
+}
+
+#[derive(Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrafficSnapshot {
+    pub session_id: Option<u64>,
+    pub session_elapsed_ms: u64,
+    pub received_bytes: u64,
+    pub sent_bytes: u64,
+    pub process_received_bytes: u64,
+    pub process_sent_bytes: u64,
+    pub process_active_ms: u64,
+    pub active: bool,
 }
 
 struct Inner {
     tunnel:       Arc<LkTunnel>,
     socks5_port:  u16,
+    started: Instant,
 }
 
 impl ClientState {
     pub fn new() -> Arc<Self> { Arc::new(Self::default()) }
 
     pub fn set_tunnel(&self, tunnel: Arc<LkTunnel>, socks5_port: u16) {
-        *self.inner.lock() = Some(Inner { tunnel, socks5_port });
+        if self.inner.lock().as_ref().is_some_and(|i| Arc::ptr_eq(&i.tunnel, &tunnel)) { return; }
+        self.clear();
+        *self.inner.lock() = Some(Inner { tunnel, socks5_port, started: Instant::now() });
     }
 
     pub fn clear(&self) {
-        let previous = self.inner.lock().take();
-        if let Some(previous) = previous { previous.tunnel.disconnect(); }
+        let mut inner = self.inner.lock();
+        if let Some(previous) = inner.take() {
+            previous.tunnel.disconnect();
+            let stats = previous.tunnel.stats();
+            let elapsed = previous.started.elapsed();
+            let mut completed = self.completed.lock();
+            completed.received = completed.received.saturating_add(stats[1]);
+            completed.sent = completed.sent.saturating_add(stats[3]);
+            completed.elapsed = completed.elapsed.saturating_add(elapsed);
+            completed.last = Some((previous.tunnel.id(), stats[1], stats[3], elapsed.as_millis() as u64));
+        }
+    }
+
+    /// Read existing counters only when polled; no accounting on the packet path.
+    /// Process totals live in memory and reset when the application exits.
+    pub fn traffic_snapshot(&self) -> TrafficSnapshot {
+        let inner = self.inner.lock();
+        let completed = self.completed.lock();
+        let (session_id, rx, tx, elapsed, active) = if let Some(i) = inner.as_ref() {
+            let stats = i.tunnel.stats();
+            (Some(i.tunnel.id()), stats[1], stats[3], i.started.elapsed().as_millis() as u64, true)
+        } else if let Some((id, rx, tx, elapsed)) = completed.last {
+            (Some(id), rx, tx, elapsed, false)
+        } else { (None, 0, 0, 0, false) };
+        TrafficSnapshot {
+            session_id, received_bytes: rx, sent_bytes: tx, session_elapsed_ms: elapsed, active,
+            process_received_bytes: completed.received.saturating_add(if active { rx } else { 0 }),
+            process_sent_bytes: completed.sent.saturating_add(if active { tx } else { 0 }),
+            process_active_ms: (completed.elapsed.as_millis() as u64).saturating_add(if active { elapsed } else { 0 }),
+        }
     }
 
     // Session teardown must not erase the failure before the next UI poll.
@@ -79,6 +133,41 @@ pub struct ClientSnapshot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn traffic_totals_keep_direction_survive_disconnect_and_accumulate_calls() {
+        let state = ClientState::new();
+        let mut expected_rx = 0; let mut expected_tx = 0;
+        let mut previous_id = None;
+        for n in [5usize, 11] {
+            let (a,b) = lktunnel::connect_loopback();
+            state.set_tunnel(a.clone(), 1080);
+            // Controlled carrier bytes only; no account, network or SOCKS dial.
+            a.send_raw_frame(vec![b'Q'; n+1], n).unwrap();
+            b.send_raw_frame(vec![b'Q'; n*2+1], n*2).unwrap();
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while a.stats()[1] != (n*2) as u64 { tokio::time::sleep(Duration::from_millis(5)).await; }
+            }).await.unwrap();
+            let active = state.traffic_snapshot();
+            assert!(active.active);
+            assert_eq!(active.received_bytes, (n*2) as u64);
+            assert_eq!(active.sent_bytes, n as u64);
+            assert_ne!(active.session_id, previous_id);
+            previous_id=active.session_id;
+            expected_rx += (n*2) as u64; expected_tx += n as u64;
+            assert_eq!(active.process_received_bytes, expected_rx);
+            assert_eq!(active.process_sent_bytes, expected_tx);
+            state.set_tunnel(a.clone(),1080); // duplicate publication is harmless
+            assert!(a.is_connected());
+            state.clear();state.clear(); // no duplicate accounting
+            let ended = state.traffic_snapshot();
+            assert!(!ended.active);
+            assert_eq!(ended.session_id, previous_id);
+            assert_eq!(ended.process_received_bytes, expected_rx);
+            assert_eq!(ended.process_sent_bytes, expected_tx);
+            b.disconnect();
+        }
+    }
 
     #[test]
     fn failed_attempt_survives_session_teardown_until_explicit_reset() {
