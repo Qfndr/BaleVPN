@@ -86,6 +86,29 @@ test('logout and role changes restore the correct authenticated controls', () =>
   }
 });
 
+test('failed calls stay visible across idle polls and allow another Connect attempt', () => {
+  const h = stateHarness();
+  for (let i = 0; i < 3; i++) {
+    h.render({ mode: 'client', tokenSet: true, wsReady: true,
+      clientActivated: false, clientError: 'transport: StartCall: RPC error code=7 message="CallNotApproved"' });
+    assert.equal(h.get('tunnelStatus').style.display, '');
+    assert.match(h.get('tunnelStatus').textContent, /CallNotApproved/);
+    assert.match(h.get('tunnelStatus').textContent, /official Bale app/);
+    assert.equal(h.get('tunnelStatus').className, 'entry err');
+    assert.equal(h.get('tunnelApply').textContent, 'Connect');
+  }
+  h.render({ mode: 'client', tokenSet: true, wsReady: true, clientActivated: true });
+  assert.match(h.get('tunnelStatus').textContent, /Connecting to server/);
+  assert.equal(h.get('tunnelApply').textContent, 'Disconnect');
+});
+
+test('arbitrary connection errors render as text', () => {
+  const h = stateHarness();
+  h.render({ mode: 'client', tokenSet: true, wsReady: true, clientError: payload });
+  assert.equal(h.get('tunnelStatus').textContent, 'Connection failed: ' + payload);
+  assert.equal(h.get('tunnelStatus').style.display, '');
+});
+
 function authHarness(reply) {
   const elements = new Map();
   const timers = new Map();

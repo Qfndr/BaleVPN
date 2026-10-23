@@ -611,7 +611,14 @@ function applyTunnelUI(s) {
     //   1. tunnel configured but LK channel not up yet → "Connecting to server…"
     //   2. LK channel up but server peer hasn't joined → "Waiting for server…"
     //   3. peer joined → SOCKS5 stats line
-    if (s.clientRejected) {
+    const clientError = s.clientError || _activationError;
+    if (clientError) {
+      st.style.display = '';
+      st.textContent = clientError.includes('CallNotApproved')
+        ? 'Bale refused the call (CallNotApproved). Test a voice call between these accounts in the official Bale app and check call permissions. The tunnel request has not reached the server approval list.'
+        : 'Connection failed: ' + clientError;
+      st.className = 'entry err';
+    } else if (s.clientRejected) {
       st.style.display = '';
       st.textContent = 'Server rejected the connection. Press Activate to try again.';
       st.className = 'entry err';
@@ -790,12 +797,14 @@ document.getElementById('peerSearch').addEventListener('keydown', e => {
 // Tracks the resolved mode from /tunnel/status — needed by the Activate handler
 // to decide between the client (peer-based) and server (sticky-flag) flow.
 let _tunnelMode = null;
+let _activationError = null;
 
 function setTunnelMode(mode) {
   // Keep "no role selected" distinct from Client. Otherwise the first
   // null -> client transition looks unchanged to applyState(), leaving the
   // peer picker and Connect button hidden after login.
   _tunnelMode = mode || null;
+  _activationError = null;
   // Mode picker: shown only when no mode is selected; hides the
   // mode-specific fields and the Activate button until the user
   // picks. The status row + badge follow the same rule.
@@ -867,6 +876,7 @@ function unlockBtn() {
 
 async function activateTunnel() {
   if (_busy) return;
+  _activationError = null;
   const st = document.getElementById('tunnelStatus');
   st.style.display = '';
   st.className = 'entry info';
@@ -876,6 +886,7 @@ async function activateTunnel() {
     // immediately try again with a peer selected.
     const peerVal = document.getElementById('tunnelPeer').value;
     if (!peerVal) {
+      _activationError = 'Pick a server peer first.';
       st.className = 'entry err';
       st.textContent = 'Pick a server peer first.';
       return;
@@ -909,11 +920,17 @@ async function activateTunnel() {
       d = await r.json();
       saveConfig();
     }
-    if (!d.ok) { st.className = 'entry err'; st.textContent = d.error || 'Error'; }
+    if (!d.ok) {
+      _activationError = d.error || 'Failed to configure tunnel';
+      await pollState();
+      st.style.display = ''; st.className = 'entry err'; st.textContent = d.error || 'Error';
+      return;
+    }
     // Refresh state synchronously so unlockBtn renders the right label and
     // the rest of the UI catches up without waiting for the next poll tick.
     await pollState();
   } catch (e) {
+    _activationError = e.message;
     st.className = 'entry err';
     st.textContent = 'Error: ' + e.message;
   } finally {
@@ -923,6 +940,7 @@ async function activateTunnel() {
 
 async function deactivateTunnel() {
   if (_busy) return;
+  _activationError = null;
   lockBtn('disconnecting');
   try {
     // Client mode: end the call (clears the configured peer and

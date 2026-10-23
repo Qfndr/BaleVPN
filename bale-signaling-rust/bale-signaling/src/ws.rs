@@ -963,6 +963,14 @@ impl WsClient {
     /// `bale.meet.v1.Meet/StartCall` — caller-side dial. Returns
     /// the CallEntity (LK url + token + room) on success.
     pub async fn start_call(&self, peer_id: i32, peer_type: i32) -> Option<CallEntity> {
+        self.try_start_call(peer_id, peer_type).await.map_err(|e| {
+            log::warn!("WS: StartCall failed: {e}");
+        }).ok()
+    }
+
+    /// Preserve RPC rejection details for callers that need to display why a
+    /// dial failed. Never include the response body (it can contain credentials).
+    pub async fn try_start_call(&self, peer_id: i32, peer_type: i32) -> Result<CallEntity, String> {
         let rid = now_millis();
         let peer = ProtoWriter::new()
             .int32(1, peer_type)
@@ -977,19 +985,9 @@ impl WsClient {
             .int64(2, rid)
             .bytes(6, &lk_call)
             .build();
-        match self.rpc_call("bale.meet.v1.Meet", "StartCall", &payload).await {
-            Ok(resp) => {
-                let parsed = parse_call_response(&resp);
-                if parsed.is_none() {
-                    log::warn!("WS: StartCall reply parse returned None (resp_len={})", resp.len());
-                }
-                parsed
-            }
-            Err(e) => {
-                log::warn!("WS: StartCall RPC failed: {e}");
-                None
-            }
-        }
+        let resp = self.rpc_call("bale.meet.v1.Meet", "StartCall", &payload).await
+            .map_err(|e| format!("StartCall: {e}"))?;
+        parse_call_response(&resp).ok_or_else(|| "StartCall response contained no call entity".into())
     }
 
     /// `bale.meet.v1.Meet/AcceptCall` — server-side accept. The
@@ -2290,6 +2288,27 @@ mod tests {
         assert_eq!(c.token,   "tok-xyz");
         assert_eq!(c.room,    "room-zzz");
         assert!(c.is_livekit);
+    }
+
+    #[tokio::test]
+    async fn start_call_preserves_bale_rejection_and_transport_errors() {
+        let ws = WsClient::new();
+        let error = ws.try_start_call(123, 1).await.unwrap_err();
+        assert!(error.contains("WS not connected"));
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        ws.install_sender(tx);
+        let caller = ws.clone();
+        let pending = tokio::spawn(async move { caller.try_start_call(123, 1).await });
+        let outgoing = rx.recv().await.unwrap();
+        let rejection = ProtoWriter::new().int32(1, 7).string(2, "CallNotApproved").build();
+        ws.dispatch_rpc_response(RpcResponse {
+            idx: extract_outgoing_rpc_idx(&outgoing),
+            error: Some(&rejection), payload: None,
+        });
+        let error = pending.await.unwrap().unwrap_err();
+        assert!(error.contains("code=7"), "{error}");
+        assert!(error.contains("CallNotApproved"), "{error}");
     }
 
     #[tokio::test]

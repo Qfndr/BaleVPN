@@ -10,6 +10,7 @@ use std::sync::Arc;
 #[derive(Default)]
 pub struct ClientState {
     inner: Mutex<Option<Inner>>,
+    last_error: Mutex<Option<String>>,
 }
 
 struct Inner {
@@ -25,6 +26,12 @@ impl ClientState {
     }
 
     pub fn clear(&self) { *self.inner.lock() = None; }
+
+    // Session teardown must not erase the failure before the next UI poll.
+    // Only an explicit new attempt, disconnect, role change, or logout clears it.
+    pub fn set_error(&self, error: String) { *self.last_error.lock() = Some(error); }
+    pub fn clear_error(&self) { *self.last_error.lock() = None; }
+    pub fn last_error(&self) -> Option<String> { self.last_error.lock().clone() }
 
     pub async fn socks5_bound_port(&self) -> Option<u16> {
         self.inner.lock().as_ref().map(|i| i.socks5_port)
@@ -64,4 +71,19 @@ pub struct ClientSnapshot {
     pub connected:   bool,
     pub rx_bytes:    u64,
     pub tx_bytes:    u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_attempt_survives_session_teardown_until_explicit_reset() {
+        let client = ClientState::new();
+        client.set_error("StartCall: CallNotApproved".into());
+        client.clear();
+        assert_eq!(client.last_error().as_deref(), Some("StartCall: CallNotApproved"));
+        client.clear_error();
+        assert_eq!(client.last_error(), None);
+    }
 }

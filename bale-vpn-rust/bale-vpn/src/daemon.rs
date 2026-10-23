@@ -251,6 +251,7 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
             // re-POSTs /tunnel/config and gives them a chance to
             // pick a different peer.
             if mode == "client" {
+                state.client.set_error(e.to_string());
                 state.cfg.write().await.peer_id = None;
             }
         }

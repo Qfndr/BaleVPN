@@ -542,8 +542,8 @@ impl TunnelHooks for BaleSignaling {
         let uid = peer.id_str().parse::<i32>().map_err(|_| PlaceCallError::NoPeer)?;
         let peer_type = 1i32;   // PEERTYPE_PRIVATE
 
-        let call = self.ws.start_call(uid, peer_type).await
-            .ok_or_else(|| PlaceCallError::Transport("startCall returned no entity".into()))?;
+        let call = self.ws.try_start_call(uid, peer_type).await
+            .map_err(PlaceCallError::Transport)?;
         if !call.is_livekit || call.token.is_empty() {
             return Err(PlaceCallError::Transport(
                 "startCall reply had no LiveKit credentials".into()));

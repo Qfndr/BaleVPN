@@ -261,6 +261,7 @@ async fn set_config(
         restart_mode = cfg.mode.clone();
     }
     if should_restart {
+        s.client.clear_error();
         // Best-effort: if there are no subscribers (run_mode
         // exited), the send fails silently — fine, the new
         // values will be picked up on the next connect.
@@ -316,6 +317,8 @@ struct StateBody {
     /// Client mode: last place_call attempt got
     /// PlaceCallError::Rejected. Sticky until next Activate.
     client_rejected:    bool,
+    /// Last failed attempt remains visible even after its session is torn down.
+    client_error:       Option<String>,
     /// Server mode: how many connected LK rooms (= clients).
     lk_rooms:           usize,
     /// Client mode: LK channel up (peer hasn't necessarily
@@ -407,6 +410,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
         ws_connecting,
         ws_paused,
         client_activated:  is_client && cfg.peer_id.is_some() && token_set,
+        client_error:      if is_client { s.client.last_error() } else { None },
         client_room_ready,
         lk_rooms,
         lk_active:         client_room_ready,
@@ -461,6 +465,7 @@ async fn disconnect(State(s): State<Arc<AppState>>) -> Json<OkBody> {
 }
 
 async fn logout(State(s): State<Arc<AppState>>) -> Json<OkBody> {
+    s.client.clear_error();
     s.auth.clear_completed_auth().await;
     s.signaling.sign_out().await;
 
@@ -883,6 +888,7 @@ async fn tunnel_disconnect(State(s): State<Arc<AppState>>) -> Result<Json<OkBody
         cfg.mode.clone()
     };
     let _ = s.mode_tx.send(restart_mode);
+    s.client.clear_error();
     Ok(Json(OkBody { ok: true }))
 }
 
