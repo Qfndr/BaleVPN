@@ -672,7 +672,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 document.getElementById('refreshPeers').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
-    await fetch('/refresh-peers', { method: 'POST' });
+    await fetch('/peers/refresh', { method: 'POST' });
     await loadPeers();
   } finally {
     e.target.disabled = false;

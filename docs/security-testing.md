@@ -47,3 +47,18 @@ web assets and earlier implementations. Inspection identified public application
 constants and PEM-format marker strings, rather than a confirmed leaked user
 credential. The history has not been rewritten, and third-party keys were not
 validated against external services.
+
+## Verification results — 2026-10-23
+
+The runtime changes at [6450ce2](https://github.com/Qfndr/BaleVPN/commit/6450ce252bcf416426a0ea97e01f1d8cef399c7c) passed the following checks:
+
+- Linux: 157 Rust tests and four JavaScript security tests; Windows and both macOS architectures also passed their Rust and UI test suites.
+- Desktop GUI and headless release builds on Linux, Windows, macOS Apple Silicon, and macOS Intel.
+- Android release APK build, including the shared Rust JNI libraries.
+- RustSec audit of all five lockfiles with no vulnerability advisories reported and no advisory ignores. The informational warnings described above remain.
+- Gitleaks scan of the tracked source snapshot, with only the documented upstream JWT fixture excluded.
+- Execution of the actual CI-built Windows headless binary: version 2.1.3, persisted-port startup, configuration-directory writes, defaults, response headers, and rejection of hostile Origin and Host values.
+
+The final contacts-refresh URL correction was checked against the Axum route table, and all four JavaScript regression tests were rerun afterward. The final documentation download links were checked to resolve to this repository's releases.
+
+CI evidence: [Rust tests and security checks](https://github.com/Qfndr/BaleVPN/actions/runs/39976123599), [desktop builds](https://github.com/Qfndr/BaleVPN/actions/runs/39976123656), [Android APK build](https://github.com/Qfndr/BaleVPN/actions/runs/39976123622).

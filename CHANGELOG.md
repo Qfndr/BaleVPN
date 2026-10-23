@@ -2,6 +2,7 @@
 
 ## 2.1.3 — 2026-10-23
 
+- Fix the contacts refresh button calling a nonexistent API endpoint.
 - Fix fresh-install configuration defaults, saved HTTP port precedence, and `--config-dir` persistence.
 - Save credentials through exclusive temporary files and atomic replacement; preserve malformed configuration for recovery.
 - Reject cross-origin management requests and DNS-rebinding hostnames; disable framing of the management UI.
