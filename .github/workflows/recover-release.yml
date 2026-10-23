@@ -13,13 +13,22 @@ on:
         description: Desktop build run with the exact same source commit
         required: true
         type: string
+      artifact:
+        description: Platform artifact to recover
+        required: true
+        type: choice
+        options:
+          - bale-vpn-linux-x86_64
+          - bale-vpn-windows-x86_64
+          - bale-vpn-macos-aarch64
+          - bale-vpn-macos-x86_64
 
 permissions:
   actions: read
   contents: write
 
 concurrency:
-  group: recover-release-${{ inputs.tag }}
+  group: recover-release-${{ inputs.tag }}-${{ inputs.artifact }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +37,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       BUILD_RUN: ${{ inputs.build_run }}
+      ARTIFACT: ${{ inputs.artifact }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -44,16 +54,21 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN" > build-run.json
           jq -e --arg sha "$source_sha" '.head_sha == $sha and .path == ".github/workflows/bale-vpn-rust.yml"' build-run.json
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN/jobs?per_page=100" > build-jobs.json
-          # All four platforms must have built both variants and uploaded them.
+          # The selected platform must have built both variants and uploaded them.
           # A later cache-upload failure cannot invalidate these completed builds.
           python3 - <<'PY'
-          import json
+          import json, os
           jobs = {job['name']: job for job in json.load(open('build-jobs.json'))['jobs']}
-          for os in ['ubuntu-latest', 'windows-latest', 'macos-latest', 'macos-26-intel']:
-              steps = jobs[f'build ({os})']['steps']
-              builds = [s for s in steps if s['name'].startswith('cargo build --release')]
-              assert len(builds) == 2 and all(s['conclusion'] == 'success' for s in builds), os
-              assert any(s['name'] == 'Upload artifacts' and s['conclusion'] == 'success' for s in steps), os
+          runner = {
+              'bale-vpn-linux-x86_64': 'ubuntu-latest',
+              'bale-vpn-windows-x86_64': 'windows-latest',
+              'bale-vpn-macos-aarch64': 'macos-latest',
+              'bale-vpn-macos-x86_64': 'macos-26-intel',
+          }[os.environ['ARTIFACT']]
+          steps = jobs[f'build ({runner})']['steps']
+          builds = [s for s in steps if s['name'].startswith('cargo build --release')]
+          assert len(builds) == 2 and all(s['conclusion'] == 'success' for s in builds), runner
+          assert any(s['name'] == 'Upload artifacts' and s['conclusion'] == 'success' for s in steps), runner
           PY
 
       - uses: actions/download-artifact@v4
@@ -61,17 +76,16 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ inputs.build_run }}
-          pattern: bale-vpn-*
-          merge-multiple: true
+          name: ${{ inputs.artifact }}
           path: release-staging
 
-      - name: Verify all variants and attach to the existing release
+      - name: Verify both variants and attach to the existing release
         shell: bash
         run: |
+          platform="${ARTIFACT#bale-vpn-}"
+          if [ "$platform" = windows-x86_64 ]; then platform="$platform.exe"; fi
           for variant in gui headless; do
-            for platform in linux-x86_64 macos-aarch64 macos-x86_64 windows-x86_64.exe; do
-              test -s "release-staging/bale-vpn-$variant-$platform"
-            done
+            test -s "release-staging/bale-vpn-$variant-$platform"
           done
           sha256sum release-staging/*
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
