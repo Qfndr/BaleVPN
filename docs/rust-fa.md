@@ -67,17 +67,17 @@ chmod +x bale-vpn-*-*
 
 `scripts/balevpn.ps1` یک فایل واحد polyglot (هم bash و هم PowerShell) است که باینری headless را نصب می‌کند و از طریق یک منوی تعاملی با HTTP API آن کار می‌کند — بدون دانلود دستی یا `curl`.
 
-اسکریپت خام: <https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1>
+اسکریپت خام: <https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1>
 
 دانلود و اجرا در یک خط:
 
 ```bash
 # لینوکس / مک  (با bash، نه sh)
-curl -fsSL https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1 | bash
+curl -fsSL https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1 | bash
 ```
 ```powershell
 # ویندوز (PowerShell 5.1+ / 7+)
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1 | iex
 ```
 
 از `bash` استفاده کنید، نه `sh` — اسکریپت به امکانات bash متکی است. هنگام pipe، ورودی منو از ترمینال (`/dev/tty`) خوانده می‌شود و باینری در دایرکتوری جاری نصب می‌شود. از روی یک checkout، `bash scripts/balevpn.ps1` یا `.\scripts\balevpn.ps1` را اجرا کنید تا کنار اسکریپت نصب شود.

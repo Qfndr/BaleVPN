@@ -65,17 +65,17 @@ chmod +x bale-vpn-*-*
 
 `scripts/balevpn.ps1` is a single bash + PowerShell polyglot that installs the headless binary and drives its HTTP API from an interactive menu — no manual download or `curl` needed.
 
-Raw script: <https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1>
+Raw script: <https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1>
 
 Download and run it in one line:
 
 ```bash
 # Linux / macOS  (bash, not sh)
-curl -fsSL https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1 | bash
+curl -fsSL https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1 | bash
 ```
 ```powershell
 # Windows (PowerShell 5.1+ / 7+)
-[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/kookoo1sabzy/BaleVPN/main/scripts/balevpn.ps1 | iex
+[Net.ServicePointManager]::SecurityProtocol='Tls12'; irm https://raw.githubusercontent.com/Qfndr/BaleVPN/main/scripts/balevpn.ps1 | iex
 ```
 
 Use `bash`, not `sh` — the script relies on bash features. When piped it reads prompts from your terminal (`/dev/tty`) and installs the binary into the current directory. From a checkout, run `bash scripts/balevpn.ps1` or `.\scripts\balevpn.ps1` and it installs next to the script instead.

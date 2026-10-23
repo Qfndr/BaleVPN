@@ -29,7 +29,7 @@ echo `# <#` > /dev/null
 
 set -uo pipefail
 
-REPO="kookoo1sabzy/BaleVPN"
+REPO="Qfndr/BaleVPN"
 # ${BASH_SOURCE[0]} is unset when piped (curl … | bash) — and that's an
 # unbound-variable error under `set -u`. Fall back to $0, and when there's no
 # real path (piped, or run as a bare filename) use the current directory.
@@ -750,7 +750,7 @@ $ErrorActionPreference = 'Stop'
 # on PowerShell 7 (which negotiates modern TLS on its own).
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-$Repo = 'kookoo1sabzy/BaleVPN'
+$Repo = 'Qfndr/BaleVPN'
 # $PSScriptRoot is empty when run via `irm … | iex` (no script file); fall back
 # to the invocation path, then to the current directory.
 $ScriptDir =

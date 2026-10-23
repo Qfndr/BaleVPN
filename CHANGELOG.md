@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.5 — 2026-10-23
+
+- Keep the 2.1.4 login delivery fixes and direct launcher downloads, installation commands and Android update links to this repository, so upgrades cannot reinstall the unfixed upstream build.
+- Preserve the original project attribution and contact information.
+
 ## 2.1.4 — 2026-10-23
 
 - Match the current Bale login request: default delivery, Telegram Gateway capability and six-digit OTP support instead of forcing SMS.

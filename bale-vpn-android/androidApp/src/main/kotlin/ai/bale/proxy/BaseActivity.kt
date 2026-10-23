@@ -38,7 +38,7 @@ abstract class BaseActivity : AppCompatActivity() {
         // page; the user picks the APK from there. We don't link the asset
         // directly because release filenames are versioned and there's no
         // stable "latest APK" URL without renaming the gradle output.
-        const val ABOUT_LATEST   = "https://github.com/kookoo1sabzy/BaleVPN/releases/latest"
+        const val ABOUT_LATEST   = "https://github.com/Qfndr/BaleVPN/releases/latest"
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
