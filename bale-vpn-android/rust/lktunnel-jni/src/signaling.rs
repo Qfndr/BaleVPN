@@ -383,11 +383,11 @@ pub extern "system" fn Java_ai_bale_proxy_bale_BaleSignalingNative_nativeSignOut
     let Some(cont) = cont_ref(&mut env, cont, "nativeSignOut") else { return };
     let Some(arc) = REG.lookup(handle as u64) else {
         jni_shared::spawn_with_continuation(cont,
-            async { Ok::<(), String>(()) }, jni_shared::marshal_void);
+            async { auth().clear_completed_auth().await; Ok::<(), String>(()) }, jni_shared::marshal_void);
         return;
     };
     jni_shared::spawn_with_continuation(cont,
-        async move { arc.sign_out().await; Ok::<(), String>(()) },
+        async move { auth().clear_completed_auth().await; arc.sign_out().await; Ok::<(), String>(()) },
         jni_shared::marshal_void);
 }
 

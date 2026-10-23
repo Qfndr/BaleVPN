@@ -440,6 +440,7 @@ async fn connect(
     if let Some(Json(ConnectBody { token: Some(t) })) = body {
         let t = t.trim();
         if !t.is_empty() {
+            s.auth.clear_completed_auth().await;
             s.token_store.save(t.as_bytes());
         }
     }
@@ -460,6 +461,7 @@ async fn disconnect(State(s): State<Arc<AppState>>) -> Json<OkBody> {
 }
 
 async fn logout(State(s): State<Arc<AppState>>) -> Json<OkBody> {
+    s.auth.clear_completed_auth().await;
     s.signaling.sign_out().await;
 
     // Mode reset: if the operator pinned the mode via `--mode`

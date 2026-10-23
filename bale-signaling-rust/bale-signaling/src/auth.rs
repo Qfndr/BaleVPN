@@ -220,6 +220,12 @@ impl BaleAuth {
         // with the SMS flow.
     }
 
+    /// Drop the short-lived verification result when the user logs out or
+    /// replaces credentials, so an old transaction cannot restore that login.
+    pub async fn clear_completed_auth(&self) {
+        *self.completed.lock().await = None;
+    }
+
     // Authentication completes in the RPC itself. Never require an extra
     // /set-cookie/ GET: that endpoint can reject a valid login with HTTP 403
     // after its OTP has already been consumed. A newly issued HttpOnly cookie
@@ -493,6 +499,14 @@ mod tests {
     fn completed_verification_expires() {
         let completed = Some(("fixture-tx".into(), "fixture-token".into(), Instant::now() - Duration::from_secs(301)));
         assert!(cached_auth(&completed, "fixture-tx").is_none());
+    }
+
+    #[tokio::test]
+    async fn logout_discards_completed_verification() {
+        let auth = BaleAuth::new();
+        *auth.completed.lock().await = Some(("fixture-tx".into(), "fixture-token".into(), Instant::now()));
+        auth.clear_completed_auth().await;
+        assert!(cached_auth(&*auth.completed.lock().await, "fixture-tx").is_none());
     }
 
     #[tokio::test]

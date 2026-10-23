@@ -56,6 +56,8 @@ its completed result without consuming the OTP again. A new successful phone
 request clears this cache; expired entries and other transaction hashes are not
 reused. Cookies left over from an earlier attempt cannot turn an empty validation
 response into success. Desktop and Android consume this same implementation.
+Logout clears the completed result on both platforms; manually replacing the
+desktop token also clears it, so an old transaction cannot restore a prior login.
 The desktop UI discards an expired transaction while retaining the server's
 resend cooldown. Android propagates RPC failures through JNI and returns to the
 phone screen for an expired code instead of repeatedly verifying it.
