@@ -19,9 +19,9 @@ jobs:
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust; do
             args=(-p tokio)
             if [[ "$workspace" != lk-signaling-rust ]]; then
-              args+=(-p rustls -p rustls-webpki -p quinn-proto -p webpki-roots@1.0.7)
+              args+=(-p rustls -p rustls-webpki -p quinn-proto -p webpki-roots@1)
             fi
-            if [[ "$workspace" != lk-signaling-rust && "$workspace" != lktunnel-rust ]]; then
+            if [[ "$workspace" != lk-signaling-rust ]]; then
               args+=(-p h2)
             fi
             if [[ "$workspace" != lk-signaling-rust && "$workspace" != bale-signaling-rust ]]; then

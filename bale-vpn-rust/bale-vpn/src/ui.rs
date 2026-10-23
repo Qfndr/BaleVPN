@@ -229,7 +229,7 @@ async fn set_config(
     // Mirror into the live Resolved so /config GET and other
     // handlers see the new values right away.
     let mut should_restart = false;
-    let mut restart_mode: Option<String> = None;
+    let restart_mode;
     {
         let mut cfg = s.cfg.write().await;
         if let Some(m) = body.mode {
@@ -238,7 +238,10 @@ async fn set_config(
             }
             cfg.mode = Some(m);
         }
-        if let Some(n) = body.nat_mode { cfg.nat_mode = n; }
+        if let Some(n) = body.nat_mode {
+            should_restart |= cfg.nat_mode != n;
+            cfg.nat_mode = n;
+        }
         if let Some(p) = body.server_peer_id {
             // Client mode reads peer_id once at the top of
             // `run_client` and then parks — without kicking
@@ -251,7 +254,10 @@ async fn set_config(
             }
             cfg.peer_id = Some(p);
         }
-        if let Some(p) = body.socks5_port { cfg.socks5_port = p; }
+        if let Some(p) = body.socks5_port {
+            should_restart |= cfg.socks5_port != p;
+            cfg.socks5_port = p;
+        }
         restart_mode = cfg.mode.clone();
     }
     if should_restart {

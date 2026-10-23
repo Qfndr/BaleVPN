@@ -12,6 +12,7 @@ android {
     // r28 supports the API 24 floor webrtc-rs needs (getifaddrs).
     ndkVersion = "28.0.13004108"
     val tagVersion = System.getenv("BALE_VERSION_NAME")?.takeIf { it.isNotBlank() }
+        ?: rootProject.file("../VERSION").readText().trim()
     val parsedVersionCode = tagVersion
         ?.split('.')
         ?.mapNotNull { it.takeWhile(Char::isDigit).toIntOrNull() }
