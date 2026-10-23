@@ -9,6 +9,11 @@ and missing client certificate), real authenticated SOCKS5/TCP/QUIC transfer,
 plaintext-token migration, protected storage tampering/context binding,
 exclusive data-directory ownership, pairing persistence and malformed input,
 call budgets, cooldown UI, diagnostic redaction, and desktop/mobile browser UI.
+Recovery regression checks cover cleanup after the engine has already marked a
+session disconnected, closing existing SOCKS sockets, reusing the proxy port,
+cancellation-safe QUIC handshakes, concurrent recovery and initial warmup,
+Windows network-down accept errors, and real authenticated transfers across
+four calls on the same proxy port without restarting the process.
 The release-mode offline transfer comparison reports throughput; it is not a
 Bale internet-capacity benchmark or a zero-regression guarantee on every path.
 

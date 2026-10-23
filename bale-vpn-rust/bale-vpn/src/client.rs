@@ -25,7 +25,10 @@ impl ClientState {
         *self.inner.lock() = Some(Inner { tunnel, socks5_port });
     }
 
-    pub fn clear(&self) { *self.inner.lock() = None; }
+    pub fn clear(&self) {
+        let previous = self.inner.lock().take();
+        if let Some(previous) = previous { previous.tunnel.disconnect(); }
+    }
 
     // Session teardown must not erase the failure before the next UI poll.
     // Only an explicit new attempt, disconnect, role change, or logout clears it.

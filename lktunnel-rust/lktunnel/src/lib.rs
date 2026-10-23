@@ -37,6 +37,8 @@ pub mod socks5_quic;
 pub mod tun;
 
 pub mod security;
+#[cfg(test)]
+mod recovery_tests;
 
 use crate::rtc::{Engine, EngineEvent};
 use once_cell::sync::Lazy;
@@ -191,6 +193,8 @@ pub enum TunnelState {
 /// and lifecycle — teardown happens when the last Arc clone is
 /// dropped (or `disconnect` is called).
 pub struct LkTunnel {
+    torn_down: AtomicBool,
+    quic_keeper_started: AtomicBool,
     options: security::TunnelOptions,
     transport_error: Mutex<Option<String>>,
     authenticated_sessions: Arc<std::sync::atomic::AtomicUsize>,
@@ -347,8 +351,8 @@ pub fn connect_loopback_with_options(a: security::TunnelOptions, b: security::Tu
     spawn_loopback_forwarder(b_send_rx, Arc::clone(&a_inner));
     a_inner.connected.store(true, Ordering::Relaxed);
     b_inner.connected.store(true, Ordering::Relaxed);
-    let _ = a_inner.state_tx.send(TunnelState::Connected);
-    let _ = b_inner.state_tx.send(TunnelState::Connected);
+    let _ = a_inner.state_tx.send_replace(TunnelState::Connected);
+    let _ = b_inner.state_tx.send_replace(TunnelState::Connected);
     (a_inner, b_inner)
 }
 
@@ -358,6 +362,8 @@ fn build_loopback_inner(role: TunnelRole, options: security::TunnelOptions) -> (
     let (state_tx, _state_rx) = tokio::sync::watch::channel(TunnelState::Connecting);
     let (events_tx, events_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
     let inner = Arc::new(LkTunnel {
+        torn_down: AtomicBool::new(false),
+        quic_keeper_started: AtomicBool::new(false),
         id,
         counters:      Arc::new(counters::Counters::new()),
         engine:        Mutex::new(None),
@@ -529,6 +535,8 @@ impl LkTunnel {
         let (events_tx, events_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
 
         let inner = Arc::new(LkTunnel {
+            torn_down: AtomicBool::new(false),
+            quic_keeper_started: AtomicBool::new(false),
             id,
             counters:      Arc::new(counters::Counters::new()),
             engine:        Mutex::new(None),
@@ -738,7 +746,7 @@ impl LkTunnel {
     /// background QUIC handshake completes, so a bound listener alone
     /// doesn't mean LAN clients can reach the peer yet.
     pub fn is_quic_connected(&self) -> bool {
-        self.quic_client.lock().is_some()
+        self.is_proxy_ready()
     }
 
     /// Per-tunnel diagnostic id, monotonically assigned at connect.
@@ -776,7 +784,7 @@ impl LkTunnel {
     pub fn transport_error(&self) -> Option<String> { self.transport_error.lock().clone() }
     pub(crate) fn fail_transport(&self, error: String) { *self.transport_error.lock()=Some(error);self.disconnect(); }
     pub fn is_proxy_ready(&self) -> bool {
-        self.quic_client.lock().as_ref().is_some_and(|c| c.connection.close_reason().is_none())
+        self.is_connected() && self.quic_client.lock().as_ref().is_some_and(|c| c.connection.close_reason().is_none())
     }
     pub fn is_peer_authenticated(&self) -> bool {
         self.options.authenticated && (self.is_proxy_ready() || self.authenticated_sessions.load(Ordering::Relaxed)>0)
@@ -996,7 +1004,7 @@ impl LkTunnel {
     {
         // Fast path: already up. Cheap lock — no setup work to
         // serialise so we don't bother acquiring connect_lock.
-        if self.quic_client.lock().is_some() { return Ok(()); }
+        if self.is_proxy_ready() { return Ok(()); }
 
         // Slow path: serialise with any other in-flight ensure
         // call (e.g. the auto-warm spawned at peer-joined racing
@@ -1004,8 +1012,12 @@ impl LkTunnel {
         // The loser of the race awaits here, then sees the
         // already-installed quic_client and returns Ok.
         let _g = self.connect_lock.lock().await;
-        if self.quic_client.lock().is_some() { return Ok(()); }
+        if self.is_proxy_ready() { return Ok(()); }
 
+        if let Some(stale) = self.quic_client.lock().take() {
+            stale.endpoint.close(0u32.into(), b"replace closed connection");
+            *self.quic_rx_tx.lock() = None;
+        }
         // Retry the handshake for as long as the tunnel is alive.
         // The client's `transport.connect` returns when *we* join
         // the LK room, but the *peer* (server) may not yet have
@@ -1044,14 +1056,24 @@ impl LkTunnel {
             }
         };
 
-        *self.quic_client.lock() = Some(Arc::new(client));
+        {
+            let mut slot = self.quic_client.lock();
+            if self.torn_down.load(Ordering::Acquire) || !self.is_connected() {
+                client.endpoint.close(0u32.into(), b"tunnel disconnected");
+                *self.quic_rx_tx.lock() = None;
+                return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "Tunnel ended during handshake").into());
+            }
+            *slot = Some(Arc::new(client));
+        }
         // Spawn the keeper with a Weak ref only — must NOT
         // capture a strong LkTunnel or the explicit disconnect
         // path can't drop Inner until the keeper next iterates,
         // contending with the stats poller's @Synchronized JNI
         // calls and ANR'ing the Service.
         let weak = Arc::downgrade(self);
-        runtime().spawn(quic_tunnel::keeper_task(weak));
+        if !self.quic_keeper_started.swap(true, Ordering::AcqRel) {
+            runtime().spawn(quic_tunnel::keeper_task(weak));
+        }
         Ok(())
     }
 
@@ -1108,6 +1130,11 @@ impl LkTunnel {
         let addr = handle.local_addr;
         {
             let mut slot = self.socks5_handle.lock();
+            if self.torn_down.load(Ordering::Acquire) {
+                handle.listener_abort.abort();
+                handle.abort_all_conns();
+                return Err(socks5_quic::Socks5Error::Bind(std::io::Error::new(std::io::ErrorKind::NotConnected, "Tunnel disconnected")));
+            }
             if let Some(existing) = slot.as_ref() {
                 // Race: another caller installed a listener between
                 // our initial check and now. Discard ours and
@@ -1173,33 +1200,48 @@ impl LkTunnel {
                     std::io::Error::new(std::io::ErrorKind::AlreadyExists,
                                         "quic already enabled on this tunnel")));
             }
-            *slot = Some(tx);
+            *slot = Some(tx.clone());
         }
 
-        // Closure-style cleanup: any early return below releases
-        // the `quic_rx_tx` slot we just claimed.
-        let cleanup = || {
-            *self.quic_rx_tx.lock() = None;
-        };
-
+        // Cancellation (timeout, Disconnect, mode change) drops this guard too.
+        // A plain error-only cleanup closure leaves a poisoned receive slot.
+        struct PendingHandshake<'a> {
+            tunnel: &'a LkTunnel,
+            sender: tokio::sync::mpsc::Sender<bytes::Bytes>,
+            endpoint: Option<quinn::Endpoint>,
+            committed: bool,
+        }
+        impl Drop for PendingHandshake<'_> {
+            fn drop(&mut self) {
+                if self.committed { return; }
+                let mut slot = self.tunnel.quic_rx_tx.lock();
+                if slot.as_ref().is_some_and(|tx| tx.same_channel(&self.sender)) { *slot = None; }
+                if let Some(endpoint) = &self.endpoint { endpoint.close(0u32.into(), b"handshake cancelled"); }
+            }
+        }
+        let mut pending = PendingHandshake { tunnel: self, sender: tx, endpoint: None, committed: false };
         let client_config = match self.options.client.clone().map(Ok).unwrap_or_else(quic_tunnel::make_client_config) {
             Ok(c)  => c,
-            Err(e) => { cleanup(); return Err(e.into()); }
+            Err(e) => { return Err(e.into()); }
         };
         let mut endpoint = match quic_tunnel::build_endpoint(Arc::clone(self), rx, None) {
             Ok(e)  => e,
-            Err(e) => { cleanup(); return Err(e); }
+            Err(e) => { return Err(e); }
         };
+        pending.endpoint = Some(endpoint.clone());
         endpoint.set_default_client_config(client_config);
         // "lktunnel" matches the SAN in the self-signed cert built
         // by `make_server_config`.
         let connecting = match endpoint.connect(quic_tunnel::peer_sentinel_addr(), "lktunnel") {
             Ok(c)  => c,
-            Err(e) => { cleanup(); return Err(e.into()); }
+            Err(e) => { return Err(e.into()); }
         };
         match connecting.await {
-            Ok(connection) => Ok(quic_tunnel::QuicClient { endpoint, connection }),
-            Err(e)         => { cleanup(); Err(e.into()) }
+            Ok(connection) => {
+                pending.committed = true;
+                Ok(quic_tunnel::QuicClient { endpoint, connection })
+            }
+            Err(e) => Err(e.into())
         }
     }
 
@@ -1284,16 +1326,12 @@ impl LkTunnel {
     /// the Inner [`Drop`]. The `Disconnected` state-tx flip is the
     /// guard — a second entry sees `Disconnected` and exits.
     fn teardown(&self) {
-        let already_done = match *self.state_tx.borrow() {
-            TunnelState::Disconnected   => true,
-            TunnelState::Failed(_)      => true,
-            _ => false,
-        };
-        // Mark Disconnected first so concurrent state observers see
-        // the terminal value, even if the connect task is still
-        // running and would otherwise transition to Connected.
-        let _ = self.state_tx.send(TunnelState::Disconnected);
-        if already_done { return; }
+        // Engine state can already be Disconnected/Failed while sockets are
+        // still owned. Resource cleanup needs its own once-only guard.
+        if self.torn_down.swap(true, Ordering::AcqRel) { return; }
+        self.state_tx.send_modify(|state| {
+            if !matches!(state, TunnelState::Failed(_)) { *state = TunnelState::Disconnected; }
+        });
         // Push a synthetic Disconnected onto the events channel.
         // The run loop normally emits one when the engine reports
         // disconnect, but an explicit `disconnect()` (or `Drop`
@@ -1315,13 +1353,18 @@ impl LkTunnel {
         // torn state during the dispatcher hop below.
         if let Some(h) = self.socks5_handle.lock().take() {
             h.listener_abort.abort();
+            h.abort_all_conns();
         }
         if let Some(h) = self.quic_server_handle.lock().take() {
             h.accept_abort.abort();
+            h.quic_server.endpoint.close(0u32.into(), b"tunnel disconnected");
         }
         // Drop the persistent QUIC client — closes the connection +
         // endpoint, releases TunnelUdpSocket and quic_rx_tx sender.
-        let _ = self.quic_client.lock().take();
+        if let Some(client) = self.quic_client.lock().take() {
+            client.connection.close(0u32.into(), b"tunnel disconnected");
+            client.endpoint.close(0u32.into(), b"tunnel disconnected");
+        }
         *self.quic_rx_tx.lock() = None;
 
         // Move NAT/TUN boxes out and drop them on the dispatcher
@@ -1372,6 +1415,13 @@ async fn run_connect_task(
     events_tx: tokio::sync::mpsc::UnboundedSender<Event>,
 ) {
     log::info!("LkTunnel[{id}]::connect: dialing carrier (URL redacted)");
+    struct Cleanup(std::sync::Weak<LkTunnel>);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            if let Some(tunnel) = self.0.upgrade() { tunnel.teardown(); }
+        }
+    }
+    let _cleanup = Cleanup(weak.clone());
 
     // Receive-side dispatch: the engine unpacks each carrier frame and
     // calls this once per length-prefixed packet. The leading frame-type
@@ -1404,7 +1454,7 @@ async fn run_connect_task(
         Err(e) => {
             log::warn!("LkTunnel[{id}]: Engine::connect failed: {e}");
             if let Some(inner) = weak.upgrade() {
-                let _ = inner.state_tx.send(TunnelState::Failed(e.clone()));
+                let _ = inner.state_tx.send_replace(TunnelState::Failed(e.clone()));
             }
             emit_event(&events_tx, EventKind::Error, e);
             emit_event(&events_tx, EventKind::Disconnected, "connect failed".into());
@@ -1592,7 +1642,7 @@ async fn run_tunnel_loop(
                 EngineEvent::Disconnected(msg) => {
                     log::info!("LkTunnel: disconnected during peer-wait — {msg}");
                     if let Some(inner) = weak.upgrade() {
-                        let _ = inner.state_tx.send(TunnelState::Failed(msg.clone()));
+                        let _ = inner.state_tx.send_replace(TunnelState::Failed(msg.clone()));
                     }
                     emit_event(&events_tx, EventKind::Disconnected, msg);
                     return;
@@ -1606,7 +1656,7 @@ async fn run_tunnel_loop(
         tokio::spawn(async move { e.close().await; });
         let msg = "no peer joined within timeout";
         if let Some(inner) = weak.upgrade() {
-            let _ = inner.state_tx.send(TunnelState::Failed(msg.into()));
+            let _ = inner.state_tx.send_replace(TunnelState::Failed(msg.into()));
         }
         emit_event(&events_tx, EventKind::Error, msg.into());
         return;
@@ -1615,7 +1665,7 @@ async fn run_tunnel_loop(
     // Peer is in — flip to Connected.
     connected.store(true, Ordering::Relaxed);
     if let Some(inner) = weak.upgrade() {
-        let _ = inner.state_tx.send(TunnelState::Connected);
+        let _ = inner.state_tx.send_replace(TunnelState::Connected);
     }
     emit_event(&events_tx, EventKind::Connected, String::new());
     log::info!("LkTunnel: connected (peer present)");
@@ -1687,7 +1737,7 @@ async fn run_tunnel_loop(
 
     connected.store(false, Ordering::Relaxed);
     if let Some(inner) = weak.upgrade() {
-        let _ = inner.state_tx.send(TunnelState::Disconnected);
+        inner.teardown();
     }
 }
 

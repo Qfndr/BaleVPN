@@ -41,6 +41,9 @@ path={quote(repo / "lktunnel-rust/lktunnel/tests/authenticated_quic.rs")}
 [[test]]
 name="socks5_quic_e2e"
 path={quote(repo / "lktunnel-rust/lktunnel/tests/socks5_quic_e2e.rs")}
+[[test]]
+name="reconnect_quic"
+path={quote(repo / "lktunnel-rust/lktunnel/tests/reconnect_quic.rs")}
 [profile.release]
 opt-level=3
 lto="thin"

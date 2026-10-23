@@ -509,8 +509,12 @@ pub(crate) async fn keeper_task(
         let Some(conn) = conn else { return };
 
         let reason = conn.closed().await;
-        // Drop the connection clone before any further work so
-        // `quic_client.take()` is the last strong ref.
+        let Some(owner) = weak.upgrade() else { return };
+        // Initial warmup, explicit ensure and recovery share one owner of the
+        // receive slot. Concurrent handshakes used to overwrite each other.
+        let _connect = owner.connect_lock.lock().await;
+        if owner.quic_client.lock().as_ref().is_some_and(|c|
+            c.connection.stable_id() != conn.stable_id()) { continue; }
         drop(conn);
 
         // If the LK tunnel itself is being torn down, don't
@@ -554,7 +558,13 @@ pub(crate) async fn keeper_task(
             match connect_result {
                 Ok(client) => {
                     let Some(inner) = weak.upgrade() else { return };
-                    *inner.quic_client.lock() = Some(std::sync::Arc::new(client));
+                    let mut slot = inner.quic_client.lock();
+                    if !inner.is_connected() {
+                        client.endpoint.close(0u32.into(), b"tunnel disconnected");
+                        *inner.quic_rx_tx.lock() = None;
+                        return;
+                    }
+                    *slot = Some(std::sync::Arc::new(client));
                     log::info!("quic: reconnected");
                     break;
                 }

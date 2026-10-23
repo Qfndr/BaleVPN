@@ -99,6 +99,14 @@ fn ssrf_blocked(ip: IpAddr) -> bool {
 /// exhaustion errnos (too many open fds in the process or on the
 /// host) are transient — backing off lets the system recover.
 fn is_transient_accept_error(e: &io::Error) -> bool {
+    if matches!(e.kind(), io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock
+        | io::ErrorKind::ConnectionAborted | io::ErrorKind::ConnectionReset
+        | io::ErrorKind::NetworkDown | io::ErrorKind::NetworkUnreachable
+        | io::ErrorKind::HostUnreachable | io::ErrorKind::OutOfMemory) { return true; }
+    #[cfg(windows)]
+    // WinSock uses WSA* numbers, not the C runtime errno values below.
+    // https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
+    if matches!(e.raw_os_error(), Some(10024 | 10050 | 10051 | 10052 | 10053 | 10054 | 10055 | 10064 | 10065)) { return true; }
     matches!(e.raw_os_error(), Some(libc::EMFILE) | Some(libc::ENFILE)
                               | Some(libc::ENOBUFS) | Some(libc::ENOMEM)
                               | Some(libc::EAGAIN) | Some(libc::EINTR))
@@ -257,7 +265,7 @@ pub(crate) async fn enable_listener(
                         let mut conn = None;
                         for _ in 0..100 {  // up to ~10s (100 × 100 ms)
                             let Some(inner) = weak.upgrade() else { return };
-                            if let Some(c) = inner.quic_client.lock().clone() {
+                            if let Some(c) = inner.quic_client.lock().clone().filter(|c| c.connection.close_reason().is_none()) {
                                 conn = Some(c.connection.clone());
                                 break;
                             }
@@ -288,6 +296,9 @@ pub(crate) async fn enable_listener(
                 }
                 Err(e) => {
                     log::warn!("socks5: fatal accept err: {e} — listener exiting");
+                    if let Some(inner) = weak_inner.upgrade() {
+                        inner.fail_transport("SOCKS5 listener stopped. Press Connect to rebuild the session.".into());
+                    }
                     break;
                 }
             }
@@ -867,6 +878,15 @@ fn http_connect_reply(status: u8) -> &'static [u8] {
 mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
+
+    #[cfg(windows)]
+    #[test]
+    fn temporary_winsock_failure_does_not_kill_the_listener() {
+        for code in [10024,10050,10051,10052,10053,10054,10055,10064,10065] {
+            assert!(is_transient_accept_error(&io::Error::from_raw_os_error(code)), "WSA error {code}");
+        }
+        assert!(!is_transient_accept_error(&io::Error::from_raw_os_error(10038))); // invalid socket
+    }
 
     // All dials below are simulated. No requests are sent to these public IPs.
     #[tokio::test(start_paused = true)]
