@@ -78,6 +78,16 @@ def main():
             directory = work / "portable build" / "data"
             assert not directory.exists()
             with running(binary, directory, work) as base:
+                for font in ("Vazirmatn.woff2", "InterVariable.woff2"):
+                    with urllib.request.urlopen(base + "/fonts/" + font, timeout=5) as response:
+                        assert response.headers.get_content_type() == "font/woff2"
+                        assert response.read(4) == b"wOF2"
+                try:
+                    urllib.request.urlopen(base + "/fonts/unknown.woff2", timeout=5)
+                except urllib.error.HTTPError as error:
+                    assert error.code == 404
+                else:
+                    raise AssertionError("Unknown font path must not be served")
                 assert request(base, "/config")["mode"] is None
                 settings = request(base, "/settings")
                 public_code = settings["publicCode"]

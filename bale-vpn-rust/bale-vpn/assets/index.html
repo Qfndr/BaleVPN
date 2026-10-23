@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BaleVPN</title>
 <style>
+  @font-face {font-family:Inter;src:url('/fonts/InterVariable.woff2') format('woff2');font-weight:100 900;font-display:swap;}
+  @font-face {font-family:Vazirmatn;src:url('/fonts/Vazirmatn.woff2') format('woff2');font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200F,U+FB50-FDFF,U+FE70-FEFF;}
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: system-ui, sans-serif;
@@ -193,6 +195,30 @@
   .entry.err {background:#ffe9eb;color:#9a1934;}
   html[data-theme="dark"] .entry.err {background:#401e2b;color:#ffb8c5;}
   @media(max-width:520px) {.dashboard {grid-template-columns:1fr;} .settings {margin:14px;} body {padding:10px;} }
+  html {font-size:var(--ui-size,16px);}
+  body,input,select,textarea,button {font-family:var(--ui-font,Inter,Vazirmatn,system-ui,sans-serif);}
+  body {line-height:1.65;}
+  .card {max-width:var(--card-width,760px);border-radius:var(--corner,20px);}
+  button {background:var(--brand,#1263d7);}
+  button:hover {filter:brightness(.94);background:var(--brand,#1263d7);}
+  .refresh-btn,.refresh-btn:hover {background:transparent;color:var(--accent);border-color:var(--accent);}
+  .header {background:var(--brand,#1263d7);}
+  html[data-gradient="on"] .header {background:linear-gradient(115deg,var(--brand,#1263d7),var(--brand-end,#137ba5));}
+  .conn-btn.disconnect,.conn-btn.disconnect:hover,#tunnelApply.disconnect,#tunnelApply.disconnect:hover {background:#c92c35;}
+  .logout-btn,.logout-btn:hover {background:transparent;color:#d62c3c;}
+  select {direction:inherit;text-align:start;}
+  input[type="color"] {height:42px;padding:4px;cursor:pointer;}
+  .appearance-preview {padding:14px;border:1px solid var(--line);border-inline-start:4px solid var(--accent);border-radius:10px;margin:14px 0;}
+  .appearance-preview strong,.appearance-preview span {display:block;}
+  .appearance-preview span {color:var(--muted);font-size:.85rem;}
+  input,select,textarea,button,.metric,.settings fieldset,.appearance-preview,#securityBadge {border-radius:min(var(--corner,20px),12px);}
+  html[data-density="compact"] .body {padding:16px;gap:10px;}
+  html[data-density="compact"] .settings fieldset {padding:10px;margin-top:10px;}
+  html[data-density="compact"] .metric {padding:8px;}
+  html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+  html[data-metrics="hidden"] .dashboard {display:none;}
+  [dir="rtl"] input:not([type="checkbox"]):not([type="color"]),.technical,#publicCode,#serverCode,#clientCodes,#diagnosticReport {direction:ltr;text-align:left;}
+  @media(prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important;transition:none!important;}}
 
 </style>
 </head>
@@ -214,7 +240,7 @@
   <!-- Mode picker — shown FIRST. Login + tunnel sections
        stay hidden until the user has picked a mode. -->
   <div class="body" id="modePicker" style="display:none">
-    <div class="entry info" style="margin:0 0 .85rem">
+    <div class="entry info" style="margin:0 0 .85rem" data-label="Pick a mode to get started.">
       Pick a mode to get started.
     </div>
     <div style="display:flex; gap:.6rem">
@@ -230,7 +256,7 @@
       <label>Phone number</label>
       <div class="row">
         <input id="phoneInput" type="tel" placeholder="+98912…">
-        <button id="sendOtpBtn" class="conn-btn" style="white-space:nowrap">Send OTP</button>
+        <button id="sendOtpBtn" class="conn-btn" style="white-space:nowrap" data-label="Send OTP">Send OTP</button>
       </div>
       <div id="otpRow" style="display:none; margin-top:.6rem">
         <label>Verification code</label>
@@ -308,44 +334,65 @@
   <!-- Max simultaneous clients (server mode) -->
   <div id="maxClientsSection" style="display:none; margin-top:1rem">
     <div style="display:flex; align-items:center; gap:.5rem; font-size:.85rem">
-      <span style="opacity:.7">Max simultaneous clients:</span>
+      <span style="opacity:.7" data-label="Max simultaneous clients:">Max simultaneous clients:</span>
       <input id="maxClientsInput" type="number" min="1" max="253"
              style="width:5rem; padding:.25rem .4rem; font-family:inherit">
-      <button id="maxClientsApply" class="lim-btn" type="button" style="width:auto">Apply</button>
+      <button id="maxClientsApply" class="lim-btn" type="button" style="width:auto" data-label="Apply">Apply</button>
       <span id="maxClientsHint" style="opacity:.5; font-size:.8rem"></span>
     </div>
   </div>
 
   <!-- Pending admission requests (server mode) -->
   <div id="pendingSection" style="display:none; margin-top:1.2rem">
-    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7">Pending requests</div>
+    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7" data-label="Pending requests">Pending requests</div>
     <div id="pendingList"></div>
   </div>
 
   <!-- Connected clients (server mode) -->
   <div id="clientsSection" style="display:none; margin-top:1.2rem">
-    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7">Connected clients</div>
+    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7" data-label="Connected clients">Connected clients</div>
     <div id="clientsList"></div>
   </div>
 
   <!-- Admission allow-list (server mode) -->
   <div id="admissionSection" style="display:none; margin-top:1.2rem">
-    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7">Allowed callers</div>
+    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7" data-label="Allowed callers">Allowed callers</div>
     <div id="admissionList"></div>
   </div>
 
   <!-- Blacklist (server mode) -->
   <div id="blacklistSection" style="display:none; margin-top:1.2rem">
-    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7">Blocked callers</div>
+    <div style="font-weight:600; font-size:.9rem; margin-bottom:.5rem; opacity:.7" data-label="Blocked callers">Blocked callers</div>
     <div id="blacklistList"></div>
   </div>
 
 <details class="settings" id="settingsPanel">
  <summary data-label="Security, performance and appearance">Security, performance and appearance</summary>
+ <fieldset id="appearancePanel"><legend data-label="Personalize your workspace">Personalize your workspace</legend>
  <div class="preferences-row">
-  <label><span data-label="Language">Language</span><select id="languageSelect"><option value="en">English</option><option value="fa">فارسی</option></select></label>
-  <label><span data-label="Appearance">Appearance</span><select id="themeSelect"><option value="light">Light / روشن</option><option value="dark">Dark / تیره</option></select></label>
+  <label><span data-label="Language">Language</span><select id="languageSelect"><option value="en">English</option><option value="fa">فارسی</option><option value="auto" data-label="Device language">Device language</option></select></label>
+  <label><span data-label="Appearance">Appearance</span><select id="themeSelect"><option value="system" data-label="Follow system">Follow system</option><option value="light" data-label="Light">Light</option><option value="dark" data-label="Dark">Dark</option></select></label>
  </div>
+ <div class="preferences-row">
+  <label><span data-label="Color palette">Color palette</span><select id="paletteSelect"><option value="ocean" data-label="Ocean blue">Ocean blue</option><option value="teal" data-label="Emerald teal">Emerald teal</option><option value="violet" data-label="Violet">Violet</option><option value="rose" data-label="Rose">Rose</option><option value="amber" data-label="Warm amber">Warm amber</option><option value="custom" data-label="Custom color">Custom color</option></select></label>
+  <label><span data-label="Custom color">Custom color</span><input type="color" id="accentColor" value="#1263d7"></label>
+ </div>
+ <div class="preferences-row">
+  <label><span data-label="Typeface">Typeface</span><select id="fontSelect"><option value="modern" data-label="Vazirmatn + Inter">Vazirmatn + Inter</option><option value="system" data-label="System fonts">System fonts</option></select></label>
+  <label><span data-label="Text size">Text size</span><select id="textSize"><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="120">120%</option></select></label>
+ </div>
+ <div class="preferences-row">
+  <label><span data-label="Panel width">Panel width</span><select id="panelWidth"><option value="compact" data-label="Narrow">Narrow</option><option value="standard" data-label="Standard">Standard</option><option value="wide" data-label="Wide">Wide</option></select></label>
+  <label><span data-label="Spacing">Spacing</span><select id="densitySelect"><option value="comfortable" data-label="Comfortable">Comfortable</option><option value="compact" data-label="Compact">Compact</option></select></label>
+  <label><span data-label="Corners">Corners</span><select id="cornerSelect"><option value="20" data-label="Rounded">Rounded</option><option value="10" data-label="Soft">Soft</option><option value="0" data-label="Square">Square</option></select></label>
+ </div>
+ <label><input type="checkbox" id="gradientHeader" checked><span data-label="Gradient header">Gradient header</span></label>
+ <label><input type="checkbox" id="showMetrics" checked><span data-label="Show connection metrics">Show connection metrics</span></label>
+ <label><input type="checkbox" id="reduceMotion"><span data-label="Reduce motion">Reduce motion</span></label>
+ <div class="appearance-preview"><strong>اتصال امن، ظاهر دلخواه</strong><span>Secure connection. Your own style. · ۱۲۳۴۵ · 12345</span></div>
+ <p data-label="Appearance saves automatically on this device without interrupting the connection.">Appearance saves automatically on this device without interrupting the connection.</p>
+ <button class="refresh-btn" id="resetAppearance" data-label="Reset appearance">Reset appearance</button>
+ </fieldset>
  <fieldset><legend data-label="Secure pairing">Secure pairing</legend>
   <label><input type="checkbox" id="secureMode" checked><span data-label="Require verified encryption">Require verified encryption</span></label>
   <p data-label="Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.">Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.</p>
@@ -358,7 +405,7 @@
   <p data-label="Turning verified encryption off enables legacy compatibility and permits relay impersonation.">Turning verified encryption off enables legacy compatibility and permits relay impersonation.</p>
  </fieldset>
  <fieldset><legend data-label="Performance and connection limits">Performance and connection limits</legend>
-  <label for="performanceProfile" data-label="Performance profile">Performance profile</label><select id="performanceProfile"><option value="balanced">Balanced — current transfer windows</option><option value="throughput">Throughput — larger windows, more memory</option></select>
+  <label for="performanceProfile" data-label="Performance profile">Performance profile</label><select id="performanceProfile"><option value="balanced" data-label="Balanced — current transfer windows">Balanced — current transfer windows</option><option value="throughput" data-label="Throughput — larger windows, more memory">Throughput — larger windows, more memory</option></select>
   <p data-label="No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.">No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.</p>
   <div class="preferences-row"><label><span data-label="Minimum seconds between calls">Minimum seconds between calls</span><input id="retryDelay" type="number" min="5" max="120" value="10"></label><label><span data-label="Maximum calls per minute">Maximum calls per minute</span><input id="callBudget" type="number" min="1" max="6" value="3"></label></div>
   <p data-label="These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.">These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.</p>
@@ -387,6 +434,7 @@ function populatePeerSelect(sel, peers, prevVal) {
 // ── Phone / OTP auth flow ──────────────────────────────────────────────────────
 
 let _txHash = '';
+function authText(en,fa) {return document.documentElement?.lang==='fa'?fa:en;}
 let _isRegistered = false;
 let _otpRetryTimer = null;
 
@@ -402,7 +450,7 @@ function scheduleOtpRetry(button, seconds) {
   let remaining = Number.isFinite(seconds) ? Math.max(0, Math.min(86400, Math.ceil(seconds))) : 120;
   const update = () => {
     button.disabled = remaining > 0;
-    button.textContent = remaining > 0 ? 'Retry in ' + remaining + 's' : 'Send OTP';
+    button.textContent = remaining > 0 ? authText('Retry in ','تلاش مجدد پس از ') + remaining + authText('s',' ثانیه') : authText('Send OTP','ارسال کد');
     if (remaining <= 0) { clearInterval(_otpRetryTimer); _otpRetryTimer = null; }
     remaining--;
   };
@@ -414,7 +462,8 @@ function showAuthStatus(msg, cls) {
   const el = document.getElementById('authStatus');
   el.style.display = msg ? '' : 'none';
   el.className = 'entry ' + (cls || 'info');
-  el.textContent = msg;
+  const messages={'Sending…':'در حال درخواست کد…','Verifying…':'در حال بررسی کد…','Logging in…':'در حال ورود…','Creating account…':'در حال ساخت حساب…','Account created — logging in…':'حساب ساخته شد؛ در حال ورود…','New user — enter your name to register.':'برای ثبت‌نام نام خود را وارد کنید.','This code has expired. Request a new code when the retry timer finishes.':'این کد منقضی شده است؛ پس از پایان شمارش، کد جدید بگیرید.','Incorrect code. Check the latest code you received and try again.':'کد اشتباه است؛ آخرین کد دریافتی را بررسی کنید.'};
+  el.textContent = authText(msg,messages[msg]||msg);
 }
 
 function showAuthFailure(error) {
@@ -1289,6 +1338,10 @@ document.getElementById('tunnelPeer').addEventListener('change', saveConfig);
 
 
 const translations={
+"Send OTP":"ارسال کد","Balanced — current transfer windows":"متعادل — پنجره‌های فعلی انتقال","Throughput — larger windows, more memory":"توان بیشتر — پنجرهٔ بزرگ‌تر و حافظهٔ بیشتر","Pending requests":"درخواست‌های منتظر","Connected clients":"کلاینت‌های متصل","Allowed callers":"حساب‌های مجاز","Blocked callers":"حساب‌های مسدود","Pick a mode to get started.":"برای شروع نقش دستگاه را انتخاب کنید.","Server mode: relay internet connections and auto-answer incoming calls (LiveKit WebRTC tunnel).":"حالت سرور: پذیرش اتصال کلاینت‌ها و انتقال اینترنت از طریق تونل WebRTC.","Max simultaneous clients:":"حداکثر کلاینت هم‌زمان:","Apply":"اعمال","Allow Bale calls":"مجاز کردن تماس بله","Name":"نام","Create account":"ساخت حساب",
+
+"Personalize your workspace":"شخصی‌سازی محیط","Device language":"زبان دستگاه","Follow system":"هماهنگ با سیستم","Light":"روشن","Dark":"تیره","Color palette":"پالت رنگ","Ocean blue":"آبی اقیانوسی","Emerald teal":"سبز زمردی","Violet":"بنفش","Rose":"صورتی","Warm amber":"کهربایی","Custom color":"رنگ دلخواه","Typeface":"فونت","Vazirmatn + Inter":"وزیرمتن + Inter","System fonts":"فونت سیستم","Text size":"اندازهٔ متن","Panel width":"عرض پنل","Narrow":"باریک","Standard":"استاندارد","Wide":"عریض","Spacing":"فاصله‌ها","Comfortable":"راحت","Compact":"فشرده","Corners":"گوشه‌ها","Rounded":"گرد","Soft":"نیمه‌گرد","Square":"مربعی","Gradient header":"سربرگ با طیف رنگ","Show connection metrics":"نمایش آمار اتصال","Reduce motion":"کاهش حرکت‌ها","Reset appearance":"بازنشانی ظاهر","Appearance saves automatically on this device without interrupting the connection.":"تنظیمات ظاهری خودکار روی همین دستگاه ذخیره می‌شوند و اتصال را قطع نمی‌کنند.",
+
  'Client — relay my traffic through a peer':'کلاینت — اتصال از طریق سرور','Server — accept calls and relay for them':'سرور — پذیرش اتصال کلاینت‌ها','↺ Refresh':'بازخوانی','↻ Refresh':'بازخوانی','Connection':'اتصال','Phone number':'شماره تلفن','Verification code':'کد تأیید','Or paste token manually':'یا توکن را دستی وارد کنید','Server peer':'حساب سرور','SOCKS5 port':'پورت SOCKS5','Find peer by phone number':'پیدا کردن حساب با شماره تلفن','Login':'ورود','Logout':'خروج از حساب','Verify':'تأیید','Search':'جست‌وجو','Download':'دریافت','Upload':'ارسال','RTT / packet loss':'زمان رفت‌وبرگشت / افت بسته',
  'Security, performance and appearance':'امنیت، سرعت و ظاهر','Language':'زبان','Appearance':'ظاهر',
  'Secure pairing':'جفت‌سازی امن','Require verified encryption':'رمزگذاری با تأیید هویت الزامی باشد',
@@ -1302,13 +1355,42 @@ const translations={
  'No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.':'فشرده‌سازی یا رمزگذاری اضافی روی بسته‌ها انجام نمی‌شود. تغییر تنظیمات پس از قطع اتصال و برای اتصال بعدی اعمال می‌شود.',
  'These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.':'این‌ها محدودیت‌های محافظتی همین برنامه‌اند؛ سهمیهٔ بله یا تضمین ضدبن نیستند. فرادادهٔ تماس برای بله قابل مشاهده است.'
 };
+const appearanceDefaults={language:'en',theme:'system',palette:'ocean',accent:'#1263d7',font:'modern',size:'100',width:'standard',density:'comfortable',corners:'20',gradient:true,metrics:true,motion:false};
+const appearanceChoices={language:['en','fa','auto'],theme:['light','dark','system'],palette:['ocean','teal','violet','rose','amber','custom'],font:['modern','system'],size:['90','100','110','120'],width:['compact','standard','wide'],density:['comfortable','compact'],corners:['0','10','20']};
+const appearanceFields={language:'languageSelect',theme:'themeSelect',palette:'paletteSelect',accent:'accentColor',font:'fontSelect',size:'textSize',width:'panelWidth',density:'densitySelect',corners:'cornerSelect',gradient:'gradientHeader',metrics:'showMetrics',motion:'reduceMotion'};
+function normalizeAppearance(value) {
+ const clean={...appearanceDefaults};
+ if(!value || typeof value!=='object' || Array.isArray(value))return clean;
+ for(const [key,choices] of Object.entries(appearanceChoices))if(choices.includes(value[key]))clean[key]=value[key];
+ if(typeof value.accent==='string' && /^#[0-9a-f]{6}$/i.test(value.accent))clean.accent=value.accent;
+ for(const key of ['gradient','metrics','motion'])if(typeof value[key]==='boolean')clean[key]=value[key];
+ return clean;
+}
+function fillAppearance(value) {
+ const clean=normalizeAppearance(value);
+ for(const [key,id] of Object.entries(appearanceFields)){const field=document.getElementById(id);if(typeof clean[key]==='boolean')field.checked=clean[key];else field.value=clean[key];}
+}
+const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
 function applyAppearance() {
- const language=document.getElementById('languageSelect').value;
- document.documentElement.lang=language;document.documentElement.dir=language==='fa'?'rtl':'ltr';
- document.documentElement.dataset.theme=document.getElementById('themeSelect').value;
+ const raw={};for(const [key,id] of Object.entries(appearanceFields)){const field=document.getElementById(id);raw[key]=field.type==='checkbox'?field.checked:field.value;}
+ const p=normalizeAppearance(raw),root=document.documentElement;
+ const language=p.language==='auto'?((navigator.language||'en').startsWith('fa')?'fa':'en'):p.language;
+ root.lang=language;root.dir=language==='fa'?'rtl':'ltr';
+ const dark=p.theme==='dark'||(p.theme==='system'&&systemTheme.matches);
+ root.dataset.theme=dark?'dark':'light';root.dataset.density=p.density;root.dataset.motion=p.motion?'reduced':'normal';root.dataset.gradient=p.gradient?'on':'off';root.dataset.metrics=p.metrics?'visible':'hidden';
+ const palettes={ocean:'#1263d7',teal:'#087f76',violet:'#7240c4',rose:'#ba325f',amber:'#946000'};
+ const color=p.palette==='custom'?p.accent:palettes[p.palette];
+ const rgb=color.slice(1).match(/../g).map(v=>parseInt(v,16));
+ const luminance=c=>c.map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+ let brand=[...rgb];while(luminance(brand)>.183)brand=brand.map(v=>Math.floor(v*.9));
+ const css=c=>'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+ root.style.setProperty('--brand',css(brand));root.style.setProperty('--brand-end',css(brand.map((v,i)=>Math.min(255,v+(i===2?45:15)))));
+ root.style.setProperty('--accent',dark?css(rgb.map(v=>v+(255-v)*.65)):css(brand));
+ root.style.setProperty('--ui-size',(16*Number(p.size)/100)+'px');root.style.setProperty('--card-width',({compact:560,standard:760,wide:1000}[p.width])+'px');root.style.setProperty('--corner',p.corners+'px');
+ root.style.setProperty('--ui-font',p.font==='modern'?'Inter,Vazirmatn,system-ui,sans-serif':'system-ui,sans-serif');
  for (const element of document.querySelectorAll('label,button')) {if(element.children.length===0 && translations[element.textContent] && !element.dataset.label)element.dataset.label=element.textContent;}
- for (const element of document.querySelectorAll('[data-label]')) { const en=element.dataset.label;element.textContent=language==='fa'?(translations[en]||en):en; }
- try {localStorage.setItem('bale_appearance',JSON.stringify({language,theme:document.documentElement.dataset.theme}));}catch{}
+ for (const element of document.querySelectorAll('[data-label]')) {const en=element.dataset.label;element.textContent=language==='fa'?(translations[en]||en):en;}
+ try {localStorage.setItem('bale_appearance',JSON.stringify(p));}catch{}
  if (_state) applyState();
 }
 async function loadSettings() {
@@ -1342,8 +1424,11 @@ document.getElementById('showDiagnostics').onclick=async()=>{
  try {const r=await fetch('/diagnostics');const d=await r.json();const box=document.getElementById('diagnosticReport');box.value=JSON.stringify(d,null,2);box.hidden=false;box.select();}
  catch {document.getElementById('settingsFeedback').textContent='Could not load diagnostic report';}
 };
-try {const saved=JSON.parse(localStorage.getItem('bale_appearance')||'{}');document.getElementById('languageSelect').value=saved.language||'en';document.getElementById('themeSelect').value=saved.theme||'light';}catch{}
-document.getElementById('languageSelect').onchange=applyAppearance;document.getElementById('themeSelect').onchange=applyAppearance;
+try {fillAppearance(JSON.parse(localStorage.getItem('bale_appearance')||'{}'));}catch{fillAppearance(appearanceDefaults);}
+for(const id of Object.values(appearanceFields))document.getElementById(id).addEventListener('change',applyAppearance);
+document.getElementById('accentColor').addEventListener('input',()=>{document.getElementById('paletteSelect').value='custom';applyAppearance();});
+document.getElementById('resetAppearance').onclick=()=>{fillAppearance(appearanceDefaults);applyAppearance();};
+if(systemTheme.addEventListener)systemTheme.addEventListener('change',()=>{if(document.getElementById('themeSelect').value==='system')applyAppearance();});
 applyAppearance();loadSettings();
 
 setInterval(pollState, 2000);

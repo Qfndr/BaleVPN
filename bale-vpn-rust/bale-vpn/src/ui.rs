@@ -35,6 +35,7 @@ use tower_http::trace::TraceLayer;
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/",              get(index))
+        .route("/fonts/:name", get(font))
         .route("/config",        get(get_config).post(set_config))
         .route("/settings",      get(get_settings).post(set_settings))
         .route("/diagnostics",   get(diagnostics))
@@ -151,6 +152,18 @@ pub async fn serve(state: Arc<AppState>, listener: tokio::net::TcpListener) -> s
 // /auth/*, /state, /peers, /connect, /tunnel/*, /server/* call;
 // the URL surface in `router()` matches what the JS expects.
 const INDEX_HTML: &str = include_str!("../assets/index.html");
+
+// Fixed embedded assets only: no filesystem access or external font service.
+async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::response::Response {
+    let (bytes, content_type): (&'static [u8], &'static str) = match name.as_str() {
+        "Vazirmatn.woff2" => (include_bytes!("../assets/fonts/Vazirmatn.woff2"), "font/woff2"),
+        "InterVariable.woff2" => (include_bytes!("../assets/fonts/InterVariable.woff2"), "font/woff2"),
+        "Vazirmatn-OFL.txt" => (include_bytes!("../assets/fonts/Vazirmatn-OFL.txt"), "text/plain; charset=utf-8"),
+        "Inter-LICENSE.txt" => (include_bytes!("../assets/fonts/Inter-LICENSE.txt"), "text/plain; charset=utf-8"),
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+    ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
+}
 
 async fn index() -> impl IntoResponse {
     (
