@@ -22,6 +22,7 @@ cargo test --manifest-path lktunnel-rust/Cargo.toml --workspace --locked --relea
 cargo test --manifest-path lk-signaling-rust/Cargo.toml --workspace --locked --release
 cargo test --manifest-path bale-signaling-rust/Cargo.toml --workspace --locked --release
 cargo test --manifest-path bale-vpn-rust/Cargo.toml --locked --no-default-features
+python scripts/test-production-transport.py -- --nocapture
 node --test scripts/test-ui-security.cjs
 
 cargo install cargo-audit --locked --no-default-features

@@ -64,6 +64,13 @@ async fn authenticated_carrier_roundtrip_and_throughput() {
     lktunnel::socks5_quic::set_ssrf_filter_enabled(false);
     let server = Identity::generate().unwrap();
     let client = Identity::generate().unwrap();
+    // Longer optional runs distinguish sustained throughput from the noisy
+    // sub-second scheduler/congestion warmup measured by the CI-sized default.
+    let mib = std::env::var("BALEVPN_BENCH_MIB")
+        .ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(16).clamp(4, 256);
+    let trials = std::env::var("BALEVPN_BENCH_TRIALS")
+        .ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(6).clamp(2, 30);
+    println!("BENCH payload_mib={mib} trials={trials} discarded_warmup=1");
     let mut results = vec![];
     for mode in [
         "legacy",
@@ -125,13 +132,13 @@ async fn authenticated_carrier_roundtrip_and_throughput() {
         stream.read_exact(&mut reply).await.unwrap();
         assert_eq!(reply[1], 0);
         let payload = Arc::new(
-            (0..16 * 1024 * 1024)
+            (0..mib * 1024 * 1024)
                 .map(|i| ((i * 31) ^ (i >> 5)) as u8)
                 .collect::<Vec<_>>(),
         );
         let (mut read, mut write) = stream.into_split();
         let mut samples = vec![];
-        for trial in 0..6 {
+        for trial in 0..trials {
             let start = std::time::Instant::now();
             let mut received = vec![0; payload.len()];
             let (sent, got) = tokio::time::timeout(Duration::from_secs(20), async {
