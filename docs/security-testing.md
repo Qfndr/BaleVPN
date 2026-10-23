@@ -32,5 +32,18 @@ done
 
 - Raw IP mode is not end-to-end encrypted against the SFU. QUIC uses self-signed certificates without peer identity verification; an active relay can impersonate peers. Use application TLS for confidentiality. The existing README describes this threat model.
 - Android LAN sharing is an unauthenticated proxy on the local network when explicitly enabled. Enable it only on a trusted network.
-- The Linux GTK3 GUI dependency chain still brings GLib 0.18 and older helper crates. RustSec informational warnings (including GLib VariantStrIter unsoundness and unmaintained crates) remain visible; the application does not directly call VariantStrIter. These warnings are not suppressed or represented as fixed.
+- The Linux GTK3 GUI dependency chain still brings GLib 0.18 and older helper crates. RustSec informational warnings (including GLib VariantStrIter unsoundness, the older GUI dependency chain's rand warning, and unmaintained crates) remain visible; the application does not directly call VariantStrIter. These warnings are not suppressed or represented as fixed.
 - Unit tests and CI builds do not replace a two-device test using actual Bale accounts, a physical Android device, or a review of Bale infrastructure. No third-party systems are penetration-tested by these checks.
+
+## Secret scanning
+
+Gitleaks 8.30.1 checks the tracked source snapshot. Its archive is verified against
+the published SHA-256 checksum before execution in CI. `.gitleaks.toml` allows only
+the published SDK's `vendor/livekit-api/src/test_token.txt` test fixture; this token
+is not used by the application. Production paths remain covered by default rules.
+
+The initial full-history scan reported 36 findings in historical extracted Bale
+web assets and earlier implementations. Inspection identified public application
+constants and PEM-format marker strings, rather than a confirmed leaked user
+credential. The history has not been rewritten, and third-party keys were not
+validated against external services.

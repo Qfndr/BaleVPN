@@ -1,0 +1,7 @@
+title = "BaleVPN secret scanning"
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Published LiveKit SDK JWT fixture; never used by the application"
+paths = ['''^vendor/livekit-api/src/test_token\.txt$''']
