@@ -4,6 +4,8 @@
 
 > English: [Rust application guide](rust-en.md)
 
+> برای سناریوی سرور خارج و کلاینت ویندوز، [راهنمای کامل مرحله‌به‌مرحله](linux-server-windows-client-fa.md) شامل SSH، ورود، پذیرش کلاینت، SOCKS5 و DNS، سرویس systemd، به‌روزرسانی و رفع خطاها را بخوانید.
+
 نسخهٔ Rust (`bale-vpn-rust/`) یک باینری تک‌فایلیِ **کلاینت یا سرور VPN** است که یک رابط HTTP داخلی (و در صورت دلخواه، یک پنجرهٔ دسکتاپ بومی) دارد. جایگزین نسخهٔ Node است — همان قالب پیکربندی روی دیسک، با امکانات بیشتر و بدون نیاز به Node.
 
 - باینری برای لینوکس، مک و ویندوز.
@@ -40,7 +42,7 @@ make build                                         # = cargo build --release
 ./bale-vpn-rust/target/release/bale-vpn            # پنجره را باز می‌کند
 ```
 
-ترابری اکنون کاملاً Rust است (`webrtc-rs` به‌همراه `livekit-api`/`livekit-protocol` از crates.io) — دیگر هیچ کرت vendor‌شده و هیچ مرحلهٔ پچی وجود ندارد، پس `make build` صرفاً `cargo build --release` است (یا مستقیماً `cd bale-vpn-rust && cargo build --release` را اجرا کنید).
+ترابری کاملاً Rust است (`webrtc-rs` به‌همراه `livekit-api`/`livekit-protocol`). مخزن یک نسخهٔ vendor‌شدهٔ `livekit-api` با اصلاح سازگاری دارد که Cargo آن را از طریق تنظیمات workspace انتخاب می‌کند؛ مرحلهٔ پچ دستی لازم نیست. جزئیات در [vendor/README.md](../vendor/README.md) آمده است. برای ساخت، `make build` یا مستقیماً `cd bale-vpn-rust && cargo build --release` را اجرا کنید.
 
 برای استقرارهای headless / سرور (باینری کوچک‌تر، بدون وابستگی tao/wry):
 
@@ -51,7 +53,7 @@ make build-headless
 
 ### اجرای باینری منتشرشده
 
-باینری ساخته‌شده را از صفحهٔ [Releases](../../../releases) مخزن دانلود کنید. هر نسخه برای هر سیستم‌عامل دو نوع دارد:
+باینری ساخته‌شده را از صفحهٔ [Releases](https://github.com/Qfndr/BaleVPN/releases) مخزن دانلود کنید. برای اصلاحاتی که هنوز منتشر نشده‌اند، از خروجی ساخت کد اصلاح‌شده استفاده کنید؛ ریلیز قبلی خودکار تغییر نمی‌کند. هر نسخه برای هر سیستم‌عامل دو نوع دارد:
 
 - `bale-vpn-gui-<os>-<arch>` — باینری پنجره‌دار دسکتاپ (با `--headless` می‌توان پنجره را رد کرد).
 - `bale-vpn-headless-<os>-<arch>` — فقط HTTP، کوچک‌تر، بدون وابستگی به webview سیستمی. مناسب استقرار سرور.
@@ -303,7 +305,7 @@ UI روی `http://localhost:<port>` در دسترس است. در بیلدهای 
 
 دو راه برای وارد کردن JWT `access_token`:
 
-۱. **OTP موبایل از UI** — شماره را وارد کنید، کد پیامکی را تایپ کنید؛ باینری کوکی را از مسیر استاندارد `web.bale.ai/set-cookie/?jwt=…` می‌گیرد و در `<binary-dir>/.bale-vpn_config.json` (mode 0600) ذخیره می‌کند. روش توصیه‌شده.
+۱. **OTP موبایل از UI** — شماره را وارد کنید و کانال دریافت کدی را که برنامه اعلام می‌کند بررسی کنید؛ ممکن است بله، Telegram یا SMS باشد. باینری توکن JWT یا کوکی تازهٔ پاسخ تأیید را مستقیماً می‌گیرد و در `<config-dir>/.bale-vpn_config.json` ذخیره می‌کند (روی Unix با مجوز 0600). درخواست جداگانهٔ `set-cookie` لازم نیست. اگر `--config-dir` تعیین نشده، مسیر تنظیمات کنار باینری است. روش توصیه‌شده؛ جزئیات در [راهنمای ورود](auth-protocol.md).
 
 ۲. **چسباندن مستقیم توکن** — کوکی `access_token` را از یک نشست لاگین‌شدهٔ `web.bale.ai` در Chrome (DevTools → Application → Cookies) کپی کنید و در تکست‌اریا روی UI بچسبانید.
 

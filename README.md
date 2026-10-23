@@ -18,6 +18,8 @@ There is no commercial relationship with Bale.
 >
 > **← [راهنمای نصب اندروید](docs/android-fa.md)**
 
+برای اجرای برنامه روی سرور لینوکس خارج از کشور و اتصال از ویندوز، [راهنمای کامل راه‌اندازی و رفع خطاها](docs/linux-server-windows-client-fa.md) را بخوانید؛ شامل ورود، SSH، اتصال، تنظیم SOCKS5 و DNS، اجرای دائمی و به‌روزرسانی است.
+
 این پروژه یک VPN نقطه‌به‌نقطه است که ترافیک IP را روی زیرساخت تماس صوتی [**بله**](https://bale.ai/)، پیام‌رسان ملی ایران، عبور می‌دهد. یک دستگاه نقش *سرور* را دارد (اینترنت می‌دهد) و دستگاه دیگر نقش *کلاینت* را (اینترنت می‌گیرد). برای سرورهای بله این ارتباط شبیه یک تماس صوتی طولانی بین دو مخاطب به نظر می‌رسد.
 
 هدف: وقتی یک نفر اینترنت سالم دارد و نفر دیگر نه، نفر دوم بدون هیچ سرور یا اشتراک اضافه‌ای می‌تواند ترافیکش را از طریق نفر اول رد کند. فقط کافی است هر دو طرف، هم در بله ثبت‌نام کرده باشند و هم یکدیگر را در فهرست مخاطبین داشته باشند.
@@ -135,6 +137,8 @@ The Rust server's forwarding mode is selectable at startup via `--nat-mode kerne
 ---
 
 ## Detailed guides
+
+For a Linux server and Windows client, see the [complete Persian walkthrough](docs/linux-server-windows-client-fa.md): file setup, SSH access to the server UI, login, peer approval, SOCKS5/DNS, systemd, updates, and troubleshooting.
 
 Per-platform setup, manuals, and screenshots:
 

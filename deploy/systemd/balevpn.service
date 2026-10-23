@@ -1,0 +1,19 @@
+[Unit]
+Description=BaleVPN userspace server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/balevpn
+UMask=0077
+ExecStartPre=/bin/mkdir -p /root/balevpn/data
+ExecStart=/root/balevpn/bale-vpn --headless --port 37127 --config-dir /root/balevpn/data server --nat-mode userspace
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -2,6 +2,8 @@
 
 > Persian / فارسی: [راهنمای نسخهٔ Rust](rust-fa.md)
 
+> Linux server + Windows client: [complete Persian walkthrough](linux-server-windows-client-fa.md), including SSH access, authentication, admission, SOCKS5/DNS, systemd, updates, and troubleshooting.
+
 The Rust application (`bale-vpn-rust/`) is a single-binary **VPN client or server** with an embedded HTTP UI (and an optional native desktop window). It replaces the Node application — same on-disk config layout, richer feature set, no Node runtime required.
 
 - Binary builds for Linux, macOS, and Windows.
@@ -38,7 +40,7 @@ make build                                         # = cargo build --release
 ./bale-vpn-rust/target/release/bale-vpn            # opens a window
 ```
 
-The transport is pure Rust (`webrtc-rs` + crates.io `livekit-api`/`livekit-protocol`) — no vendored crates and no patch step, so `make build` is just `cargo build --release` (or run `cd bale-vpn-rust && cargo build --release` directly).
+The transport is pure Rust (`webrtc-rs` + `livekit-api`/`livekit-protocol`). Cargo selects the vendored `livekit-api` compatibility fix through the workspace configuration; no manual patch step is needed. See [vendor/README.md](../vendor/README.md). Build with `make build` or run `cd bale-vpn-rust && cargo build --release` directly.
 
 For headless / server deployments (smaller binary, no tao/wry deps):
 
@@ -49,7 +51,7 @@ make build-headless
 
 ### Run from a release binary
 
-Download a prebuilt binary from the repository's [Releases](../../../releases) page. Each release ships two variants per OS:
+Download a prebuilt binary from the repository's [Releases](https://github.com/Qfndr/BaleVPN/releases) page. For fixes that have not been published, use a build of the corrected source; an existing release does not update automatically. Each release ships two variants per OS:
 
 - `bale-vpn-gui-<os>-<arch>` — windowed desktop binary (use `--headless` to skip the window if you want HTTP-only).
 - `bale-vpn-headless-<os>-<arch>` — HTTP-only, smaller, no system-webview dependencies. Right pick for server-only deployments.
@@ -222,7 +224,7 @@ The UI lives at `http://localhost:<port>`. On GUI builds it also opens automatic
 
 1. **Mode picker** — shown on first run when no mode is pinned via CLI. Pick **Client** or **Server**. The choice persists.
 
-2. **Sign in** — phone number → SMS code, or paste an `access_token` JWT cookie from `web.bale.ai`. The token is persisted server-side in `<binary-dir>/.bale-vpn_config.json` (mode 0600); the browser only ever sees a `tokenSet` boolean, never the JWT itself.
+2. **Sign in** — phone number → verification code using the delivery channel selected by Bale, or paste an `access_token` JWT cookie from `web.bale.ai`. The token is persisted server-side in `<config-dir>/.bale-vpn_config.json` (mode 0600 on Unix; the binary directory by default); the browser only ever sees a `tokenSet` boolean, never the JWT itself.
 
    <p align="center"><img src="screens/07-node-login.png" alt="Sign-in screen" width="640"></p>
 
@@ -300,7 +302,7 @@ After a failed dial (e.g., Bale's `InvalidPeer` response, server offline, etc.),
 
 Two ways to get an `access_token` JWT into the app:
 
-1. **Phone OTP via the UI** — enter your phone, type the SMS code; the binary fetches the cookie via the standard `web.bale.ai/set-cookie/?jwt=…` flow and persists it in `<binary-dir>/.bale-vpn_config.json` (mode 0600). Recommended.
+1. **Phone OTP via the UI** — enter your phone and check the delivery channel selected by Bale (for example Bale, Telegram, or SMS). The binary uses the JWT or freshly issued cookie from the authentication RPC directly; no separate `set-cookie` request is required. It persists the token in `<config-dir>/.bale-vpn_config.json` (mode 0600 on Unix; the binary directory when `--config-dir` is omitted). Recommended. See [authentication compatibility](auth-protocol.md).
 2. **Paste a token** — copy the `access_token` cookie from a logged-in `web.bale.ai` Chrome session (DevTools → Application → Cookies) and paste it into the textarea on the UI.
 
 WebSocket close code `4401` means the token expired; sign in again.
