@@ -18,7 +18,6 @@ codegen-units = 1
 strip         = "symbols"
 panic         = "abort"
 
-# No vendored-crate patch anymore — the libwebrtc transport is gone. The
-# `lktunnel` core (shared with this workspace) now rides `webrtc-rs` (pure
-# Rust) plus crates.io `livekit-api` (signal client; `sdk=js` via
-# `SignalSdkOptions`) and `livekit-protocol` (wire types).
+# Compatibility fix for signaling-only builds; see vendor/README.md.
+[patch.crates-io]
+livekit-api = { path = "../../vendor/livekit-api" }

@@ -34,7 +34,7 @@ webrtc      = "0.11"
 # cacerts as DER and need Android's TrustManager).
 # Only the signaling client is needed. Server-SDK defaults enable JWT/RSA
 # and webhooks, adding an unused RSA implementation with a timing advisory.
-livekit-api      = { version = "0.4", default-features = false, features = ["services-tokio", "signal-client-tokio", "rustls-tls-webpki-roots"] }
+livekit-api      = { version = "0.4", default-features = false, features = ["signal-client-tokio", "rustls-tls-webpki-roots"] }
 livekit-protocol = "0.7.7"
 # Async fns in `IncomingDecider` (manager's admission trait).
 async-trait = "0.1"

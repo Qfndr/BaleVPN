@@ -10,7 +10,7 @@ A reverse-engineering research project for the **Bale messenger** web app (`web.
 - **`bale-vpn-android/`** — Android app that runs as either VPN **client** (device-wide TUN via `VpnService`, optional LAN-facing SOCKS5) or VPN **server** (userspace NAT, no root). Mode-toggle in the app's main screen.
 
 Both apps consume the same Rust stack:
-- `lktunnel-rust/` — WebRTC transport on **`webrtc-rs`** (pure Rust, no libwebrtc) + QUIC channel + userspace NAT. Reuses crates.io `livekit-api` (signal client) + `livekit-protocol` (wire types); no vendored crates, no patches.
+- `lktunnel-rust/` — WebRTC transport on **`webrtc-rs`** (pure Rust, no libwebrtc) + QUIC channel + userspace NAT. Reuses crates.io `livekit-api` (signal client) + `livekit-protocol` (wire types); one signaling-only compatibility patch (see `vendor/README.md`).
 - `lk-signaling-rust/` — generic signaling trait
 - `bale-signaling-rust/` — Bale impl (WS client + RPCs + auth + contacts), single source of truth for the protocol
 

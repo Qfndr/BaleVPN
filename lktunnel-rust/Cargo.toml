@@ -27,8 +27,6 @@ lto           = "thin"
 codegen-units = 1
 panic         = "abort"
 
-# The libwebrtc carrier is gone — the transport now rides `webrtc-rs`
-# (pure Rust) via the `rtc` module in `lktunnel`, with the reused
-# crates.io `livekit-api` (signal client; `sdk=js` is set through
-# `SignalSdkOptions`, no fork needed) and `livekit-protocol` (wire
-# types). No vendored crates, no webrtc-sys/libwebrtc/livekit patch.
+# Compatibility fix for signaling-only builds; see vendor/README.md.
+[patch.crates-io]
+livekit-api = { path = "../vendor/livekit-api" }

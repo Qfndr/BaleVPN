@@ -25,6 +25,6 @@ lto           = "thin"
 codegen-units = 1
 panic         = "abort"
 
-# No vendored-crate patch — the libwebrtc transport is gone. Transitive
-# deps (via lktunnel) now use crates.io webrtc-rs + livekit-api +
-# livekit-protocol.
+# Compatibility fix for signaling-only builds; see vendor/README.md.
+[patch.crates-io]
+livekit-api = { path = "../vendor/livekit-api" }

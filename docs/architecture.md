@@ -91,7 +91,7 @@ Three "shared core" pure-Rust libraries do the actual work; the desktop binary a
 Edge details:
 
 - `bale-vpn-rust` depends on **all three** core crates: `lk-signaling` + `bale-signaling` + `lktunnel`.
-- `bale-signaling` depends only on `lk-signaling`. It has **no transport knowledge** — the lifecycle coupling is one-way: the `lktunnel` managers subscribe to the signaling impl's `TunnelHooks` (foreground, teardown, CallEnded fan-out) and push a single `manager_active` boolean back to gate the WS rule engine. The transport is pure Rust (`webrtc-rs` + crates.io `livekit-api`/`livekit-protocol`); no vendored crates, no `[patch.crates-io]`.
+- `bale-signaling` depends only on `lk-signaling`. It has **no transport knowledge** — the lifecycle coupling is one-way: the `lktunnel` managers subscribe to the signaling impl's `TunnelHooks` (foreground, teardown, CallEnded fan-out) and push a single `manager_active` boolean back to gate the WS rule engine. The transport is pure Rust (`webrtc-rs` + crates.io `livekit-api`/`livekit-protocol`); one signaling-only compatibility patch (see `vendor/README.md`).
 - `lktunnel` depends on `lk-signaling`. The `manager.rs` module wraps an `Arc<S: Signaling>` to construct `ClientTunnelManager` / `ServerTunnelManager` and the process-singleton `ActivationDriver`.
 - The Android JNI surface is a **single merged crate**, `lktunnel-jni`, depending on `bale-signaling` + `lktunnel` + `lk-signaling` + `jni-shared`. It produces one `.so` covering `Java_ai_bale_proxy_{LkTunnelNative, LkManagerNative, NativeJni, bale_BaleSignalingNative, bale_BaleAuthNative}_*`. The merge is deliberate — a per-crate split would static-link the shared transport (webrtc-rs + quinn + tokio) twice for no benefit.
 - `jni-shared` is consumed only by `lktunnel-jni`; it carries the generic `HandleRegistry<T>`, the shared tokio runtime, the JavaVM cache, and the async-JNI continuation bridge (`spawn_with_continuation` — Kotlin `suspend` functions back onto Rust futures without blocking an IO thread per call).
@@ -273,7 +273,7 @@ JNI handles are opaque `jlong` ids that index into the registry, so concurrent K
 
 ### Step 1 — Rust desktop binary (`bale-vpn-rust`)
 
-The transport is pure Rust now (`webrtc-rs` + crates.io `livekit-api`/`livekit-protocol`) — there's no vendored crate tree and no patch step, so a plain `cargo build` works. The Makefile targets are just convenience wrappers:
+The transport is pure Rust now (`webrtc-rs` + crates.io `livekit-api`/`livekit-protocol`) — a small checked-in LiveKit compatibility patch is applied automatically by Cargo (see `vendor/README.md`), so a plain `cargo build` works. The Makefile targets are just convenience wrappers:
 
 ```bash
 make build              # = cargo build --release          (GUI: tao + wry)
