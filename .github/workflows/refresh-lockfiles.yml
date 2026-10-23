@@ -1,9 +1,6 @@
 name: Refresh security lockfiles
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/security-maintenance]
-    paths: ['.github/workflows/refresh-lockfiles.yml']
 permissions:
   contents: read
 jobs:
