@@ -11,7 +11,7 @@ on:
         type: string
       build_run:
         description: Desktop build run with the exact same source commit
-        required: true
+        required: false
         type: string
       artifact:
         description: Platform artifact to recover
@@ -22,17 +22,24 @@ on:
           - bale-vpn-windows-x86_64
           - bale-vpn-macos-aarch64
           - bale-vpn-macos-x86_64
+      mode:
+        description: Reuse verified artifacts or rebuild Intel without cache
+        required: true
+        default: artifact
+        type: choice
+        options: [artifact, rebuild-intel]
 
 permissions:
   actions: read
   contents: write
 
 concurrency:
-  group: recover-release-${{ inputs.tag }}-${{ inputs.artifact }}
+  group: recover-release-${{ inputs.tag }}-${{ inputs.artifact }}-${{ inputs.mode }}
   cancel-in-progress: false
 
 jobs:
   publish:
+    if: inputs.mode == 'artifact'
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ inputs.tag }}
@@ -88,5 +95,54 @@ jobs:
             test -s "release-staging/bale-vpn-$variant-$platform"
           done
           sha256sum release-staging/*
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" release-staging/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  rebuild-intel:
+    if: inputs.mode == 'rebuild-intel'
+    runs-on: macos-26-intel
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+      - name: Verify release source and architecture
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(uname -m)" = x86_64
+          test "$(tr -d '\r\n' < VERSION)" = "${RELEASE_TAG#v}"
+          git show --no-patch --format='%H %s' HEAD
+      - name: Ensure rustup
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and verify native Intel binaries without cache
+        run: |
+          mkdir -p release-staging
+          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release
+          cp bale-vpn-rust/target/release/bale-vpn release-staging/bale-vpn-gui-macos-x86_64
+          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release --no-default-features
+          cp bale-vpn-rust/target/release/bale-vpn release-staging/bale-vpn-headless-macos-x86_64
+          for binary in release-staging/*; do
+            test "$(lipo -archs "$binary")" = x86_64
+            test "$("$binary" --version)" = "bale-vpn ${RELEASE_TAG#v}"
+          done
+          shasum -a 256 release-staging/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bale-vpn-macos-x86_64-rebuilt
+          path: release-staging/*
+          if-no-files-found: error
+      - name: Attach verified Intel binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"
           gh release upload "$RELEASE_TAG" release-staging/* --clobber --repo "$GITHUB_REPOSITORY"
