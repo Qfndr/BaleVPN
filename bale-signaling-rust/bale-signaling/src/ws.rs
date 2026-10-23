@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
-use tokio_tungstenite::{connect_async, tungstenite};
+use tokio_tungstenite::{connect_async_with_config, tungstenite};
 
 pub const WS_HOST:       &str = "next-ws.bale.ai";
 pub const WS_PATH:       &str = "/ws/";
@@ -546,7 +546,7 @@ pub(crate) enum UnmatchedRpcOutcome {
 // ─── WsClient (skeleton) ────────────────────────────────────────────────
 
 pub struct WsClient {
-    ready:             AtomicBool,
+    ready:             tokio::sync::watch::Sender<bool>,
     running:           AtomicBool,
 
     // ── Rule-engine inputs ────────────────────────────────────
@@ -624,7 +624,7 @@ pub struct WsClient {
 impl WsClient {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            ready:            AtomicBool::new(false),
+            ready:            tokio::sync::watch::channel(false).0,
             running:          AtomicBool::new(false),
             user_disconnect: AtomicBool::new(false),
             manager_active:  AtomicBool::new(true),
@@ -796,14 +796,26 @@ impl WsClient {
         // disconnect surfaces in the log too. This is the
         // single authoritative place ready flips, so logging
         // here captures every transition without scattering.
-        let was = self.ready.swap(ready, Ordering::Relaxed);
+        let was = self.ready.send_replace(ready);
         if was != ready {
             if ready { log::info!("WS: ready"); }
             else     { log::info!("WS: not ready"); }
         }
     }
 
-    pub fn is_ready(&self) -> bool { self.ready.load(Ordering::Relaxed) }
+    pub fn is_ready(&self) -> bool { *self.ready.borrow() }
+
+    /// Wake on the actual handshake rather than polling at a fixed interval.
+    /// Subscribing before checking the value also handles an already-ready WS.
+    pub async fn wait_until_ready(&self, timeout: Duration) -> bool {
+        let mut ready = self.ready.subscribe();
+        tokio::time::timeout(timeout, async {
+            loop {
+                if *ready.borrow_and_update() { return true; }
+                if ready.changed().await.is_err() { return false; }
+            }
+        }).await.unwrap_or(false)
+    }
 
     /// True while the run loop is spawned (active connect attempt
     /// or retry-backoff in flight) but the WS handshake hasn't
@@ -812,7 +824,7 @@ impl WsClient {
     /// done) and from app-level connect intent (which is
     /// `has_token && !user_disconnect`).
     pub fn is_attempting_connect(&self) -> bool {
-        self.running.load(Ordering::Relaxed) && !self.ready.load(Ordering::Relaxed)
+        self.running.load(Ordering::Relaxed) && !self.is_ready()
     }
 
     // ── Rule-engine setters ───────────────────────────────────
@@ -907,7 +919,7 @@ impl WsClient {
         if slot.as_ref().map_or(false, |h| h.is_finished()) {
             slot.take();
             self.running.store(false, Ordering::Relaxed);
-            self.ready.store(false, Ordering::Relaxed);
+            self.set_ready(false);
         }
 
         let want  = self.desired_up();
@@ -930,7 +942,7 @@ impl WsClient {
                     self.has_token(),
                 );
                 self.running.store(false, Ordering::Relaxed);
-                self.ready.store(false, Ordering::Relaxed);
+                self.set_ready(false);
                 if let Some(h) = slot.take() { h.abort(); }
                 drop(slot);
                 self.clear_sender();
@@ -1327,30 +1339,43 @@ async fn run_loop(ws: Arc<WsClient>, access_token: String) {
 
         if !ws.running.load(Ordering::Relaxed) { break; }
 
-        // 3 s → 30 s exponential backoff. Reset to 0 on
-        // successful handshake (see `attempt_session`).
-        let shift     = attempt.min(4);
-        let delay_sec = (3u64 << shift).min(30);
-        attempt = attempt.saturating_add(1);
-        log::info!("WS reconnecting in {delay_sec}s (attempt {attempt})");
-        tokio::time::sleep(Duration::from_secs(delay_sec)).await;
+        // A recovered session must not retain the long delay from a previous
+        // outage. Retry brief drops promptly, then back off during a real outage.
+        let delay = next_reconnect_delay(&mut attempt, was_ready);
+        log::info!("WS reconnecting in {}s (attempt {attempt})", delay.as_secs());
+        tokio::time::sleep(delay).await;
     }
     log::info!("WS run loop exiting");
+}
+
+fn next_reconnect_delay(attempt: &mut u32, was_ready: bool) -> Duration {
+    if was_ready { *attempt = 0; }
+    let delay = Duration::from_secs((1u64 << (*attempt).min(5)).min(30));
+    *attempt = attempt.saturating_add(1);
+    delay
 }
 
 /// One connection attempt. Connects, sends handshake, reads
 /// frames until the server closes or a terminal condition fires.
 async fn attempt_session(ws: &Arc<WsClient>, token: &str) -> SessionOutcome {
     let request = build_upgrade_request(token);
-    let (ws_stream, _resp) = match connect_async(request).await {
-        Ok(s)  => s,
-        Err(tungstenite::Error::Http(resp))
+    // Bound DNS/TCP/TLS/upgrade as one operation. TCP_NODELAY avoids delaying
+    // small signaling frames behind Nagle's algorithm.
+    let (ws_stream, _resp) = match tokio::time::timeout(
+        Duration::from_secs(15), connect_async_with_config(request, None, true),
+    ).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(tungstenite::Error::Http(resp)))
                 if matches!(resp.status().as_u16(), 401 | 403) => {
             log::warn!("WS upgrade rejected {} — token expired", resp.status());
             return SessionOutcome::TokenExpired;
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             log::warn!("WS connect failed: {e}");
+            return SessionOutcome::Disconnected;
+        }
+        Err(_) => {
+            log::warn!("WS connect timed out after 15s");
             return SessionOutcome::Disconnected;
         }
     };
@@ -1633,6 +1658,38 @@ fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reconnect_recovers_promptly_after_a_healthy_session() {
+        let mut attempt = 0;
+        let delays: Vec<_> = (0..8).map(|_| next_reconnect_delay(&mut attempt, false).as_secs()).collect();
+        assert_eq!(delays, vec![1, 2, 4, 8, 16, 30, 30, 30]);
+        assert_eq!(next_reconnect_delay(&mut attempt, true), Duration::from_secs(1));
+        assert_eq!(next_reconnect_delay(&mut attempt, false), Duration::from_secs(2));
+        attempt = u32::MAX;
+        assert_eq!(next_reconnect_delay(&mut attempt, false), Duration::from_secs(30));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ready_wait_wakes_all_waiters_without_a_poll_tick() {
+        let ws = WsClient::new();
+        let started = tokio::time::Instant::now();
+        let signal = ws.clone();
+        let setter = async move {
+            tokio::time::sleep(Duration::from_millis(7)).await;
+            signal.set_ready(true);
+        };
+        let (first, second, _) = tokio::join!(
+            ws.wait_until_ready(Duration::from_secs(10)),
+            ws.wait_until_ready(Duration::from_secs(10)), setter);
+        assert!(first && second);
+        assert_eq!(started.elapsed(), Duration::from_millis(7));
+        assert!(ws.wait_until_ready(Duration::from_secs(10)).await);
+        assert_eq!(started.elapsed(), Duration::from_millis(7));
+        ws.set_ready(false);
+        assert!(!ws.wait_until_ready(Duration::from_secs(10)).await);
+        assert_eq!(started.elapsed(), Duration::from_millis(10007));
+    }
 
     // ── encoders ──────────────────────────────────────────────
 

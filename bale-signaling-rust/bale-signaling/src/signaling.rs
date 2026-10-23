@@ -155,6 +155,10 @@ impl BaleSignaling {
     /// intentionally hasn't spawned the loop.
     pub fn ws_is_attempting_connect(&self) -> bool { self.ws.is_attempting_connect() }
 
+    pub async fn wait_until_connected(&self, timeout: std::time::Duration) -> bool {
+        self.ws.wait_until_ready(timeout).await
+    }
+
 
     /// Cache-hit-or-mint. The only sanctioned way to obtain a
     /// `PeerId` inside this impl — direct `PeerId::new(BalePeer

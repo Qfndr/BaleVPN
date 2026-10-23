@@ -33,6 +33,8 @@
 //! ways until either end closes the stream.
 
 use std::io;
+use std::collections::{HashSet, VecDeque};
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,6 +43,8 @@ use parking_lot::Mutex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::task::AbortHandle;
+use tokio::time::{Duration, Instant};
+use futures_util::{stream::FuturesUnordered, StreamExt};
 
 use crate::LkTunnel;
 use crate::quic_tunnel::QuicServer;
@@ -62,6 +66,11 @@ const REP_NETWORK_UNREACHABLE: u8 = 0x03;
 const REP_HOST_UNREACHABLE: u8 = 0x04;
 const REP_CONNECTION_REFUSED: u8 = 0x05;
 const REP_COMMAND_NOT_SUPPORTED: u8 = 0x07;
+const DNS_TIMEOUT: Duration = Duration::from_secs(10);
+const ADDRESS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const DESTINATION_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+const ADDRESS_FALLBACK_DELAY: Duration = Duration::from_millis(250);
+const MAX_PARALLEL_DIALS: usize = 4;
 
 /// Process-global SSRF filter toggle. Defaults to `true` in
 /// production. Integration tests that need to connect to a loopback
@@ -500,17 +509,17 @@ async fn handle_quic_stream(
     let target = read_target(&mut recv).await?;
     log::debug!("socks5/server: target {target}");
 
-    // Resolve.
-    let addr_result: io::Result<SocketAddr> = match &target {
-        Target::Ip(ip, port) => Ok(SocketAddr::new(*ip, *port)),
+    // Keep every DNS candidate. Previously only the first address was tried,
+    // so a broken IPv6 route (or one failed backend) made the whole domain fail.
+    let addr_result: io::Result<Vec<SocketAddr>> = match &target {
+        Target::Ip(ip, port) => Ok(vec![SocketAddr::new(*ip, *port)]),
         Target::Domain(name, port) => {
-            match tokio::net::lookup_host((name.as_str(), *port)).await {
-                Ok(iter) => iter.filter(|a| !ssrf_blocked(a.ip()))
-                    .next()
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied,
-                        "dns: no public address")),
-                Err(e) => Err(io::Error::new(io::ErrorKind::NotFound,
+            match tokio::time::timeout(DNS_TIMEOUT,
+                tokio::net::lookup_host((name.as_str(), *port))).await {
+                Ok(Ok(iter)) => Ok(iter.collect()),
+                Ok(Err(e)) => Err(io::Error::new(io::ErrorKind::NotFound,
                                              format!("dns: {e}"))),
+                Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, "dns: lookup timed out")),
             }
         }
     };
@@ -518,18 +527,7 @@ async fn handle_quic_stream(
     // Map any failure path to a SOCKS5 reply byte, send it, return.
     let connect_result: io::Result<(SocketAddr, TcpStream)> = match addr_result {
         Err(e) => Err(e),
-        Ok(addr) => {
-            if ssrf_blocked(addr.ip()) {
-                log::warn!("socks5/server: refusing SSRF-prone target {addr}");
-                Err(io::Error::new(io::ErrorKind::PermissionDenied,
-                                   format!("blocked destination {addr}")))
-            } else {
-                match TcpStream::connect(addr).await {
-                    Ok(s)  => Ok((addr, s)),
-                    Err(e) => Err(e),
-                }
-            }
-        }
+        Ok(addresses) => connect_public_addresses(addresses, |addr| TcpStream::connect(addr)).await,
     };
 
     let (addr, tcp) = match connect_result {
@@ -561,6 +559,60 @@ async fn handle_quic_stream(
     };
     tokio::join!(to_host, from_host);
     Ok(())
+}
+
+/// Staggered, bounded address racing. Start the other IP family after 250ms
+/// instead of waiting for the OS TCP timeout. At most four sockets are in flight;
+/// losing futures (and any sockets they own) are dropped when a winner returns.
+async fn connect_public_addresses<T, F, Fut>(
+    addresses: Vec<SocketAddr>, mut connect: F,
+) -> io::Result<(SocketAddr, T)>
+where
+    F: FnMut(SocketAddr) -> Fut,
+    Fut: Future<Output = io::Result<T>>,
+{
+    let mut seen = HashSet::new();
+    let mut allowed = addresses.into_iter().filter(|addr|
+        !ssrf_blocked(addr.ip()) && seen.insert(*addr)).peekable();
+    let first_v6 = allowed.peek().ok_or_else(||
+        io::Error::new(io::ErrorKind::PermissionDenied, "no public destination address"))?.is_ipv6();
+    let (mut first, mut other): (VecDeque<_>, VecDeque<_>) = allowed
+        .partition(|addr| addr.is_ipv6() == first_v6);
+    let mut candidates = VecDeque::new();
+    while !first.is_empty() || !other.is_empty() {
+        if let Some(addr) = first.pop_front() { candidates.push_back(addr); }
+        if let Some(addr) = other.pop_front() { candidates.push_back(addr); }
+    }
+
+    tokio::time::timeout(DESTINATION_CONNECT_TIMEOUT, async {
+        let mut pending = FuturesUnordered::new();
+        let mut launch_at = Instant::now();
+        let mut last_error = io::Error::new(io::ErrorKind::NotConnected, "no reachable address");
+        loop {
+            if candidates.is_empty() && pending.is_empty() { return Err(last_error); }
+            tokio::select! {
+                biased;
+                Some((addr, result)) = pending.next(), if !pending.is_empty() => {
+                    match result {
+                        Ok(stream) => return Ok((addr, stream)),
+                        Err(error) => last_error = error,
+                    }
+                    // A refused address need not incur the fallback delay.
+                    launch_at = Instant::now();
+                }
+                _ = tokio::time::sleep_until(launch_at), if !candidates.is_empty() && pending.len() < MAX_PARALLEL_DIALS => {
+                    let addr = candidates.pop_front().unwrap();
+                    let dial = connect(addr);
+                    pending.push(async move {
+                        let result = tokio::time::timeout(ADDRESS_CONNECT_TIMEOUT, dial).await
+                            .unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "TCP connect timed out")));
+                        (addr, result)
+                    });
+                    launch_at = Instant::now() + ADDRESS_FALLBACK_DELAY;
+                }
+            }
+        }
+    }).await.unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::TimedOut, "destination connect timed out")))
 }
 
 // ── SOCKS5 protocol helpers ───────────────────────────────────────────
@@ -810,6 +862,103 @@ fn http_connect_reply(status: u8) -> &'static [u8] {
 mod tests {
     use super::*;
     use tokio::io::AsyncReadExt;
+
+    // All dials below are simulated. No requests are sent to these public IPs.
+    #[tokio::test(start_paused = true)]
+    async fn healthy_first_address_does_not_wait_for_the_fallback_timer() {
+        let mut attempts = 0;
+        let started = Instant::now();
+        let result = connect_public_addresses(vec!["1.1.1.1:443".parse().unwrap(), "8.8.8.8:443".parse().unwrap()], |_| {
+            attempts += 1;
+            std::future::ready(Ok(()))
+        }).await.unwrap();
+        assert_eq!(result.0.to_string(), "1.1.1.1:443");
+        assert_eq!(attempts, 1);
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn broken_ipv6_falls_back_to_ipv4_in_250ms_and_cancels_loser() {
+        let addresses: Vec<SocketAddr> = ["[2001:4860:4860::8888]:443", "[2001:4860:4860::8844]:443", "1.1.1.1:443"]
+            .iter().map(|a| a.parse().unwrap()).collect();
+        let attempted = Arc::new(Mutex::new(Vec::new()));
+        let active = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        struct Guard(Arc<std::sync::atomic::AtomicUsize>);
+        impl Drop for Guard { fn drop(&mut self) { self.0.fetch_sub(1, Ordering::SeqCst); } }
+        let started = Instant::now();
+        let result = connect_public_addresses(addresses, |addr| {
+            attempted.lock().push(addr);
+            let active = active.clone();
+            async move {
+                active.fetch_add(1, Ordering::SeqCst);
+                let _guard = Guard(active);
+                if addr.is_ipv6() { std::future::pending::<()>().await; }
+                Ok(())
+            }
+        }).await.unwrap();
+        assert!(result.0.is_ipv4());
+        assert_eq!(started.elapsed(), Duration::from_millis(250));
+        assert_eq!(attempted.lock().len(), 2);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refused_addresses_retry_immediately_and_duplicates_are_not_redialed() {
+        let addresses = vec!["1.1.1.1:443".parse().unwrap(), "1.1.1.1:443".parse().unwrap(), "8.8.8.8:443".parse().unwrap()];
+        let mut attempts = Vec::new();
+        let started = Instant::now();
+        let result = connect_public_addresses(addresses, |addr| {
+            attempts.push(addr);
+            std::future::ready(Err::<(), _>(io::Error::from(io::ErrorKind::ConnectionRefused)))
+        }).await;
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::ConnectionRefused);
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(started.elapsed(), Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn every_dns_candidate_is_filtered_before_any_dial() {
+        let blocked: Vec<SocketAddr> = ["127.0.0.1:80", "10.0.0.1:80", "[::ffff:169.254.169.254]:80", "[::1]:80"]
+            .iter().map(|a| a.parse().unwrap()).collect();
+        let error = connect_public_addresses(blocked.clone(), |_| {
+            panic!("private destination was dialed");
+            #[allow(unreachable_code)]
+            std::future::ready(Ok(()))
+        }).await.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        let mut mixed = blocked;
+        mixed.push("1.1.1.1:443".parse().unwrap());
+        let result = connect_public_addresses(mixed, |addr| {
+            assert_eq!(addr.to_string(), "1.1.1.1:443");
+            std::future::ready(Ok(()))
+        }).await.unwrap();
+        assert_eq!(result.0.to_string(), "1.1.1.1:443");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_dials_have_bounded_concurrency_and_total_deadline() {
+        use std::sync::atomic::AtomicUsize;
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        struct Guard(Arc<AtomicUsize>);
+        impl Drop for Guard { fn drop(&mut self) { self.0.fetch_sub(1, Ordering::SeqCst); } }
+        let addresses = (1..=20).map(|n| format!("1.1.1.{n}:443").parse().unwrap()).collect();
+        let started = Instant::now();
+        let error = connect_public_addresses(addresses, |_| {
+            let active = active.clone();
+            let peak = peak.clone();
+            async move {
+                let count = active.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(count, Ordering::SeqCst);
+                let _guard = Guard(active);
+                std::future::pending::<io::Result<()>>().await
+            }
+        }).await.unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(started.elapsed(), DESTINATION_CONNECT_TIMEOUT);
+        assert_eq!(peak.load(Ordering::SeqCst), 4);
+        assert_eq!(active.load(Ordering::SeqCst), 0);
+    }
 
     /// SOCKS5 GREET + REQUEST (IPv4) → parsed Target::Ip.
     #[tokio::test]

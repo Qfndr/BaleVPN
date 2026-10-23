@@ -203,14 +203,10 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
             tokio::time::sleep(Duration::from_secs(2)).await;
             continue 'outer;
         }
-        // Poll for handshake completion. Bounded so a wedged WS
-        // doesn't hold up the loop forever; we proceed anyway.
-        let mut tries = 0u32;
-        while !state.signaling.is_connected() && tries < 40 {
-            tokio::time::sleep(Duration::from_millis(250)).await;
-            tries += 1;
+        // Continue immediately when the handshake completes, without a poll tick.
+        if state.signaling.wait_until_connected(Duration::from_secs(10)).await {
+            log::info!("WS connected");
         }
-        if state.signaling.is_connected() { log::info!("WS connected"); }
         else { log::warn!("WS handshake didn't complete after 10s — continuing anyway"); }
 
         // 3. Pick a mode (waiting on `mode_tx` if unset). When
