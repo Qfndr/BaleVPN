@@ -89,13 +89,8 @@ def main():
                 if mode == "client":
                     # Even an explicit request cannot mutate this account's
                     # call privacy while the application is in Client mode.
-                    try:
-                        request(base, "/server/call-privacy", {})
-                    except urllib.error.HTTPError as error:
-                        reply = json.load(error)
-                        assert "Server mode" in reply["error"], reply
-                    else:
-                        raise AssertionError("Client mode accepted a call privacy change")
+                    reply = request(base, "/server/call-privacy", {})
+                    assert reply["ok"] is False and "Server mode" in reply["error"], reply
                 request(base, "/state")
                 invalid = request(base, "/auth/start", {"phone": "0"})
                 assert invalid["ok"] is False
