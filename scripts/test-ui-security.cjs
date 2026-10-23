@@ -35,6 +35,57 @@ for (const [poll, key] of [['pollClients', 'clientsList'], ['pollPending', 'pend
 }
 
 const authScript = script.slice(script.indexOf("let _txHash = ''"), script.indexOf('// ── LocalStorage persistence'));
+
+const stateScript = script.slice(script.indexOf('// State-driven UI.'), script.indexOf('// ── Login flow'));
+const modeScript = script.slice(script.indexOf("let _tunnelMode ="), script.indexOf('// Mode-picker buttons'));
+
+function stateHarness() {
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { style: {}, textContent: '', className: '' });
+    return elements.get(id);
+  };
+  get('clientFields').style.display = 'flex';
+  get('serverFields').style.display = 'none';
+  const noop = () => {};
+  const context = vm.createContext({ document: { getElementById: get }, window: {}, dot: get('dot'),
+    _busy: null, renderSelf: noop, loadPeers: noop, pollClients: noop, pollPending: noop,
+    pollAdmission: noop, pollBlacklist: noop, pollMaxClients: noop, fmtKB: String });
+  vm.runInContext(modeScript + '\n' + stateScript, context);
+  return { get, render: state => {
+    context.nextState = { mode: null, tokenSet: false, wsReady: false, ...state };
+    vm.runInContext('_state = nextState; applyState();', context);
+  } };
+}
+
+test('first-run Client selection and login reveal the server picker and Connect button', () => {
+  const h = stateHarness();
+  h.render({});
+  assert.equal(h.get('clientFields').style.display, 'none');
+  h.render({ mode: 'client' });
+  assert.equal(h.get('loginSection').style.display, '');
+  h.render({ mode: 'client', tokenSet: true, wsReady: true });
+  assert.equal(h.get('tunnelSection').style.display, '');
+  assert.equal(h.get('clientFields').style.display, 'flex');
+  assert.equal(h.get('serverFields').style.display, 'none');
+  assert.equal(h.get('tunnelApply').style.display, '');
+  assert.equal(h.get('tunnelApply').textContent, 'Connect');
+  assert.equal(h.get('tunnelBadge').textContent, '(client)');
+});
+
+test('logout and role changes restore the correct authenticated controls', () => {
+  const h = stateHarness();
+  for (const mode of ['server', 'client', 'server', 'client']) {
+    h.render({});
+    h.render({ mode, tokenSet: true, wsReady: true });
+    assert.equal(h.get('tunnelSection').style.display, '');
+    assert.equal(h.get('clientFields').style.display, mode === 'client' ? 'flex' : 'none');
+    assert.equal(h.get('serverFields').style.display, mode === 'server' ? '' : 'none');
+    assert.equal(h.get('tunnelApply').style.display, '');
+    assert.equal(h.get('tunnelBadge').textContent, '(' + mode + ')');
+  }
+});
+
 function authHarness(reply) {
   const elements = new Map();
   const timers = new Map();

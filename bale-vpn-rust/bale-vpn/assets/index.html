@@ -789,10 +789,13 @@ document.getElementById('peerSearch').addEventListener('keydown', e => {
 
 // Tracks the resolved mode from /tunnel/status — needed by the Activate handler
 // to decide between the client (peer-based) and server (sticky-flag) flow.
-let _tunnelMode = 'client';
+let _tunnelMode = null;
 
 function setTunnelMode(mode) {
-  _tunnelMode = mode || 'client';
+  // Keep "no role selected" distinct from Client. Otherwise the first
+  // null -> client transition looks unchanged to applyState(), leaving the
+  // peer picker and Connect button hidden after login.
+  _tunnelMode = mode || null;
   // Mode picker: shown only when no mode is selected; hides the
   // mode-specific fields and the Activate button until the user
   // picks. The status row + badge follow the same rule.
