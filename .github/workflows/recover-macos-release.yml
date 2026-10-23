@@ -1,6 +1,6 @@
 name: Recover macOS ARM release
 
-# Alternate native ARM image for temporary macos-latest capacity shortages.
+# Alternate native ARM images or an Intel cross build for ARM capacity shortages.
 # Builds the exact existing release tag, never a moving branch.
 on:
   workflow_dispatch:
@@ -10,17 +10,17 @@ on:
         required: true
         type: string
       runner:
-        description: Alternate native ARM runner image
+        description: Native ARM runner or Intel cross-build host
         required: true
         default: macos-15
         type: choice
-        options: [macos-15, macos-14]
+        options: [macos-15, macos-14, macos-26-intel]
 
 permissions:
   contents: write
 
 concurrency:
-  group: recover-macos-${{ inputs.tag }}
+  group: recover-macos-${{ inputs.tag }}-${{ inputs.runner }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +28,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     env:
       RELEASE_TAG: ${{ inputs.tag }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/bale-vpn-rust/target
     defaults:
       run:
         shell: bash
@@ -36,16 +37,24 @@ jobs:
         with:
           ref: refs/tags/${{ inputs.tag }}
 
-      - name: Verify release source and native architecture
+      - name: Verify release source
         run: |
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(uname -m)" = arm64
           test "$(cat VERSION | tr -d '\r\n')" = "${RELEASE_TAG#v}"
           git show --no-patch --format='%H %s' HEAD
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Ensure rustup on the build host
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Restore native ARM build cache
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Restore build-host cache
         uses: actions/cache@v4
         with:
           path: |
@@ -55,23 +64,28 @@ jobs:
           key: recover-macos-${{ inputs.runner }}-${{ hashFiles('bale-vpn-rust/Cargo.lock') }}
           restore-keys: |
             recover-macos-${{ inputs.runner }}-
-            bale-vpn-rust-macos-aarch64-
+            bale-vpn-rust-${{ inputs.runner == 'macos-26-intel' && 'macos-x86_64' || 'macos-aarch64' }}-
 
-      - name: Test signaling, desktop and browser regressions
+      - name: Test signaling, desktop and browser regressions on the build host
         run: |
           cargo test --manifest-path bale-signaling-rust/Cargo.toml --locked --release
           cargo test --manifest-path bale-vpn-rust/Cargo.toml --locked --release --no-default-features
           node --test scripts/test-ui-security.cjs
 
-      - name: Build and stage native GUI and headless binaries
+      - name: Build and verify ARM GUI and headless binaries
         run: |
           mkdir -p release-staging
-          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release
-          cp bale-vpn-rust/target/release/bale-vpn release-staging/bale-vpn-gui-macos-aarch64
-          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release --no-default-features
-          cp bale-vpn-rust/target/release/bale-vpn release-staging/bale-vpn-headless-macos-aarch64
+          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release --target aarch64-apple-darwin
+          cp bale-vpn-rust/target/aarch64-apple-darwin/release/bale-vpn release-staging/bale-vpn-gui-macos-aarch64
+          cargo build --manifest-path bale-vpn-rust/Cargo.toml --locked --release --no-default-features --target aarch64-apple-darwin
+          cp bale-vpn-rust/target/aarch64-apple-darwin/release/bale-vpn release-staging/bale-vpn-headless-macos-aarch64
           file release-staging/*
-          release-staging/bale-vpn-headless-macos-aarch64 --version
+          for binary in release-staging/*; do
+            test "$(lipo -archs "$binary")" = arm64
+          done
+          if [ "$(uname -m)" = arm64 ]; then
+            release-staging/bale-vpn-headless-macos-aarch64 --version
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
