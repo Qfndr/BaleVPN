@@ -153,6 +153,8 @@ jobs:
         run: |
           python ../scripts/smoke-desktop.py ../release-staging/bale-vpn-gui-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
           python ../scripts/smoke-desktop.py ../release-staging/bale-vpn-headless-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
+          python ../scripts/smoke-aggregate.py ../release-staging/bale-vpn-gui-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
+          python ../scripts/smoke-aggregate.py ../release-staging/bale-vpn-headless-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

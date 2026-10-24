@@ -1,0 +1,7 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+const html=fs.readFileSync(path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets/index.html'),'utf8');
+const source=html.slice(html.indexOf('function sampleAggregate('),html.indexOf('function renderAggregate('));
+function model(){const context=vm.createContext({_aggregatePrevious:null,_aggregateRates:{rx:0,tx:0}});vm.runInContext(source,context);return context;}
+function snapshot(rx,tx,elapsed=2000,instance=1,running=true){return {instance,running,elapsedMs:elapsed,paths:[{receivedBytes:rx,sentBytes:tx}]};}
+test('aggregate rate samples combine independent paths and use real elapsed time',()=>{const c=model();c.sampleAggregate(snapshot(100,20),0);c.sampleAggregate({instance:1,running:true,elapsedMs:4000,paths:[{receivedBytes:2100,sentBytes:220},{receivedBytes:2000,sentBytes:200}]},2000);assert.equal(c._aggregateRates.rx,2000);assert.equal(c._aggregateRates.tx,200);});
+test('aggregate restart, long status gaps and stopped pool cannot reuse old speeds',()=>{const c=model();c.sampleAggregate(snapshot(1000,100),0);c.sampleAggregate(snapshot(2000,200,4000),2000);assert.equal(c._aggregateRates.rx,500);c.sampleAggregate(snapshot(9000,900,8000,2),4000);assert.equal(c._aggregateRates.rx,0);c.sampleAggregate(snapshot(19000,1900,20000,2),20000);assert.equal(c._aggregateRates.rx,0);c.sampleAggregate(snapshot(19000,1900,20000,2,false),22000);assert.equal(c._aggregateRates.rx,0);});

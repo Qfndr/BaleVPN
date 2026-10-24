@@ -122,7 +122,7 @@ jobs:
       # the headless binary here keeps the compile-time coverage (axum /
       # signaling / NAT wiring) without dragging webkit into the test job.
       - name: UI injection regression tests
-        run: node --test scripts/test-ui-security.cjs scripts/test-ui-traffic.cjs scripts/test-ui-workspace.cjs
+        run: node --test scripts/test-ui-security.cjs scripts/test-ui-traffic.cjs scripts/test-ui-workspace.cjs scripts/test-ui-aggregate.cjs
 
       - name: cargo test (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust
@@ -131,6 +131,12 @@ jobs:
       - name: cargo build (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust
         run: cargo build -p bale-vpn --release --no-default-features
+
+      - name: Test multi-tunnel pool and managed profile lifecycle
+        run: |
+          binary_suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then binary_suffix=".exe"; fi
+          python scripts/smoke-aggregate.py "bale-vpn-rust/target/release/bale-vpn${binary_suffix}"
 
       # ── Signaling stack ──────────────────────────────────────
       #

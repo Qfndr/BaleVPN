@@ -18,6 +18,8 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    pub aggregate: crate::aggregate::Aggregate,
+    pub shutdown: tokio::sync::Notify,
     _directory_lock: std::fs::File,
     pub identity: Arc<lktunnel::security::Identity>,
     pub attempts: parking_lot::Mutex<crate::settings::Attempts>,
@@ -114,9 +116,12 @@ pub async fn run_with_startup(
     // server-side InvalidPeer error would tight-loop run_mode
     // because run_client immediately re-dials on next iteration.
     let mut cfg = cfg;
+    let managed_profile=cfg.managed_profile;
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        aggregate: crate::aggregate::Aggregate::new(persisted.aggregate.clone(), cfg.config_dir.clone(), cfg.port),
+        shutdown: tokio::sync::Notify::new(),
         _directory_lock: directory_lock,
         identity,
         attempts: Default::default(),
@@ -135,6 +140,17 @@ pub async fn run_with_startup(
         activation,
     });
 
+    // A supervisor holds this pipe open without sending data. OS EOF also
+    // handles a crashed/killed parent; no timer, network heartbeat or Bale RPC.
+    if managed_profile {
+        let child_state=state.clone();
+        std::thread::Builder::new().name("supervisor-pipe".into()).spawn(move||{
+            use std::io::Read;
+            let stdin=std::io::stdin();let mut input=stdin.lock();let mut byte=[0;1];
+            loop {match input.read(&mut byte){Ok(0)=>break,Ok(_)=>{},Err(e)if e.kind()==std::io::ErrorKind::Interrupted=>continue,Err(_)=>break}}
+            child_state.shutdown.notify_one();
+        })?;
+    }
     // HTTP UI runs for the whole daemon lifetime. Bound to
     // 127.0.0.1 so off-host access requires an explicit
     // ssh-tunnel — matches the Node app's policy.
@@ -172,10 +188,12 @@ pub async fn run_with_startup(
         // (sender dropped) — both mean "shut down", so we don't
         // care which.
         _ = shutdown                        => log::info!("shutdown channel signaled"),
+        _ = state.shutdown.notified()        => log::info!("managed shutdown requested"),
     }
     // Cancel the mode task in case it's still running; ignore
     // any panic/cancel error.
     mode_task.abort();
+    state.aggregate.shutdown().await;
 
     // Drain order: drop active per-mode sessions first so their
     // LK rooms send participant-leave / close, then disconnect

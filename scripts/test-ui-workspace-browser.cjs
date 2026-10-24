@@ -4,11 +4,14 @@
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');
 const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');
-const keys=['connection','traffic','clients','security','performance','appearance'];
+const keys=['connection','traffic','aggregate','clients','security','performance','appearance'];
 const traffic={sessionId:null,active:false,receivedBytes:0,sentBytes:0,sessionElapsedMs:0,processReceivedBytes:0,processSentBytes:0};
 let state={mode:null,tokenSet:false,wsReady:false,secureMode:true,traffic};
 let preferences={secureMode:true,serverCode:'',clientCodes:[],profile:'balanced',retryDelaySecs:10,maxCallsPerMinute:3};
 const writes=[];
+let poolConfig={listenPort:1088,policy:'leastConnections',paths:[{profileId:1,name:'Tunnel 1',port:1081,managementPort:37201,weight:1},{profileId:2,name:'Tunnel 2',port:1082,managementPort:37202,weight:1}]};
+let poolRunning=false;const workers=new Map();
+function poolStatus(){return {running:poolRunning,listenPort:poolConfig.listenPort,policy:poolConfig.policy,elapsedMs:1000,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0,completed:0,retryAfterSeconds:0,error:null}))};}
 const server=http.createServer(async(req,res)=>{
  try {
   if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(assets,'index.html')));return;}
@@ -16,7 +19,11 @@ const server=http.createServer(async(req,res)=>{
   let body='';for await(const chunk of req)body+=chunk;
   const data=body?JSON.parse(body):null;if(req.method==='POST')writes.push({url:req.url,data});
   let result={ok:true};
-  if(req.url==='/state')result=state;
+  if(req.url==='/state')result={...state,aggregate:poolStatus(),aggregateWorkers:[...workers.values()]};
+  else if(req.url==='/aggregate'){if(data)poolConfig=data;result={ok:true,config:poolConfig,status:poolStatus(),workers:[...workers.values()]};}
+  else if(req.url==='/aggregate/start')poolRunning=true;
+  else if(req.url==='/aggregate/stop')poolRunning=false;
+  else if(req.url==='/aggregate/worker')workers.set(data.slot,{slot:data.slot,running:data.start,managementPort:poolConfig.paths.find(p=>p.profileId===data.slot).managementPort});
   else if(req.url==='/settings'){if(data)preferences=data;result={ok:true,preferences,publicCode:'bvp1:fixture-public-code',fingerprint:'fixture',credentialStorage:'Fixture only'};}
   else if(req.url==='/peers')result={peers:[{id:'42',type:'0',name:'Test server'}]};
   else if(req.url==='/server/max-clients')result={maxClients:5,maxSupported:253};
@@ -93,7 +100,22 @@ const server=http.createServer(async(req,res)=>{
   await page.unroute('**/state');state={mode:null,tokenSet:false,wsReady:false,secureMode:true,traffic};await refresh();
   await tab('connection');assert.equal(await page.locator('#modePicker').isVisible(),true);assert.equal(await page.locator('#tunnelSection').isVisible(),false);
   assert.equal(new Set(await page.locator('[id]').evaluateAll(nodes=>nodes.map(node=>node.id))).size,await page.locator('[id]').count(),'Duplicate DOM IDs');
+  await tab('aggregate');await page.waitForFunction(()=>_aggregateLoaded);
+  assert.equal(await page.locator('.aggregate-path').count(),2);
+  await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
+  await page.locator('.aggregate-path').nth(0).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===1&&w.running));
+  await page.locator('.aggregate-path').nth(1).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===2&&w.running));
+  assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),false);
+  assert.equal(await page.locator('#aggregatePaths img').count(),0,'Configured names must remain text');
+  for(let i=0;i<2;i++){await page.locator('.aggregate-path').nth(i).locator('[data-action=stop]').click();await page.waitForFunction(()=>_aggregateBusy===false);}
+  await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
+  await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>_state.aggregate.running);assert.equal(await page.locator('#aggregatePort').isEnabled(),false);
+  await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>!_state.aggregate.running);
+  // Removing a row does not change the stable ID of another account/profile.
+  await page.locator('.aggregate-path').nth(0).locator('[data-action=remove]').click();assert.equal(await page.locator('.aggregate-path').nth(0).getAttribute('data-profile-id'),'2');
+  await page.locator('#aggregateAdd').click();assert.equal(await page.locator('.aggregate-path').nth(1).getAttribute('data-profile-id'),'1');
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await screenshot('aggregate-en-mobile');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log('PASS workspace browser: six tabs, RTL keyboard, preserved edits, no navigation writes, client/server/logout states, actionable failed Connect, stale status, 320/390/900/1280px, 120% text, themes, no external application requests. Fixtures only.');
+  console.log('PASS workspace browser: seven tabs, RTL keyboard, preserved edits, no navigation writes, client/server/logout states, actionable failed Connect, stale status, 320/390/900/1280px, 120% text, themes, two profile starts/stops, pool configuration/start/stop, stable account IDs, no external application requests. Fixtures only.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

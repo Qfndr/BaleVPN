@@ -15,6 +15,8 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod client;
+mod aggregate;
+mod workers;
 mod config;
 mod vault;
 mod settings;
@@ -48,6 +50,9 @@ struct Cli {
     /// On builds without the `gui` feature this flag is a no-op.
     #[arg(long, default_value_t = false)]
     headless: bool,
+    /// Internal: exit when the supervisor's stdin pipe closes.
+    #[arg(long, hide = true)]
+    managed_profile: bool,
 
     /// Config directory. Defaults to the directory of the binary.
     #[arg(long)]
@@ -142,6 +147,7 @@ fn main() {
     if let Some(dir) = cli.config_dir {
         resolved.config_dir = dir;
     }
+    resolved.managed_profile=cli.managed_profile;
 
     // GUI vs headless dispatch:
     //   - `gui` feature off:                  always headless

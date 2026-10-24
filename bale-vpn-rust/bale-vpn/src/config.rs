@@ -31,6 +31,8 @@ const CONFIG_FILENAME: &str = ".bale-vpn_config.json";
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default)]
+    pub aggregate: crate::aggregate::Config,
+    #[serde(default)]
     pub preferences: crate::settings::Preferences,
     // ── Node-app keys (preserved verbatim) ───────────────────
     /// Bale `access_token` cookie value. Empty / missing means
@@ -88,6 +90,7 @@ fn default_max_clients() -> u32    { 5 }
 impl Default for Config {
     fn default() -> Self {
         Self {
+            aggregate: Default::default(),
             preferences: Default::default(),
             token: String::new(), admission: Vec::new(), blacklist: Vec::new(),
             max_clients: default_max_clients(), mode: None, nat_mode: None,
@@ -144,6 +147,7 @@ impl Config {
 /// overrides. This is what the daemon actually operates on.
 #[derive(Debug, Clone)]
 pub struct Resolved {
+    pub managed_profile: bool,
     pub preferences: crate::settings::Preferences,
     /// `Some("client" | "server")`, or `None` until the user
     /// picks one in the UI. The daemon parks in `run_mode` when
@@ -187,6 +191,7 @@ impl Resolved {
         let config_dir = config_dir(None).unwrap_or_else(|_| PathBuf::from("."));
         Self {
             mode,
+            managed_profile: false,
             preferences: cfg.preferences.clone(),
             nat_mode,
             port: cli_port.unwrap_or(cfg.port),

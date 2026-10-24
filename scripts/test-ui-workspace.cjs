@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets/index.html'),'utf8');
 const code=html.slice(html.indexOf('// ── Workspace navigation'),html.indexOf('const dot        ='));
-const keys=['connection','traffic','clients','security','performance','appearance'];
+const keys=['connection','traffic','aggregate','clients','security','performance','appearance'];
 function harness(rtl=false){
  const elements=new Map(),focus={id:null};
  function get(id){if(!elements.has(id))elements.set(id,{id,hidden:false,dataset:{},textContent:'',value:'unsaved',listeners:{},attrs:{},setAttribute(key,value){this.attrs[key]=value;},getAttribute(key){return this.attrs[key];},querySelector(){return {textContent:this.id.replace('tab-','')};},focus(){focus.id=this.id;},addEventListener(event,handler){this.listeners[event]=handler;}});return elements.get(id);}

@@ -40,6 +40,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/settings",      get(get_settings).post(set_settings))
         .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
+        .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
+        .route("/shutdown", post(shutdown))
+        .route("/aggregate", get(get_aggregate).post(configure_aggregate))
+        .route("/aggregate/start", post(start_aggregate))
+        .route("/aggregate/stop", post(stop_aggregate))
+        .route("/aggregate/worker", post(aggregate_worker))
         .route("/connect",       post(connect))
         .route("/disconnect",    post(disconnect))
         .route("/logout",        post(logout))
@@ -152,6 +158,16 @@ pub async fn serve(state: Arc<AppState>, listener: tokio::net::TcpListener) -> s
 // /auth/*, /state, /peers, /connect, /tunnel/*, /server/* call;
 // the URL surface in `router()` matches what the JS expects.
 const INDEX_HTML: &str = include_str!("../assets/index.html");
+
+async fn shutdown(State(s):State<Arc<AppState>>)->Json<OkBody>{s.shutdown.notify_one();Json(OkBody{ok:true})}
+async fn get_aggregate(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(serde_json::json!({"config":s.aggregate.config(),"status":s.aggregate.snapshot(),"workers":s.aggregate.workers.snapshots()}))}
+async fn configure_aggregate(State(s):State<Arc<AppState>>,Json(config):Json<crate::aggregate::Config>)->Result<Json<OkBody>,ApiError>{s.aggregate.configure(config,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
+async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,ApiError>{s.aggregate.start().await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
+async fn stop_aggregate(State(s):State<Arc<AppState>>)->Json<OkBody>{s.aggregate.stop().await;Json(OkBody{ok:true})}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkerRequest {slot:usize,start:bool}
+async fn aggregate_worker(State(s):State<Arc<AppState>>,Json(request):Json<WorkerRequest>)->Result<Json<OkBody>,ApiError>{s.aggregate.worker(request.slot,request.start).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
 
 // Fixed embedded assets only: no filesystem access or external font service.
 async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::response::Response {
@@ -343,6 +359,8 @@ async fn set_config(
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct StateBody {
+    aggregate: crate::aggregate::Snapshot,
+    aggregate_workers: Vec<crate::workers::Snapshot>,
     secure_mode: bool,
     peer_authenticated: bool,
     retry_after_seconds: u64,
@@ -470,6 +488,8 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
     // way to render "Paused (in call)" instead of "Disconnected".
     let ws_paused = is_client && client_room_ready && !ws_ready;
     Json(StateBody {
+        aggregate: s.aggregate.snapshot(),
+        aggregate_workers: s.aggregate.workers.snapshots(),
         secure_mode: cfg.preferences.secure_mode,
         peer_authenticated: s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,
         retry_after_seconds: s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()),
