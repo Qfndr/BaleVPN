@@ -35,7 +35,11 @@ PY
         (root/'DESKTOP-README.txt').write_text('BaleVPN '+args.version+'\n\nWindows: open BaleVPN.exe or Start.vbs; no terminal is created.\nLinux: install GTK3, WebKitGTK 4.1 and Ayatana AppIndicator runtime packages, then run install-desktop.sh once to add a Terminal=false application-menu launcher.\nmacOS: open BaleVPN.app; data is kept in your user Application Support directory.\nClose-to-tray, start-hidden and always-on-top are in Personalization. Quit and disconnect fully exits. Opening the same application again restores its hidden window.\nThe headless server build is separate and does not need desktop dependencies.\n',encoding='utf-8')
         with zipfile.ZipFile(args.output,'w',zipfile.ZIP_DEFLATED) as archive:
             for file in sorted(root.rglob('*')):
-                if file.is_file():archive.write(file,file.relative_to(root).as_posix())
+                if file.is_file():
+                    name=file.relative_to(root).as_posix();entry=zipfile.ZipInfo.from_file(file,name);entry.create_system=3
+                    executable=name=='bale-vpn' or name.endswith('.sh') or name=='BaleVPN.app/Contents/MacOS/BaleVPN'
+                    entry.external_attr=(0o100755 if executable else 0o100644)<<16;entry.compress_type=zipfile.ZIP_DEFLATED
+                    archive.writestr(entry,file.read_bytes())
     print(args.output)
 
 if __name__=='__main__':main()
