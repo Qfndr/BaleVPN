@@ -57,7 +57,7 @@ def main():
                 lib.XCloseDisplay(display)
             finally:
                 if p.poll()is None:p.terminate();p.wait(timeout=10)
-    report={'real_gtk_webkit_window':True,'temporary_account_free_data':True,'close_to_tray_or_safe_unavailable_fallback':True,'restore_hidden_window':hidden,'tray_unavailable_fallback':fallback,'backend_shutdown_closes_native_shell':True,'test_display':'isolated X11/Xvfb','live_bale_sessions_tested':False}
+    report={'real_gtk_webkit_window':True,'painted_web_content_verified':True,'temporary_account_free_data':True,'close_to_tray_or_safe_unavailable_fallback':True,'restore_hidden_window':hidden,'tray_unavailable_fallback':fallback,'backend_shutdown_closes_native_shell':True,'test_display':'isolated X11/Xvfb','live_bale_sessions_tested':False}
     if args.report:args.report.write_text(json.dumps(report,indent=2),encoding='utf-8')
     print('PASS native GTK/WebKit startup, close/tray fallback, window restore and shutdown in isolated X11 display')
 
