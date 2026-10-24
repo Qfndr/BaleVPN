@@ -12,6 +12,8 @@ use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
 use wry::WebViewBuilder;
+#[cfg(target_os = "linux")]
+use {tao::platform::unix::WindowExtUnix, wry::WebViewBuilderExtUnix};
 static SHOW_WINDOW: std::sync::OnceLock<Box<dyn Fn() -> bool + Send + Sync>> =
     std::sync::OnceLock::new();
 pub fn request_show() -> bool {
@@ -240,7 +242,13 @@ pub fn run_gui(cfg: Resolved) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(downloads);
     let native_downloads = downloads.clone();
     let save_proxy = event_loop.create_proxy();
-    let webview = WebViewBuilder::new(&window)
+    #[cfg(not(target_os = "linux"))]
+    let builder = WebViewBuilder::new(&window);
+    // Embed in Tao's GTK container, avoiding a separate foreign X11 host.
+    // This also supports native Wayland desktops.
+    #[cfg(target_os = "linux")]
+    let builder = WebViewBuilder::new_gtk(window.default_vbox().ok_or("GTK container unavailable")?);
+    let webview = builder
         .with_url(&origin)
         .with_initialization_script("window.__BALE_DESKTOP__=true;")
         .with_navigation_handler(move |url| {

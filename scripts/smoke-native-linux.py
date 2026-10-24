@@ -29,8 +29,17 @@ def main():
                         except OSError:pass
                     time.sleep(.1)
                 else:raise RuntimeError('Isolated GTK application did not become ready')
-                window=int(windows[0]);time.sleep(.7)
-                if args.screenshot:subprocess.run(['import','-window',str(window),str(args.screenshot)],check=True)
+                window=int(windows[0]);shot=args.screenshot or work/'native.png'
+                # A mapped GTK window alone can still be a blank WebKit frame.
+                # Wait for actual painted content, including software rendering.
+                for _ in range(50):
+                    captured=subprocess.run(['import','-window','root',str(shot)],capture_output=True)
+                    if captured.returncode==0:
+                        colors=int(subprocess.check_output(['identify','-format','%k',str(shot)]))
+                        if colors>16:break
+                    if p.poll()is not None:raise RuntimeError((work/'native.log').read_text(errors='replace'))
+                    time.sleep(.2)
+                else:raise RuntimeError('GTK/WebKit window stayed blank: '+(work/'native.log').read_text(errors='replace'))
                 lib=ctypes.CDLL('libX11.so.6');lib.XOpenDisplay.restype=ctypes.c_void_p;lib.XInternAtom.argtypes=[ctypes.c_void_p,ctypes.c_char_p,ctypes.c_int];lib.XInternAtom.restype=ctypes.c_ulong;lib.XSendEvent.argtypes=[ctypes.c_void_p,ctypes.c_ulong,ctypes.c_int,ctypes.c_long,ctypes.POINTER(Event)];lib.XFlush.argtypes=[ctypes.c_void_p];lib.XCloseDisplay.argtypes=[ctypes.c_void_p]
                 display=lib.XOpenDisplay(None);assert display
                 event=Event();event.client.type=33;event.client.send_event=1;event.client.display=display;event.client.window=window;event.client.message_type=lib.XInternAtom(display,b'WM_PROTOCOLS',0);event.client.format=32;event.client.data.l[0]=lib.XInternAtom(display,b'WM_DELETE_WINDOW',0);lib.XSendEvent(display,window,0,0,ctypes.byref(event));lib.XFlush(display)
