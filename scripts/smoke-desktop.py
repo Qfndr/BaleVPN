@@ -118,11 +118,12 @@ def main():
                     "--config-dir", str(directory)], capture_output=True, timeout=10)
                 assert second.returncode != 0
                 assert request(base, "/settings")["publicCode"] == public_code
-                # GUI builds must refuse an occupied port before creating a
-                # webview or migrating credentials, not navigate to that port.
+                # Refuse an occupied port before migrating credentials. Run
+                # headless so a GUI build's user-facing startup error dialog
+                # does not wait for input in unattended smoke tests.
                 blocked = work / "blocked-start" / "data"
                 occupied_port = base.rsplit(":", 1)[1]
-                other = subprocess.run([str(binary), "--port", occupied_port,
+                other = subprocess.run([str(binary), "--headless", "--port", occupied_port,
                     "--config-dir", str(blocked)], capture_output=True, timeout=20)
                 assert other.returncode != 0
                 assert not blocked.exists()
