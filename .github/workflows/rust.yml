@@ -138,6 +138,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then binary_suffix=".exe"; fi
           python scripts/smoke-aggregate.py "bale-vpn-rust/target/release/bale-vpn${binary_suffix}"
           python scripts/smoke-backup.py "bale-vpn-rust/target/release/bale-vpn${binary_suffix}"
+          python scripts/smoke-auto-reconnect.py "bale-vpn-rust/target/release/bale-vpn${binary_suffix}"
 
       # ── Signaling stack ──────────────────────────────────────
       #
