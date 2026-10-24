@@ -6,7 +6,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--platform',choices=['Windows','Linux','macOS'],required=True);parser.add_argument('--binary',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--version');parser.add_argument('--headless',action='store_true');parser.add_argument('--target');parser.add_argument('--source-commit');args=parser.parse_args();args.output.parent.mkdir(parents=True,exist_ok=True)
     repo=Path(__file__).resolve().parent.parent
     args.version=args.version or(repo/'VERSION').read_text(encoding='utf-8').strip()
-    if not re.fullmatch(r'\d+\.\d+\.\d+',args.version):raise SystemExit('Invalid release version')
+    version_pattern=r'\d+\.\d+\.\d+'+(r'(?:-dev\.\d+)?' if args.platform in ('Windows','Linux') else '')
+    if not re.fullmatch(version_pattern,args.version):raise SystemExit('Invalid bundle version')
     source=args.source_commit or subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
     if not re.fullmatch(r'[0-9a-f]{40}',source):raise SystemExit('A full source commit is required')
     with tempfile.TemporaryDirectory(prefix='bale native bundle ') as tmp:
@@ -55,6 +56,7 @@ PY
         licenses=root/'third-party-licenses'/'webrtc-dtls';licenses.mkdir(parents=True)
         for name in ['LICENSE-MIT','LICENSE-APACHE']:shutil.copy2(repo/'vendor/webrtc-dtls'/name,licenses/name)
         info={'version':args.version,'source_commit':source,'target':args.target or args.platform+'-'+platform.machine(),'headless':args.headless,'binary':binary,'binary_sha256':hashlib.sha256((root/binary).read_bytes()).hexdigest()}
+        if '-dev.' in args.version:info['test_build']=True
         (root/'build-info.json').write_text(json.dumps(info,indent=2)+'\n',encoding='utf-8')
         (root/'README-FA.md').write_text('# BaleVPN '+args.version+'\n\nراهنمای ویندوز و لینوکس: docs/desktop-session-transfer-fa.md\nراهنمای کلاینت لینوکس: docs/linux-client-fa.md\nاتصال مجدد اختیاری هر حساب: docs/automatic-reconnect-fa.md\nراهنمای جفت‌سازی امن: docs/secure-pairing-fa.md\n\nفایل‌ها را کامل استخراج کنید و پوشهٔ دادهٔ قبلی را حفظ کنید. نسخهٔ گرافیکی ویندوز با BaleVPN.exe یا Start.vbs اجرا می‌شود. برای VPS لینوکس از بستهٔ headless استفاده کنید؛ start-client.sh کلاینت و start-server.sh سرور را صریح انتخاب می‌کنند. پنل را فقط از SSH باز کنید. در مک بستهٔ گرافیکی BaleVPN.app است. امضای Developer ID و notarization اپل برای این بسته ارائه نشده است.\n\nشمارهٔ نسخه، شناسهٔ سورس و هش فایل اجرایی در build-info.json قرار دارد. بررسی امنیتی و جزئیات اصلاح وابستگی DTLS در docs/security-dtls-2.6.2.md است.\n',encoding='utf-8')
         checks=''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.relative_to(root).as_posix()+'\n'for f in sorted(root.rglob('*'))if f.is_file())
