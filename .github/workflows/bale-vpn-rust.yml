@@ -36,7 +36,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os:           ubuntu-latest
+          # Build against an older glibc so the server binary also runs on
+          # Ubuntu 22.04/24.04 and Debian 12, rather than only the newest runner.
+          - os:           ubuntu-22.04
             artifact_os:  linux-x86_64
             bin_ext:      ''
           - os:           macos-latest
