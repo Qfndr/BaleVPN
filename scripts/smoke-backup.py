@@ -4,6 +4,8 @@ from pathlib import Path
 helpers=runpy.run_path(str(Path(__file__).with_name('smoke-desktop.py')))
 extra=runpy.run_path(str(Path(__file__).with_name('smoke-aggregate.py')))
 request,running=helpers['request'],helpers['running']
+invalid_phrase='wrong-passphrase-123'
+fixture_phrase='fixture-passphrase-123'
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('binary',type=Path);parser.add_argument('--report',type=Path);parser.add_argument('--archive-in',type=Path);args=parser.parse_args();binary=args.binary.resolve();password='backup-smoke-passphrase-123'
@@ -23,7 +25,7 @@ def main():
                 try:request(target,path,{'password':password,'archive':archive},origin='https://attacker.invalid')
                 except urllib.error.HTTPError as error:assert error.code==403
                 else:raise AssertionError('Hostile Origin accepted for account transfer')
-            bad=request(target,'/backup/preview',{'password':'wrong-passphrase-123','archive':archive});assert bad['ok']is False
+            bad=request(target,'/backup/preview',{'password':invalid_phrase,'archive':archive});assert bad['ok']is False
             corrupt={**archive,'ciphertext':('0'if archive['ciphertext'][0]!='0'else'1')+archive['ciphertext'][1:]};assert request(target,'/backup/import',{'password':password,'archive':corrupt})['ok']is False
             preview=request(target,'/backup/preview',{'password':password,'archive':archive});assert len(preview['accounts'])==2 and all(not a['hasSession']for a in preview['accounts'])
             for index in [1,0]:
@@ -36,7 +38,7 @@ def main():
             assert request(target,'/settings')['publicCode']==main_identity
             single=request(target,'/backup/export',{'password':password,'slots':[1]});assert len(request(target,'/backup/preview',{'password':password,'archive':single})['accounts'])==1
             if args.archive_in:
-                foreign=json.loads(args.archive_in.read_text(encoding='utf-8'));result=request(target,'/backup/import',{'password':'fixture-passphrase-123','archive':foreign});assert result['ok']and result['requiresOtp']is False
+                foreign=json.loads(args.archive_in.read_text(encoding='utf-8'));result=request(target,'/backup/import',{'password':fixture_phrase,'archive':foreign});assert result['ok']and result['requiresOtp']is False
                 slot=result['accounts'][0]['slot'];assert next(a for a in request(target,'/backup/accounts')if a['slot']==slot)['hasSession']
                 # Do not start this fake-token fixture: no request should reach the real Bale service.
             assert not any(w['running']for w in request(target,'/state')['aggregateWorkers'])
