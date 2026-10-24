@@ -54,11 +54,25 @@ def main():
                 saved=json.loads((data/'desktop-settings.json').read_text(encoding='utf-8'));assert saved['closeToTray']and saved['startMinimized']and not saved['alwaysOnTop']
                 assert len(list(exports.glob('*.balevault')))==1
                 archive=json.loads(next(exports.glob('*.balevault')).read_text());assert archive['format']=='balevpn-account-v1'
+                appearance=json.loads((data/'.bale-vpn_config.json').read_text(encoding='utf-8'))['appearance']
+                assert appearance['layout']=='orbit' and appearance['language']=='fa' and appearance['theme']=='dark'
+                new_port,new_debug=free_port(),free_port();new_base=f'http://127.0.0.1:{new_port}'
+                restored_env={**env,'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS':f'--remote-debugging-port={new_debug} --remote-debugging-address=127.0.0.1'}
+                process=subprocess.Popen([str(binary),'--port',str(new_port),'--config-dir',str(data)],env=restored_env,stdout=log,stderr=log)
+                for _ in range(300):
+                    try:
+                        with urllib.request.urlopen(f'http://127.0.0.1:{new_debug}/json/version',timeout=.3):break
+                    except OSError:
+                        if process.poll()is not None:raise RuntimeError('Native restart exited early')
+                        time.sleep(.1)
+                else:raise RuntimeError('Restarted native window did not become ready')
+                subprocess.run(['node',str(Path(__file__).with_name('smoke-native-windows.cjs')),new_base,str(new_debug),f'http://127.0.0.1:{monitor.server_port}',str(exports),'restore'],env=restored_env,check=True)
+                process.wait(timeout=12);assert process.returncode==0
             finally:
                 monitor.shutdown();monitor.server_close()
                 if process.poll()is None:
                     process.terminate();process.wait(timeout=10)
-    result={'windows_subsystem_without_console':True,'real_webview2_custom_titlebar':True,'real_tray_created':True,'hidden_start_close_to_tray_and_http_restore':True,'native_preferences_saved':True,'encrypted_native_download_completed':True,'quit_drains_backend':True,'uses_isolated_temporary_data':True,'live_bale_login_tested':False}
+    result={'windows_subsystem_without_console':True,'real_webview2_custom_titlebar':True,'real_tray_created':True,'hidden_start_close_to_tray_and_http_restore':True,'native_preferences_saved':True,'appearance_restored_after_native_restart_and_port_change':True,'encrypted_native_download_completed':True,'quit_drains_backend':True,'uses_isolated_temporary_data':True,'live_bale_login_tested':False}
     if args.report:args.report.write_text(json.dumps(result,indent=2),encoding='utf-8')
     print('PASS Windows native GUI, no console, unified titlebar, tray, hide/show, settings, encrypted download and graceful quit; isolated data only')
 

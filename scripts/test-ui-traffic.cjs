@@ -25,7 +25,7 @@ test('ended session retains totals while current speed becomes zero',()=>{
 });
 test('history is bounded and CSV exports numeric samples with no account data',()=>{
  const c=model(),m=c.newTrafficModel();for(let i=0;i<1000;i++)c.sampleTraffic(m,snapshot(i*2000,i*1000),i*2000,{rttMs:30});
- assert.equal(m.points.length,451);const csv=c.trafficCSV(m);assert.equal(csv.split('\n').length,452);
+ assert.equal(m.points.length,901);const csv=c.trafficCSV(m);assert.equal(csv.split('\n').length,902);
  assert.ok(csv.startsWith('elapsed_seconds,download_bytes_per_second,upload_bytes_per_second,rtt_ms,gap\n'));
  assert.ok(!csv.includes('sessionId'));assert.ok(!csv.includes('NaN'));
 });

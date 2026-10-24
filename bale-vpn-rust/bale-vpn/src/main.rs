@@ -26,6 +26,7 @@ mod device;
 mod config;
 mod vault;
 mod settings;
+mod appearance;
 mod daemon;
 mod server;
 // Kernel-TUN device open/configure — Unix-only (uses `std::os::fd::RawFd`

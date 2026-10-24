@@ -331,6 +331,43 @@ html[data-desktop=true] .profile-modal {top:48px;}.desktop-settings {margin-top:
 html[data-gradient=on] .workspace-topbar,html[data-gradient=on] .native-titlebar {background:linear-gradient(110deg,var(--panel-soft),var(--surface));}
 html[data-desktop=true]:not([data-embedded]) .workspace-sidebar{top:48px;height:calc(100dvh - 48px);}
 @media(max-width:700px){html[data-desktop=true]:not([data-embedded]) .workspace-sidebar{position:static;height:auto;}}
+/* Three presentation skins share the same controls and transport state. */
+html[data-design="nova"]{--bg:#f2f5f8;--surface:#fff;--sidebar:#f8fafc;--panel-soft:#f5f8fa;--line:#dce6ea;--ink:#17323e;--muted:#617f8a}
+html[data-design="nova"][data-theme="dark"]{--bg:#0b1018;--surface:#111923;--sidebar:#0d141e;--panel-soft:#17212e;--line:#253244;--ink:#ecf2fb;--muted:#93a6bf}
+html[data-design="nova"] .card.workspace{border-radius:22px;box-shadow:0 18px 70px #07162c0a}
+html[data-design="nova"] .workspace-sidebar{width:auto;padding:30px 18px;background:var(--sidebar)}
+html[data-design="nova"] .workspace-tab[aria-selected="true"]{background:color-mix(in srgb,var(--accent) 9%,transparent);border-color:color-mix(in srgb,var(--accent) 30%,transparent);box-shadow:none}
+html[data-design="nova"] .workspace-heading h1{font-size:2rem;font-weight:650}
+html[data-design="nova"] #tunnelPanel,html[data-design="nova"] .traffic-panel{background:radial-gradient(ellipse at 100% 0%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 65%),var(--surface);border-radius:20px;padding:24px}
+html[data-design="nova"] .settings fieldset,html[data-design="nova"] #appearancePanel,html[data-design="nova"] #multiTunnelPanel{border:1px solid var(--line);border-radius:18px;padding:22px}
+html[data-design="nova"] .workspace-topbar{background:var(--surface)}
+html[data-design="nova"] #tunnelApply:not(.disconnect){background:var(--brand);box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 15%,transparent)}
+html[data-design="nova"] .disconnect{background:transparent!important;border:1px solid #df7289!important;color:#d75270!important}
+html[data-design="orbit"]{--bg:#edf0fa;--surface:#fff;--sidebar:#202b56;--panel-soft:#f3f4fc;--line:#dce0f1;--ink:#20294e;--muted:#667094}
+html[data-design="orbit"][data-theme="dark"]{--bg:#0e1020;--surface:#171a30;--sidebar:#13162a;--panel-soft:#20243c;--line:#303653;--ink:#f0efff;--muted:#a4accd}
+html[data-design="orbit"] .card.workspace{display:flex;flex-direction:column;border-radius:24px;max-width:var(--card-width,1180px);box-shadow:0 20px 70px #202b5612}
+html[data-design="orbit"] .workspace-sidebar{position:static;width:auto;height:auto;min-height:0;display:block;padding:22px 26px 17px;border-inline-end:0;border-bottom:1px solid var(--line);background:var(--sidebar);color:#e8edff}
+html[data-design="orbit"] .workspace-brand{padding:0 0 18px;color:#edf2ff;width:fit-content;font-size:1.2rem}
+html[data-design="orbit"] .workspace-brand small{color:#acb8dd}
+html[data-design="orbit"] .workspace-nav{display:flex;flex-direction:row;flex-wrap:wrap;gap:6px}
+html[data-design="orbit"] .workspace-tab{width:auto;flex:1;min-width:115px;justify-content:center;padding:10px;font-size:.72rem;color:#aebbe2}
+html[data-design="orbit"] .workspace-tab[aria-selected="true"]{background:#ffffff12;color:#fff;border-color:#ffffff3a;box-shadow:none}
+html[data-design="orbit"] .workspace-tab i,html[data-design="orbit"] .nav-caption,html[data-design="orbit"] .sidebar-footer{display:none}
+html[data-design="orbit"] .workspace-heading{padding-top:25px}html[data-design="orbit"] .workspace-heading h1{font-weight:750;letter-spacing:-.7px}
+html[data-design="orbit"] .workspace-topbar{background:var(--panel-soft);min-height:55px;padding-block:12px}
+html[data-design="orbit"] #tunnelPanel{border-radius:16px;border-inline-start:4px solid var(--accent);padding:22px;background:var(--surface)}
+html[data-design="orbit"] .traffic-summary{gap:14px}html[data-design="orbit"] .traffic-tile{border-radius:16px;background:var(--panel-soft);border-color:transparent}
+html[data-design="orbit"] #appearancePanel,html[data-design="orbit"] .settings fieldset{border-radius:16px;padding:22px;border-color:var(--line)}
+.design-picker{margin:0 0 24px;padding-bottom:20px;border-bottom:1px solid var(--line)}.design-picker>label{max-width:440px}.design-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}.design-card{background:var(--panel-soft);color:var(--ink);text-align:start;border:1px solid var(--line);padding:14px;border-radius:12px;min-width:0;font-size:.8rem}.design-card[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}.design-mini{height:65px;display:grid;grid-template-columns:25% 1fr;gap:7px;padding:8px;border:1px solid var(--line);border-radius:8px;margin-bottom:12px;background:var(--surface)}.design-mini:before{content:'';background:var(--line);border-radius:4px}.design-mini:after{content:'';background:linear-gradient(color-mix(in srgb,var(--accent) 18%,transparent) 40%,transparent 40%);border:1px solid var(--line);border-radius:4px}.design-mini.orbit{grid-template-columns:1fr;grid-template-rows:10px 1fr}.design-mini.orbit:before{background:#6b78cf}.design-mini.classic:after{background:var(--panel-soft)}#appearanceSaveState{font-size:.73rem;min-height:1.8em;margin:12px 0 0;color:var(--muted)}#appearanceSaveState[data-error=true]{color:#db526c}
+.account-hub{margin-bottom:23px}.account-hub-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.account-hub-header h2{font-size:.95rem}.account-hub-header button{min-height:36px;font-size:.72rem;padding:7px 13px}.account-buttons{display:flex;gap:11px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:thin}.account-choice{flex:1;min-width:150px;display:flex;gap:11px;align-items:center;background:var(--surface);border:1px solid var(--line);color:var(--ink);padding:14px;text-align:start;border-radius:13px;box-shadow:none}.account-choice[aria-pressed=true]{background:color-mix(in srgb,var(--accent) 7%,var(--surface));border-color:var(--accent)}.account-avatar{width:35px;height:38px;border-radius:11px;display:grid;place-items:center;background:var(--panel-soft);color:var(--accent);font:650 13px Inter,system-ui;flex-shrink:0}.account-choice b{display:block;font-size:.74rem;overflow-wrap:anywhere}.account-choice small{display:block;color:var(--muted);font-size:.64rem;margin-top:3px}.account-manager{margin-top:7px}.account-manager>summary{cursor:pointer;color:var(--muted);font-size:.72rem}.account-manager .aggregate-path{margin-top:14px}.account-manager .settings-actions button{font-size:.7rem}.profile-modal[data-inline=true]{position:static!important;inset:auto!important;padding:0;background:transparent;display:block;z-index:auto;margin-top:18px}.profile-modal[data-inline=true] .profile-dialog{display:block;max-height:none;height:auto;width:100%;max-width:none;border-radius:14px}.profile-modal[data-inline=true] .profile-dialog>header{background:var(--panel-soft);border-radius:14px 14px 0 0}.profile-modal[data-inline=true] #profileFrames{height:auto}.profile-modal[data-inline=true] iframe{height:800px;min-height:350px;border-radius:0 0 14px 14px}
+html[data-integrated=true] .workspace-sidebar,html[data-integrated=true] .workspace-topbar,html[data-integrated=true] .workspace-heading,html[data-integrated=true] .desktop-titlebar{display:none!important}html[data-integrated=true] .card.workspace{min-height:0!important;margin:0;max-width:none!important}html[data-integrated=true] .workspace-content{padding:20px!important}html[data-integrated=true] #wsBar{margin:16px 20px!important}
+.pool-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;background:var(--panel-soft);border:1px solid var(--line);border-radius:11px;margin:10px 0}.pool-choice label{display:flex;align-items:center;gap:11px;min-width:0;margin:0;flex:1}.pool-choice input{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0}.pool-choice span{font-size:.75rem;overflow-wrap:anywhere}.pool-choice small{color:var(--muted);font-size:.65rem}.chart-surface{position:relative;direction:ltr;touch-action:pan-y}.chart-surface svg{display:block;outline-offset:3px}.chart-tooltip{position:absolute;z-index:5;pointer-events:none;white-space:pre-line;font-size:.72rem;line-height:1.9;min-width:175px;max-width:240px;padding:12px 15px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:0 8px 30px #07162c25;border-radius:12px;top:8px;direction:inherit;unicode-bidi:plaintext}.chart-tooltip[hidden],.chart-cursor[hidden]{display:none}.chart-cursor{pointer-events:none}.chart-cursor line{stroke:var(--muted);stroke-dasharray:3 4;stroke-width:1;vector-effect:non-scaling-stroke}.chart-cursor circle{stroke:var(--surface);stroke-width:2;vector-effect:non-scaling-stroke}.chart-hint{font-size:.68rem;color:var(--muted);margin:9px 0}.chart-download,.chart-upload{vector-effect:non-scaling-stroke}
+@media(max-width:700px){.design-cards{gap:8px}.design-card{font-size:.65rem;padding:9px}.design-mini{height:48px}.account-choice{min-width:135px;padding:11px}.account-hub-header{align-items:flex-start}.pool-choice{align-items:start}.pool-choice small{max-width:100px}html[data-design="orbit"] .workspace-sidebar{padding:16px}html[data-design="orbit"] .workspace-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}html[data-design="orbit"] .workspace-tab{min-width:0;font-size:.63rem}html[data-design="nova"] #tunnelPanel,html[data-design="nova"] .traffic-panel{padding:16px}.profile-modal[data-inline=true] .profile-dialog>header{padding:13px}.chart-tooltip{font-size:.65rem;min-width:150px;max-width:190px}}
+.overview-summary{display:none}.overview-card{border:1px solid var(--line);border-radius:20px;background:var(--surface);padding:23px;min-width:0;align-self:start}.overview-card h2{font-size:.95rem}.overview-rates{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0 22px}.overview-rates small{display:block;font-size:.7rem;color:var(--muted)}.overview-rates strong{display:block;font:550 1.55rem Inter,system-ui;color:var(--accent);direction:ltr;text-align:start;margin:9px 0;white-space:nowrap}.overview-rates .up{color:#a18bdf}.overview-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:23px;border-top:1px solid var(--line);padding-top:18px}.overview-totals small{font-size:.65rem;color:var(--muted)}.overview-totals b{font:550 .8rem Inter;display:block;direction:ltr;margin-top:8px}.overview-card svg{width:100%;height:160px}
+html:not([data-design=classic]) .connection-overview{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px;align-items:start}html:not([data-design=classic]) .overview-summary{display:block}html[data-metrics=hidden] .overview-summary{display:none!important}html[data-metrics=hidden] .connection-overview{display:block!important}html[data-design=orbit] .overview-card{border-radius:16px;border-top:3px solid var(--accent)}
+@media(max-width:1050px){html:not([data-design=classic]) .connection-overview{grid-template-columns:1fr}.overview-rates{margin:15px 0}.overview-card svg{height:140px}}
+.dot.on{background:#28b990}.dot.connecting{background:#c99742}#accountButtons button.account-choice{padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--surface);color:var(--ink)}#accountButtons button.account-choice[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}#designCards button.design-card{border:1px solid var(--line);padding:14px;background:var(--panel-soft);color:var(--ink)}#designCards button.design-card[aria-pressed=true]{border-color:var(--accent)}html:not([data-design=classic]) .dashboard .metric:nth-child(-n+2){display:none}html:not([data-design=classic]) .dashboard{display:block}html:not([data-design=classic]) .dashboard .metric:last-child{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px}html:not([data-design=classic]) .dashboard .metric:last-child span{margin:0}html:not([data-design=classic]) .dashboard .metric:last-child strong{font-size:.83rem}html:not([data-design=classic]) .tunnel-toggle{background:transparent;padding-block:15px}html:not([data-design=classic]) #tunnelStatus.entry.info{font-size:.68rem;line-height:1.9}
+html[data-desktop=true][data-design=orbit]:not([data-embedded]) .workspace-sidebar{position:static;top:auto;height:auto;min-height:0;align-self:stretch}
 </style>
 </head>
 <body>
@@ -350,7 +387,7 @@ html[data-desktop=true]:not([data-embedded]) .workspace-sidebar{top:48px;height:
 <button type="button" class="workspace-tab" id="tab-appearance" role="tab" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4zM7 8h.01M6 12h.01M11 6h.01"/></svg><span data-label="Personalization">Personalization</span><i aria-hidden="true"></i></button>
 
   </nav>
-  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.6.2</b></span></div>
+  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">TEST BUILD <b>v2.6.3-dev.1</b></span></div>
  </aside>
  <main class="workspace-main">
   <header class="workspace-topbar"><span class="workspace-context" data-label="A clearer view. A better connection.">A clearer view. A better connection.</span><div class="workspace-account"><div class="dot" id="dot"></div><span id="selfName"></span><span class="account-placeholder" id="accountPlaceholder" data-label="Welcome">Welcome</span></div></header>
@@ -588,7 +625,7 @@ let embeddedActive=true,_desktopHidden=false;
 if(embeddedProfile){
  document.documentElement.dataset.embedded='true';
  const nativeFetch=window.fetch.bind(window),prefix='/aggregate/profiles/'+embeddedProfile;
- window.fetch=(input,init)=>nativeFetch(typeof input==='string'&&input.startsWith('/')?prefix+input:input,init);
+ window.fetch=(input,init)=>nativeFetch(typeof input==='string'&&input.startsWith('/')&&input!=='/appearance'?prefix+input:input,init);
  document.getElementById('tab-aggregate').hidden=true;document.getElementById('tab-backup').hidden=true;
  document.addEventListener('keydown',event=>{if(event.key==='Escape')window.parent.postMessage({type:'bale-profile-close'},location.origin);});
  window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='bale-profile-active'){embeddedActive=!!event.data.active;if(embeddedActive)pollState();}});
@@ -624,6 +661,7 @@ function setWorkspaceTab(key, focus=false) {
  document.getElementById('workspaceSubtitle').textContent=translated(...description);
  if(changed&&key==='backup'&&typeof loadBackupAccounts==='function')loadBackupAccounts();
  if(changed&&key==='traffic'&&typeof _state!=='undefined'&&_state)renderTrafficDashboard(_state);
+ if(typeof syncAccountPane==='function')syncAccountPane();
 }
 function reconnectSummary(s) {
  const seconds=Math.max(0,Number(s.retryAfterSeconds)||0);
@@ -871,6 +909,7 @@ async function pollState(force=false) {
     sampleTraffic(_telemetry,_state.traffic,performance.now(),_state.metrics);
     sampleAggregate(_state.aggregate,performance.now());
     applyState();
+    if(typeof renderAccountHub==='function'){renderAccountHub();refreshAccountSummaries();renderPoolChoices();}
   } catch {_trafficStatusStale=true;if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);renderAggregate(_state.aggregate,_state.aggregateWorkers);}} finally {clearTimeout(timeout);_pollInFlight=false;const waiters=_pollWaiters.splice(0);for(const resolve of waiters)resolve();}
 }
 
@@ -1031,7 +1070,7 @@ function applyTunnelUI(s) {
     } else if (s.clientActivated && s.clientRoomReady) {
       st.style.display = '';
       const traffic = `  ↑ ${fmtKB(s.cliTxBytes || 0)}  ↓ ${fmtKB(s.cliRxBytes || 0)}`;
-      st.textContent = `SOCKS5 on 127.0.0.1:${s.socks5Port} → peer ${s.serverPeer?.id} [🔗 WebRTC] | sessions: ${Number(s.sessions)||0}${traffic}`;
+      st.textContent = `SOCKS5 on 127.0.0.1:${s.socks5Port} → peer ${s.serverPeer?.id||'—'} [🔗 WebRTC] | sessions: ${Number(s.sessions)||0}${traffic}`;
       st.className = 'entry ok';
     } else {
       st.style.display = 'none';
@@ -1614,8 +1653,8 @@ function sampleTraffic(m,t,now,metrics) {
  const rtt=metrics&&typeof metrics.rttMs==='number'&&Number.isFinite(metrics.rttMs)?Math.max(0,metrics.rttMs):null;
  if(rtt!==null&&m.lastRtt!==null&&!gap)m.jitter=m.jitter*.75+Math.abs(rtt-m.lastRtt)*.25;
  m.lastRtt=rtt;
- if(t.active || previous?.active)m.points.push({at:now,rx:m.rxRate,tx:m.txRate,rtt,gap});
- if(m.points.length>451)m.points.splice(0,m.points.length-451);
+ if(t.active || previous?.active)m.points.push({at:now,wall:Date.now(),rx:m.rxRate,tx:m.txRate,rtt,gap});
+ if(m.points.length>901)m.points.splice(0,m.points.length-901);
  m.last={at:now,rx,tx,active:!!t.active};
 }
 function trafficVolume(value) {
@@ -1626,9 +1665,11 @@ function trafficVolume(value) {
 function trafficRate(value) {return _trafficUnits==='bits'?fmtRate(trafficNumber(value)):trafficVolume(value)+'/s';}
 function trafficDuration(value) {const seconds=Math.floor(trafficNumber(value)/1000);return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(v=>String(v).padStart(2,'0')).join(':');}
 function trafficCSV(m) {return 'elapsed_seconds,download_bytes_per_second,upload_bytes_per_second,rtt_ms,gap\n'+m.points.map(p=>[(p.at-(m.points[0]?.at||0))/1000,p.rx.toFixed(2),p.tx.toFixed(2),p.rtt===null?'':p.rtt.toFixed(2),p.gap?1:0].join(',')).join('\n');}
-// ── Traffic rendering (one small SVG redraw per existing 2-second poll) ──
+// ── Traffic rendering (one bounded SVG redraw per active one-second poll) ──
 function renderTrafficDashboard(s) {
  const panel=document.getElementById('trafficAnalytics');panel.hidden=s.mode!=='client'||!s.tokenSet;
+ if(typeof renderConnectionOverview==='function')renderConnectionOverview(s);
+ if(_trafficStatusStale&&typeof hideChartPoint==='function')hideChartPoint();
  if(panel.hidden){document.getElementById('downloadRate').textContent='—';document.getElementById('uploadRate').textContent='—';return;}
  const m=_telemetry,t=m.snapshot||{},active=!!t.active;
  for(const [id,value] of [['downloadRate',m.rxRate],['uploadRate',m.txRate]]) {
@@ -1646,12 +1687,13 @@ function renderTrafficDashboard(s) {
  document.getElementById('trafficProcess').textContent=translated('Since app start: ','از شروع برنامه: ')+'↓ '+trafficVolume(t.processReceivedBytes)+' · ↑ '+trafficVolume(t.processSentBytes);
  document.getElementById('trafficJitter').textContent=translated('RTT variation: ','تغییرات RTT: ')+(m.lastRtt===null?'—':Math.round(m.jitter)+' ms');
  document.getElementById('trafficSessionLabel').textContent=active?translated('Current connection','اتصال جاری'):translated('Last connection · no traffic now','آخرین اتصال · اکنون انتقالی نیست');
- const live=document.getElementById('trafficLive');live.dataset.active=String(!_trafficStatusStale&&active&&s.clientRoomReady);live.textContent=_trafficStatusStale?translated('Status unavailable','وضعیت در دسترس نیست'):active?(s.clientRoomReady?translated('Live · 2s','زنده · ۲ ثانیه'):translated('Recovering','در حال بازیابی')):translated('Idle','غیرفعال');
+ const live=document.getElementById('trafficLive');live.dataset.active=String(!_trafficStatusStale&&active&&s.clientRoomReady);live.textContent=_trafficStatusStale?translated('Status unavailable','وضعیت در دسترس نیست'):active?(s.clientRoomReady?translated('Live · 1s','زنده · ۱ ثانیه'):translated('Recovering','در حال بازیابی')):translated('Idle','غیرفعال');
  const metrics=s.metrics,windowBytes=trafficNumber(metrics?.sendWindowBytes),rtt=trafficNumber(metrics?.rttMs);
  document.getElementById('trafficWindows').textContent=metrics?translated('Local flow window: ','پنجرهٔ محلی: ')+trafficVolume(windowBytes)+' · cwnd '+trafficVolume(metrics.congestionWindow)+' · '+(metrics.profile||''):'—';
  document.getElementById('trafficWindowEstimate').textContent=rtt&&windowBytes?translated('Local window / RTT ≈ ','پنجرهٔ محلی / RTT ≈ ')+trafficRate(windowBytes/(rtt/1000))+translated(' · estimate, not a speed test',' · تخمین، نه تست سرعت'):'';
  document.getElementById('pauseChart').textContent=_chartPaused?translated('Resume chart','ادامهٔ نمودار'):translated('Pause chart','توقف نمودار');
- if(_chartPaused || document.hidden || document.getElementById('panel-traffic').hidden)return;
+ const overviewVisible=document.documentElement.dataset.design!=='classic'&&!document.getElementById('panel-connection').hidden&&(typeof _selectedAccount==='undefined'||!_selectedAccount);
+ if(_chartPaused || document.hidden || (document.getElementById('panel-traffic').hidden&&!overviewVisible))return;
  const points=m.points.filter(p=>p.at>=m.at-_chartSeconds*1000);
  const maximum=Math.max(1000,...points.map(p=>Math.max(p.rx,p.tx)))*1.15;
  const x=p=>Math.max(0,Math.min(640,640*(1-(m.at-p.at)/(_chartSeconds*1000))));
@@ -1663,11 +1705,13 @@ function renderTrafficDashboard(s) {
  points.forEach((p,i)=>{if(i===0||p.gap){if(start!==null)area+='L'+x(points[i-1]).toFixed(1)+',180Z ';start=x(p);area+='M'+start.toFixed(1)+',180 L'+start.toFixed(1)+','+y(p.rx).toFixed(1)+' ';}else area+='L'+x(p).toFixed(1)+','+y(p.rx).toFixed(1)+' ';});
  if(start!==null)area+='L'+x(points[points.length-1]).toFixed(1)+',180Z';
  document.getElementById('downloadArea').setAttribute('d',area);
+ for(const [target,source]of [['connectionDownloadLine','downloadLine'],['connectionUploadLine','uploadLine'],['connectionDownloadArea','downloadArea']]){const e=document.getElementById(target);if(e)e.setAttribute('d',document.getElementById(source).getAttribute('d'));}
  document.getElementById('chartStart').textContent=translated('Last ','آخرین ')+(_chartSeconds/60)+translated(' min',' دقیقه');
  document.getElementById('chartScale').textContent=translated('Scale: ','مقیاس: ')+trafficRate(maximum);
  const description=points.length>1?translated('Download ','دریافت ')+trafficRate(m.rxRate)+' · '+translated('Upload ','ارسال ')+trafficRate(m.txRate):translated('Waiting for traffic samples…','در انتظار نمونه‌های ترافیک…');
  document.getElementById('chartDescription').textContent=description;
  document.getElementById('speedChart').setAttribute('aria-label',description);
+ if(typeof updateChartInteraction==='function')updateChartInteraction(points,m.at,maximum);
 }
 
 
@@ -1682,14 +1726,14 @@ window.baleProfileUI={
  resume:async()=>{await window.baleProfileUI.refresh();if(!_state?.tokenSet)throw new Error('Sign in to this account first');if(_state.mode==='server'){await activateTunnel();if(_activationError)throw new Error(_activationError);}else await window.baleProfileUI.connect();},
  tab:key=>setWorkspaceTab(key)
 };
-function signalAccountFrames(){for(const [slot,frame]of accountFrames)frame.contentWindow?.postMessage({type:'bale-profile-active',active:!_desktopHidden&&slot===visibleAccount&&!document.getElementById('profileModal').hidden},location.origin);}
+function signalAccountFrames(){for(const [slot,frame]of accountFrames)frame.contentWindow?.postMessage({type:'bale-profile-active',active:!_desktopHidden&&slot===visibleAccount&&!document.getElementById('profileModal').hidden&&['connection','traffic','security','performance','clients'].includes(_workspaceTab)},location.origin);}
 function removeAccountFrame(slot){accountFrames.get(slot)?.remove();accountFrames.delete(slot);accountStates.delete(slot);if(visibleAccount===slot)closeAccount();}
-function closeAccount(){document.getElementById('profileModal').hidden=true;visibleAccount=null;signalAccountFrames();lastAccountFocus?.focus();}
+function closeAccount(){document.getElementById('profileModal').hidden=true;visibleAccount=null;_selectedAccount=0;if(typeof syncAccountPane==='function'){setWorkspaceTab('connection');syncAccountPane();renderAccountHub();}signalAccountFrames();lastAccountFocus?.focus();}
 async function openAccount(slot,show=true){
  const row=[...document.querySelectorAll('.aggregate-path')].find(r=>Number(r.dataset.profileId)===slot);if(!row)return null;
  let frame=accountFrames.get(slot);
  if(!frame){frame=document.createElement('iframe');frame.dataset.profileId=String(slot);frame.title=translated('Account panel ','پنل حساب ')+slot;frame.src='/aggregate/profiles/'+slot+'/';frame.hidden=true;document.getElementById('profileFrames').append(frame);accountFrames.set(slot,frame);frame.addEventListener('load',signalAccountFrames);}
- if(show){lastAccountFocus=document.activeElement;visibleAccount=slot;document.getElementById('profileModalTitle').textContent=row.querySelector('[data-field=name]').value;document.getElementById('profileModal').hidden=false;for(const [id,f]of accountFrames)f.hidden=id!==slot;signalAccountFrames();document.getElementById('profileModalClose').focus();}
+ if(show){lastAccountFocus=document.activeElement;visibleAccount=slot;_selectedAccount=slot;document.getElementById('profileModalTitle').textContent=row.querySelector('[data-field=name]').value;document.getElementById('profileModal').hidden=false;for(const [id,f]of accountFrames)f.hidden=id!==slot;setWorkspaceTab('connection');syncAccountPane();renderAccountHub();signalAccountFrames();}
  const start=performance.now();while(performance.now()-start<15000){try{if(frame.contentWindow.baleProfileUI?.ready())return frame.contentWindow.baleProfileUI;}catch{}await new Promise(resolve=>setTimeout(resolve,80));}
  removeAccountFrame(slot);throw new Error('Could not open the account panel');
 }
@@ -1725,8 +1769,8 @@ function aggregateRow(path) {
  for(const [action,en,fa]of actions){const button=document.createElement('button');button.type='button';button.className='refresh-btn';button.dataset.action=action;button.dataset.label=en;button.textContent=translated(en,fa);button.onclick=async()=>{const rows=[...document.querySelectorAll('.aggregate-path')],slot=Number(root.dataset.profileId);if(action==='remove'){if(!_aggregateBusy&&!_aggregateSnapshot?.running&&!rows.some(r=>r.dataset.worker==='true')){root.remove();renderAggregate(_aggregateSnapshot,[]);}else aggregateMessage(translated('Stop the pool and profiles before editing paths.','پیش از ویرایش مسیرها، پروکسی تجمیع و حساب‌ها را متوقف کنید.'),true);return;}if(action==='manage'){try{await openAccount(slot,true);}catch(error){aggregateMessage(uiMessage(error.message),true);}return;}if(action==='connect'){await connectAccount(slot);return;}if(action==='copy'){const port=Number(root.querySelector('[data-field="managementPort"]').value);if(!Number.isInteger(port)||port<1||port>65535)return;try{await navigator.clipboard.writeText('http://127.0.0.1:'+port);aggregateMessage(translated('Open the copied URL in your browser. Remote profiles need SSH forwarding.','آدرس کپی‌شده را در مرورگر باز کنید؛ پنل سرور به فوروارد SSH نیاز دارد.'));}catch{aggregateMessage('http://127.0.0.1:'+port);}return;}if(action==='start'&&!await aggregateSave())return;const ok=await aggregateAction('/aggregate/worker',{slot,start:action==='start'});if(ok&&action==='stop')removeAccountFrame(slot);};root.querySelector('.settings-actions').append(button);}
  const details=document.createElement('details');details.className='advanced';const summary=document.createElement('summary');summary.dataset.label='Advanced account settings';summary.textContent=translated('Advanced account settings','تنظیمات پیشرفتهٔ حساب');const extras=document.createElement('div');extras.className='settings-actions';for(const key of ['copy','remove'])extras.append(root.querySelector('[data-action='+key+']'));details.append(summary,root.querySelector('.preferences-row'),extras,root.querySelector('a'));root.append(details);root.querySelector('.aggregate-path-title').textContent=path.name;document.getElementById('aggregatePaths').append(root);return root;
 }
-function readAggregateConfig(){return {listenPort:Number(document.getElementById('aggregatePort').value),policy:document.getElementById('aggregatePolicy').value,paths:[...document.querySelectorAll('.aggregate-path')].map(root=>{const field=key=>root.querySelector('[data-field="'+key+'"]').value;return {profileId:Number(root.dataset.profileId),name:field('name').trim(),port:Number(field('port')),managementPort:Number(field('managementPort')),weight:Number(field('weight'))};})};}
-async function loadAggregate(){try{const response=await fetch('/aggregate');if(!response.ok)throw new Error('Cannot load multi-tunnel settings');const data=await response.json();document.getElementById('aggregatePort').value=String(data.config.listenPort);document.getElementById('aggregatePolicy').value=data.config.policy;document.getElementById('aggregatePaths').replaceChildren();for(const path of data.config.paths)aggregateRow(path);_aggregateSavedConfig=readAggregateConfig();_aggregateLoaded=true;renderAggregate(data.status,data.workers);}catch(error){aggregateMessage(error.message,true);}}
+function readAggregateConfig(){const config={listenPort:Number(document.getElementById('aggregatePort').value),policy:document.getElementById('aggregatePolicy').value,paths:[...document.querySelectorAll('.aggregate-path')].map(root=>{const field=key=>root.querySelector('[data-field="'+key+'"]').value;return {profileId:Number(root.dataset.profileId),name:field('name').trim(),port:Number(field('port')),managementPort:Number(field('managementPort')),weight:Number(field('weight'))};})};if(_poolChoiceSelection&&config.paths.some(p=>!_poolChoiceSelection.has(p.profileId)))config.selectedProfiles=config.paths.filter(p=>_poolChoiceSelection.has(p.profileId)).map(p=>p.profileId);if(_includePrimary)config.primaryPort=_state?.socks5Port||_primaryPoolPort;return config;}
+async function loadAggregate(){try{const response=await fetch('/aggregate');if(!response.ok)throw new Error('Cannot load multi-tunnel settings');const data=await response.json();document.getElementById('aggregatePort').value=String(data.config.listenPort);document.getElementById('aggregatePolicy').value=data.config.policy;_poolChoiceSelection=new Set(data.config.selectedProfiles||data.config.paths.map(p=>p.profileId));_includePrimary=!!data.config.primaryPort;_primaryPoolPort=data.config.primaryPort;document.getElementById('aggregatePaths').replaceChildren();for(const path of data.config.paths)aggregateRow(path);_aggregateSavedConfig=readAggregateConfig();_aggregateLoaded=true;renderAggregate(data.status,data.workers);renderAccountHub();renderPoolChoices();}catch(error){aggregateMessage(error.message,true);}}
 async function aggregateAction(url,body){if(_aggregateBusy)return false;_aggregateBusy=true;renderAggregate(_aggregateSnapshot,_state?.aggregateWorkers);try{const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const result=await response.json();if(!result.ok)throw new Error(result.error||'Multi-tunnel operation failed');aggregateMessage(translated('Done. Verify each tunnel in its own account panel.','انجام شد. وضعیت هر تونل را در پنل حساب خودش بررسی کنید.'));await pollState();return true;}catch(error){aggregateMessage(error.message,true);return false;}finally{_aggregateBusy=false;renderAggregate(_aggregateSnapshot,_state?.aggregateWorkers);}}
 async function aggregateSave(){if(!_aggregateLoaded){aggregateMessage(translated('Pool settings have not loaded.','تنظیمات تجمیع بارگذاری نشده‌اند.'),true);return false;}const config=readAggregateConfig();if(JSON.stringify(config)===JSON.stringify(_aggregateSavedConfig))return true;const ok=await aggregateAction('/aggregate',config);if(ok)_aggregateSavedConfig=config;return ok;}
 function sampleAggregate(snapshot,now){if(!snapshot)return;const rx=snapshot.paths.reduce((n,p)=>n+p.receivedBytes,0),tx=snapshot.paths.reduce((n,p)=>n+p.sentBytes,0);const last=_aggregatePrevious,elapsed=last?(now-last.at)/1000:0;_aggregateRates={rx:0,tx:0};if(snapshot.running&&last&&last.instance===snapshot.instance&&elapsed>=.5&&elapsed<=10&&snapshot.elapsedMs>=last.elapsed&&rx>=last.rx&&tx>=last.tx){_aggregateRates={rx:(rx-last.rx)/elapsed,tx:(tx-last.tx)/elapsed};}_aggregatePrevious={rx,tx,at:now,elapsed:snapshot.elapsedMs,instance:snapshot.instance};}
@@ -1738,13 +1782,13 @@ function renderAggregate(snapshot,workers){
  document.getElementById('aggregateState').textContent=_trafficStatusStale?translated('Status unavailable','وضعیت در دسترس نیست'):snapshot.running?'SOCKS5 · 127.0.0.1:'+snapshot.listenPort:translated('Pool stopped','پروکسی تجمیع متوقف است');
  const toggle=document.getElementById('aggregateToggle');toggle.textContent=snapshot.running?translated('Stop local pool','توقف پروکسی تجمیع'):translated('Start local pool','اجرای پروکسی تجمیع');toggle.classList.toggle('disconnect',snapshot.running);
  const rows=[...document.querySelectorAll('.aggregate-path')],workerList=workers||[];const anyWorker=workerList.some(w=>w.running);
- for(const id of ['aggregateSave','aggregateAdd','aggregatePort','aggregatePolicy'])document.getElementById(id).disabled=_aggregateBusy||snapshot.running||anyWorker;
+ for(const id of ['aggregateSave','aggregateAdd','aggregatePort','aggregatePolicy'])document.getElementById(id).disabled=_aggregateBusy||snapshot.running||(id==='aggregateAdd'&&anyWorker);
  toggle.disabled=_aggregateBusy||!_aggregateLoaded;document.getElementById('addClientAccount').disabled=_aggregateBusy||accountBusy||snapshot.running;document.getElementById('connectClientAccounts').disabled=_aggregateBusy||accountBusy;
  rows.forEach((root,index)=>{const profileId=Number(root.dataset.profileId),status=paths.find(p=>p.profileId===profileId),worker=workerList.find(w=>w.slot===profileId),running=!!worker?.running;root.dataset.worker=String(running);const name=root.querySelector('[data-field="name"]').value;root.querySelector('.aggregate-path-title').textContent=name;root.querySelector('.aggregate-worker-state').textContent=running?translated('Profile running','حساب در حال اجرا'):translated('Profile stopped / external path','حساب متوقف / مسیر خارجی');for(const input of root.querySelectorAll('input'))input.disabled=_aggregateBusy||snapshot.running||anyWorker;for(const button of root.querySelectorAll('[data-action]')){button.hidden=(button.dataset.action==='start'&&running)||(['stop','manage','connect'].includes(button.dataset.action)&&!running);button.disabled=_aggregateBusy||(button.dataset.action==='start'&&running)||(button.dataset.action==='stop'&&!running)||(['manage','connect'].includes(button.dataset.action)&&!running)||(button.dataset.action==='remove'&&(snapshot.running||anyWorker));}const link=root.querySelector('a');const port=Number(root.querySelector('[data-field="managementPort"]').value);link.textContent='http://127.0.0.1:'+port;link.href='http://127.0.0.1:'+port;link.hidden=!running;root.querySelector('.aggregate-path-stats').textContent=status?translated('Active: ','فعال: ')+status.active+' · ↓ '+trafficVolume(status.receivedBytes)+' · ↑ '+trafficVolume(status.sentBytes)+(status.error?' · '+translated('Local tunnel unavailable; connect its profile.','تونل محلی در دسترس نیست؛ حساب آن را متصل کنید.'):''):'';});renderAccountStates();
 }
 document.getElementById('aggregateAdd').onclick=()=>{const rows=document.querySelectorAll('.aggregate-path');if(rows.length>=8)return;const used=new Set([...rows].map(r=>Number(r.dataset.profileId)));const id=[1,2,3,4,5,6,7,8].find(i=>!used.has(i));aggregateRow({profileId:id,name:'Tunnel '+id,port:1080+id,managementPort:37200+id,weight:1});};
 document.getElementById('aggregateSave').onclick=aggregateSave;
-document.getElementById('aggregateToggle').onclick=async()=>{if(_aggregateSnapshot?.running)await aggregateAction('/aggregate/stop');else if(await aggregateSave())await aggregateAction('/aggregate/start');};
+document.getElementById('aggregateToggle').onclick=async()=>{if(_aggregateSnapshot?.running)await aggregateAction('/aggregate/stop');else if(await poolPathsReady()&&await aggregateSave())await aggregateAction('/aggregate/start');};
 
 
 const translations={
@@ -1801,15 +1845,17 @@ function uiMessage(value){
 }
 function localizeInterface(root){
  if(!root)return;
- const skip='script,style,textarea,input,#backupAccounts,#backupImportAccounts,#selfName,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
+ const skip='script,style,textarea,input,#backupAccounts,#backupImportAccounts,#selfName,[data-account-name],.pool-choice label span,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
  const translate=node=>{if(!node.parentElement||node.parentElement.closest(skip))return;const before=node.nodeValue,record=localizedNodes.get(node);const original=record&&before===record.output?record.original:before;const output=uiMessage(original);localizedNodes.set(node,{original,output});if(output!==before)node.nodeValue=output;};
  if(root.nodeType===3)translate(root);else{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())translate(node);}
 }
 function localizeAttributes(){for(const element of document.querySelectorAll('[placeholder],[aria-label],[title]')){let record=localizedAttributes.get(element);if(!record){record={};localizedAttributes.set(element,record);}for(const key of ['placeholder','aria-label','title']){if(!element.hasAttribute(key))continue;const value=element.getAttribute(key),previous=record[key];const original=previous&&value===previous.output?previous.original:value;const output=uiMessage(original);record[key]={original,output};if(value!==output)element.setAttribute(key,output);}}}
 
-const appearanceDefaults={language:'en',theme:'system',palette:'ocean',accent:'#1263d7',font:'modern',size:'100',width:'standard',density:'comfortable',corners:'20',gradient:true,metrics:true,motion:false};
-const appearanceChoices={language:['en','fa','auto'],theme:['light','dark','system'],palette:['ocean','teal','violet','rose','amber','custom'],font:['modern','system'],size:['90','100','110','120'],width:['compact','standard','wide'],density:['comfortable','compact'],corners:['0','10','20']};
-const appearanceFields={language:'languageSelect',theme:'themeSelect',palette:'paletteSelect',accent:'accentColor',font:'fontSelect',size:'textSize',width:'panelWidth',density:'densitySelect',corners:'cornerSelect',gradient:'gradientHeader',metrics:'showMetrics',motion:'reduceMotion'};
+const appearanceDefaults={layout:'classic',language:'en',theme:'system',palette:'ocean',accent:'#1263d7',font:'modern',size:'100',width:'standard',density:'comfortable',corners:'20',gradient:true,metrics:true,motion:false,units:'bytes',range:'300'};
+const appearanceChoices={layout:['classic','nova','orbit'],language:['en','fa','auto'],theme:['light','dark','system'],palette:['ocean','teal','violet','rose','amber','custom'],font:['modern','system'],size:['90','100','110','120'],width:['compact','standard','wide'],density:['comfortable','compact'],corners:['0','10','20'],units:['bytes','bits'],range:['60','300','900']};
+document.getElementById('appearancePanel').insertAdjacentHTML('afterbegin','<div class="design-picker"><label><span data-label="Interface design">Interface design</span><select id="designSelect"><option value="classic" data-label="Classic — existing design">Classic — existing design</option><option value="nova" data-label="Nova — focused workspace">Nova — focused workspace</option><option value="orbit" data-label="Orbit — panoramic dashboard">Orbit — panoramic dashboard</option></select></label><div class="design-cards" id="designCards"></div><p id="appearanceSaveState" role="status"></p></div>');
+Object.assign(translations,{'Interface design':'طراحی رابط','Classic — existing design':'کلاسیک — طراحی فعلی','Nova — focused workspace':'نوا — فضای کاری متمرکز','Orbit — panoramic dashboard':'مدار — داشبورد افقی'});
+const appearanceFields={layout:'designSelect',language:'languageSelect',theme:'themeSelect',palette:'paletteSelect',accent:'accentColor',font:'fontSelect',size:'textSize',width:'panelWidth',density:'densitySelect',corners:'cornerSelect',gradient:'gradientHeader',metrics:'showMetrics',motion:'reduceMotion',units:'speedUnits',range:'chartRange'};
 function normalizeAppearance(value) {
  const clean={...appearanceDefaults};
  if(!value || typeof value!=='object' || Array.isArray(value))return clean;
@@ -1828,6 +1874,8 @@ function applyAppearance() {
  const p=normalizeAppearance(raw),root=document.documentElement;
  const language=p.language==='auto'?((navigator.language||'en').startsWith('fa')?'fa':'en'):p.language;
  root.lang=language;root.dir=language==='fa'?'rtl':'ltr';
+ root.dataset.design=p.layout;
+ _trafficUnits=p.units;_chartSeconds=Number(p.range);
  const dark=p.theme==='dark'||(p.theme==='system'&&systemTheme.matches);
  root.dataset.theme=dark?'dark':'light';root.dataset.density=p.density;root.dataset.motion=p.motion?'reduced':'normal';root.dataset.gradient=p.gradient?'on':'off';root.dataset.metrics=p.metrics?'visible':'hidden';
  const palettes={ocean:'#1263d7',teal:'#087f76',violet:'#7240c4',rose:'#ba325f',amber:'#946000'};
@@ -1843,6 +1891,8 @@ function applyAppearance() {
  for (const element of document.querySelectorAll('label,button')) {if(element.children.length===0 && translations[element.textContent] && !element.dataset.label)element.dataset.label=element.textContent;}
  for (const element of document.querySelectorAll('[data-label]')) {const en=element.dataset.label;element.textContent=language==='fa'?(translations[en]||en):en;}
  try {localStorage.setItem('bale_appearance',JSON.stringify(p));}catch{}
+ if(typeof queueAppearanceSave==='function')queueAppearanceSave(p);
+ if(typeof renderDesignCards==='function')renderDesignCards(p.layout);
  if (_state) applyState();
  else setWorkspaceTab(_workspaceTab);
  const auth=document.getElementById('authStatus');if(auth.dataset.message)showAuthStatus(auth.dataset.message,auth.dataset.kind);
@@ -1933,13 +1983,159 @@ loadSettings();if(!embeddedProfile)loadAggregate();
 
 try {const p=JSON.parse(localStorage.getItem('bale_telemetry')||'{}');if(['bytes','bits'].includes(p.units))_trafficUnits=p.units;if([60,300,900].includes(p.range))_chartSeconds=p.range;}catch{}
 document.getElementById('speedUnits').value=_trafficUnits;document.getElementById('chartRange').value=String(_chartSeconds);
-for(const id of ['speedUnits','chartRange'])document.getElementById(id).onchange=()=>{_trafficUnits=document.getElementById('speedUnits').value;_chartSeconds=Number(document.getElementById('chartRange').value);try{localStorage.setItem('bale_telemetry',JSON.stringify({units:_trafficUnits,range:_chartSeconds}));}catch{}if(_state)renderTrafficDashboard(_state);};
+for(const id of ['speedUnits','chartRange'])document.getElementById(id).onchange=()=>{_trafficUnits=document.getElementById('speedUnits').value;_chartSeconds=Number(document.getElementById('chartRange').value);try{localStorage.setItem('bale_telemetry',JSON.stringify({units:_trafficUnits,range:_chartSeconds}));}catch{}queueAppearanceSave(currentAppearance());if(_state)renderTrafficDashboard(_state);};
 document.getElementById('pauseChart').onclick=()=>{_chartPaused=!_chartPaused;if(_state)renderTrafficDashboard(_state);};
 document.getElementById('clearChart').onclick=()=>{_telemetry.points=[];_telemetry.rxPeak=0;_telemetry.txPeak=0;if(_state)renderTrafficDashboard(_state);};
 document.getElementById('exportTraffic').onclick=async()=>{const box=document.getElementById('trafficExport');box.value=trafficCSV(_telemetry);try{await navigator.clipboard.writeText(box.value);box.hidden=true;document.getElementById('trafficFeedback').textContent=translated('Chart CSV copied; no account details.','CSV نمودار بدون اطلاعات حساب کپی شد.');}catch{box.hidden=false;box.select();document.getElementById('trafficFeedback').textContent=translated('Copy the selected CSV text.','متن CSV انتخاب‌شده را کپی کنید.');}};
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollState();});
 
-setInterval(pollState, 2000);
+// ── Durable, non-secret presentation preferences ────────────────────────────
+var _appearanceInitialized=false,_appearanceApplying=false,_appearanceRevision=0;
+var _appearancePending=null,_appearanceLastSaved=null,_appearanceSaving=false,_appearanceTimer=null;
+function appearanceNotice(en,fa,error=false){const e=document.getElementById('appearanceSaveState');e.textContent=translated(en,fa);e.dataset.error=String(error);}
+function queueAppearanceSave(p){
+ if(!_appearanceInitialized||_appearanceApplying)return;
+ _appearanceRevision++;_appearancePending=JSON.stringify(p);
+ appearanceNotice('Saving on this device…','در حال ذخیره روی این دستگاه…');
+ clearTimeout(_appearanceTimer);_appearanceTimer=setTimeout(flushAppearanceSave,180);
+ for(const frame of accountFrames.values())frame.contentWindow?.postMessage({type:'bale-appearance',preferences:p},location.origin);
+}
+async function flushAppearanceSave(){
+ if(_appearanceSaving||!_appearancePending)return;_appearanceSaving=true;
+ try{while(_appearancePending){const payload=_appearancePending;_appearancePending=null;if(payload===_appearanceLastSaved)continue;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),5000);
+  try{const r=await fetch('/appearance',{method:'POST',headers:{'Content-Type':'application/json'},body:payload,signal:controller.signal});const d=await r.json();if(!r.ok||!d.ok)throw new Error('save');_appearanceLastSaved=payload;}finally{clearTimeout(timeout);}
+ }appearanceNotice('Saved on this device','روی این دستگاه ذخیره شد');}
+ catch{if(!_appearancePending)_appearancePending=JSON.stringify(currentAppearance());appearanceNotice('Could not save. Your local choice is kept; change a setting to retry.','ذخیره روی دیسک انجام نشد؛ انتخاب محلی حفظ شده است. برای تلاش مجدد یک تنظیم را تغییر دهید.',true);}
+ finally{_appearanceSaving=false;}
+}
+function currentAppearance(){const p={};for(const [key,id]of Object.entries(appearanceFields)){const el=document.getElementById(id);p[key]=el.type==='checkbox'?el.checked:el.value;}return normalizeAppearance(p);}
+async function loadAppearance(){
+ if(embeddedProfile&&window.parent!==window){try{const p=window.parent.currentAppearance();_appearanceInitialized=true;_appearanceApplying=true;try{fillAppearance(normalizeAppearance(p));applyAppearance();}finally{_appearanceApplying=false;}return;}catch{}}
+ const before=JSON.stringify(currentAppearance());_appearanceInitialized=true;
+ try{const r=await fetch('/appearance');if(!r.ok)throw new Error('load');const d=await r.json();if(d.appearance&&typeof d.appearance==='object'){
+  if(JSON.stringify(currentAppearance())!==before||_appearanceRevision)return;
+  const p=normalizeAppearance(d.appearance);_appearanceLastSaved=JSON.stringify(p);_appearanceApplying=true;try{fillAppearance(p);applyAppearance();}finally{_appearanceApplying=false;}
+  appearanceNotice('Saved on this device','روی این دستگاه ذخیره شد');
+ }else if(Object.hasOwn(d,'appearance')){_appearancePending=JSON.stringify(currentAppearance());await flushAppearanceSave();}}
+ catch{appearanceNotice('Disk preferences unavailable; local settings are active.','تنظیمات دیسک در دسترس نیست؛ تنظیمات محلی فعال است.',true);}
+}
+function renderDesignCards(layout){
+ const host=document.getElementById('designCards');if(!host)return;
+ for(const [value,en,fa]of [['classic','Classic','کلاسیک'],['nova','Nova','نوا'],['orbit','Orbit','مدار']]){
+  let button=host.querySelector('[data-design-choice="'+value+'"]');if(!button){button=document.createElement('button');button.type='button';button.className='design-card';button.dataset.designChoice=value;const preview=document.createElement('span');preview.className='design-mini '+value;preview.setAttribute('aria-hidden','true');const label=document.createElement('span');button.append(preview,label);button.onclick=()=>{document.getElementById('designSelect').value=value;applyAppearance();};host.append(button);}
+  button.querySelector('span:last-child').textContent=translated(en,fa);button.setAttribute('aria-pressed',String(layout===value));
+ }if(typeof renderAccountHub==='function')renderAccountHub();
+}
+window.addEventListener('pagehide',()=>{const payload=JSON.stringify(currentAppearance());if(_appearanceInitialized&&payload!==_appearanceLastSaved&&navigator.sendBeacon)navigator.sendBeacon('/appearance',new Blob([payload],{type:'application/json'}));});
+window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(embeddedProfile&&event.source===window.parent&&event.data?.type==='bale-appearance'){
+ _appearanceApplying=true;try{fillAppearance(normalizeAppearance(event.data.preferences));applyAppearance();}finally{_appearanceApplying=false;}
+}});
+
+// ── Account-first workspace; every account retains its own existing API scope ─
+var _hubReady=false,_selectedAccount=0,_accountSummaryAt=0,_accountSummaryBusy=false;
+var _poolChoiceSelection=null,_includePrimary=false,_primaryPoolPort=null;
+const accountScopedTabs=['connection','traffic','security','performance','clients'];
+function initAccountHub(){
+ if(embeddedProfile)return;
+ for(const key of accountScopedTabs){const panel=document.getElementById('panel-'+key),wrapper=document.createElement('div');wrapper.id='main-account-'+key;while(panel.firstChild)wrapper.append(panel.firstChild);panel.append(wrapper);}
+ const hub=document.createElement('section');hub.className='account-hub';hub.id='accountHub';hub.innerHTML='<div class="account-hub-header"><h2 data-label="Your accounts">Your accounts</h2><div id="accountHubActions" class="settings-actions"></div></div><div id="accountButtons" class="account-buttons" role="group"></div><p id="accountHubStatus" role="status"></p><details class="account-manager"><summary data-label="Manage accounts and ports">Manage accounts and ports</summary><div id="accountManager"></div></details>';
+ document.getElementById('panel-connection').prepend(hub);
+ document.getElementById('accountHubActions').append(document.getElementById('addClientAccount'));
+ document.getElementById('accountManager').append(document.getElementById('connectClientAccounts'),document.getElementById('aggregatePaths'),document.getElementById('aggregateAdd'));
+ const modal=document.getElementById('profileModal');modal.dataset.inline='true';modal.setAttribute('role','region');modal.removeAttribute('aria-modal');document.getElementById('profileModalClose').dataset.label='Back to main account';document.querySelector('.workspace-content').append(modal);
+ const pool=document.createElement('div');pool.id='poolChoices';document.getElementById('panel-aggregate').prepend(pool);
+ _hubReady=true;renderAccountHub();renderPoolChoices();syncAccountPane();
+}
+function renderAccountHub(){
+ if(!_hubReady)return;const host=document.getElementById('accountButtons');
+ const items=[{id:0,name:_state?.self?.name||translated('Main account','حساب اصلی'),state:_state?{ready:_state.clientRoomReady,authenticated:_state.peerAuthenticated,tokenSet:_state.tokenSet}:null},...[...document.querySelectorAll('.aggregate-path')].map(row=>({id:Number(row.dataset.profileId),name:row.querySelector('[data-field=name]').value,state:accountStates.get(Number(row.dataset.profileId))}))];
+ const ids=new Set(items.map(i=>i.id));for(const button of host.querySelectorAll('[data-account]'))if(!ids.has(Number(button.dataset.account)))button.remove();
+ for(const item of items){let button=host.querySelector('[data-account="'+item.id+'"]');if(!button){button=document.createElement('button');button.type='button';button.className='account-choice';button.dataset.account=String(item.id);button.innerHTML='<span class="account-avatar"></span><span><b data-account-name></b><small></small></span>';button.onclick=()=>selectWorkspaceAccount(item.id);host.append(button);}
+  button.querySelector('.account-avatar').textContent=item.id?'A'+item.id:'◎';button.querySelector('b').textContent=/^Tunnel [1-8]$/.test(item.name)?translated('Account '+item.id,'حساب '+item.id):item.name;button.querySelector('small').textContent=item.state?.ready?(item.state.authenticated?translated('Authenticated tunnel','تونل تأییدشده'):translated('Connected · check pairing','متصل؛ جفت‌سازی را بررسی کنید')):item.state?.tokenSet?translated('Signed in · ready to connect','وارد حساب؛ آمادهٔ اتصال'):translated('Select to sign in / manage','انتخاب برای ورود و مدیریت');button.setAttribute('aria-pressed',String(_selectedAccount===item.id));
+ }
+}
+async function selectWorkspaceAccount(slot){
+ const status=document.getElementById('accountHubStatus');status.textContent='';
+ if(slot===0){closeAccount();setWorkspaceTab('connection');return;}
+ try{const row=[...document.querySelectorAll('.aggregate-path')].find(r=>Number(r.dataset.profileId)===slot);if(!row)return;
+  if(!(_state?.aggregateWorkers||[]).some(w=>w.slot===slot&&w.running)){if(!await aggregateSave()||!await aggregateAction('/aggregate/worker',{slot,start:true}))throw new Error('Could not start account');}
+  await openAccount(slot,true);syncAccountPane();
+ }catch(e){status.textContent=uiMessage(e.message);}
+}
+function syncAccountPane(){
+ if(!_hubReady)return;const scoped=accountScopedTabs.includes(_workspaceTab),child=_selectedAccount>0&&scoped;
+ for(const key of accountScopedTabs)document.getElementById('main-account-'+key).hidden=_selectedAccount>0;
+ const modal=document.getElementById('profileModal');modal.hidden=!child;
+ document.getElementById('wsBar').hidden=child;
+ if(child){const frame=accountFrames.get(_selectedAccount);if(frame){for(const [id,f]of accountFrames)f.hidden=id!==_selectedAccount;try{frame.contentWindow.document.documentElement.dataset.integrated='true';frame.contentWindow.baleProfileUI?.tab(_workspaceTab);frame.contentWindow.postMessage({type:'bale-appearance',preferences:currentAppearance()},location.origin);}catch{}}document.getElementById('workspaceSettingsFooter').hidden=true;}
+ signalAccountFrames();
+}
+function accountSummary(s){return {mode:s.mode,tokenSet:!!s.tokenSet,ready:!!s.clientRoomReady,authenticated:!!s.peerAuthenticated,reconnecting:!!s.clientReconnecting,name:s.self?.name||'',at:Date.now()};}
+async function refreshAccountSummaries(){
+ if(!_hubReady||_accountSummaryBusy||performance.now()-_accountSummaryAt<4000||document.hidden||_desktopHidden)return;
+ _accountSummaryAt=performance.now();_accountSummaryBusy=true;
+ try{await Promise.allSettled((_state?.aggregateWorkers||[]).filter(w=>w.running&&w.slot!==visibleAccount).map(async w=>{const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2000);try{const r=await fetch('/aggregate/profiles/'+w.slot+'/state',{signal:controller.signal});if(!r.ok)throw new Error('state');const s=await r.json();if(s.error||!Object.hasOwn(s,'tokenSet'))return;accountStates.set(w.slot,accountSummary(s));}finally{clearTimeout(timer);}}));renderAccountHub();renderPoolChoices();}finally{_accountSummaryBusy=false;}
+}
+window.addEventListener('message',event=>{
+ if(event.origin!==location.origin)return;const frame=accountFrames.get(event.data?.slot);if(!frame||event.source!==frame.contentWindow)return;
+ if(event.data.type==='bale-profile-state'){renderAccountHub();renderPoolChoices();}
+ if(event.data.type==='bale-profile-size'&&Number.isFinite(event.data.height))frame.style.height=Math.max(350,Math.min(4000,event.data.height))+'px';
+});
+function renderPoolChoices(){
+ if(!_hubReady)return;const host=document.getElementById('poolChoices');
+ const paths=[...document.querySelectorAll('.aggregate-path')].map(row=>({id:Number(row.dataset.profileId),name:row.querySelector('[data-field=name]').value}));
+ const items=[{id:0,name:translated('Main account','حساب اصلی')},...paths];const ids=new Set(items.map(i=>i.id));for(const e of host.querySelectorAll('[data-pool-account]'))if(!ids.has(Number(e.dataset.poolAccount)))e.remove();
+ for(const item of items){let row=host.querySelector('[data-pool-account="'+item.id+'"]');if(!row){row=document.createElement('div');row.className='pool-choice';row.dataset.poolAccount=String(item.id);row.innerHTML='<label><input type="checkbox"><span></span></label><small></small>';const box=row.querySelector('input');box.onchange=()=>{if(item.id===0)_includePrimary=box.checked;else{if(!_poolChoiceSelection)_poolChoiceSelection=new Set(paths.map(p=>p.id));if(box.checked)_poolChoiceSelection.add(item.id);else _poolChoiceSelection.delete(item.id);}renderPoolChoices();};host.append(row);}
+  const box=row.querySelector('input');box.checked=item.id===0?_includePrimary:!_poolChoiceSelection||_poolChoiceSelection.has(item.id);box.disabled=_aggregateBusy||!!_aggregateSnapshot?.running;row.querySelector('span').textContent=/^Tunnel [1-8]$/.test(item.name)?translated('Account '+item.id,'حساب '+item.id):item.name;
+  const s=item.id===0?{ready:_state?.clientRoomReady,authenticated:_state?.peerAuthenticated}:accountStates.get(item.id);row.querySelector('small').textContent=s?.ready&&s?.authenticated?translated('Ready · authenticated','آماده · تأییدشده'):translated('Verify connection in Accounts','اتصال را در بخش حساب‌ها بررسی کنید');
+ }
+}
+async function poolPathsReady(){
+ try{if(_includePrimary&&!(_state?.clientRoomReady&&_state?.peerAuthenticated))throw new Error(translated('Connect and pair the main account first','ابتدا حساب اصلی را متصل و جفت‌سازی کنید'));
+  const selected=readAggregateConfig().paths.filter(p=>!_poolChoiceSelection||_poolChoiceSelection.has(p.profileId));if(!selected.length&&!_includePrimary)throw new Error(translated('Select at least one tunnel','حداقل یک تونل را انتخاب کنید'));
+  for(const path of selected){if(!(_state?.aggregateWorkers||[]).some(w=>w.running&&w.slot===path.profileId))continue;const r=await fetch('/aggregate/profiles/'+path.profileId+'/state');if(!r.ok)throw new Error('Account profile is unavailable');const s=await r.json();if(!(s.clientRoomReady&&s.peerAuthenticated))throw new Error(translated('Connect and pair this account first: ','ابتدا این حساب را متصل و جفت‌سازی کنید: ')+path.name);}
+  return true;
+ }catch(e){aggregateMessage(uiMessage(e.message),true);return false;}
+}
+
+// ── Real sample inspection: SVG only, bounded history, no chart dependency ────
+var _chartView=null,_chartPoint=null,_chartPointer=null,_chartPointerFrame=null,_chartTarget=null;
+function updateChartInteraction(points,now,maximum){
+ _chartView={points,now,maximum};if(_chartPoint){_chartPoint=points.find(p=>p.at===_chartPoint.at)||null;if(_chartPoint)showChartPoint(_chartPoint);else hideChartPoint();}
+}
+function hideChartPoint(){_chartPoint=null;for(const tip of document.querySelectorAll('.chart-tooltip'))tip.hidden=true;for(const cursor of document.querySelectorAll('.chart-cursor'))cursor.setAttribute('visibility','hidden');}
+function showChartPoint(p){
+ if(!_chartView||_trafficStatusStale||!p||p.gap){hideChartPoint();return;}_chartPoint=p;
+ const x=Math.max(0,Math.min(640,640*(1-(_chartView.now-p.at)/(_chartSeconds*1000)))),y=v=>180-160*Math.max(0,Math.min(1,v/_chartView.maximum));
+ const svg=_chartTarget||document.getElementById('speedChart'),cursor=svg.querySelector('.chart-cursor');if(!cursor)return;cursor.setAttribute('visibility','visible');const line=cursor.querySelector('line');line.setAttribute('x1',x);line.setAttribute('x2',x);
+ for(const [key,value]of [['rx',p.rx],['tx',p.tx]]){const dot=cursor.querySelector('[data-series='+key+']');dot.setAttribute('cx',x);dot.setAttribute('cy',y(value));}
+ const time=p.wall?new Date(p.wall).toLocaleTimeString(document.documentElement.lang==='fa'?'fa-IR':'en-GB',{hour12:false}):translated('Observed sample','نمونهٔ ثبت‌شده');const tip=svg.parentElement.querySelector('.chart-tooltip');
+ tip.textContent=time+'\n'+translated('Download: ','دانلود: ')+trafficRate(p.rx)+'\n'+translated('Upload: ','آپلود: ')+trafficRate(p.tx)+(p.rtt===null?'':'\nRTT: '+Math.round(p.rtt)+' ms');tip.dir=document.documentElement.dir;tip.hidden=false;
+ const width=svg.getBoundingClientRect().width;tip.style.left=Math.max(0,Math.min(width-tip.offsetWidth, x/640*width+14))+'px';
+}
+function chartPointAt(clientX){if(!_chartView?.points.length)return;const rect=(_chartTarget||document.getElementById('speedChart')).getBoundingClientRect(),ratio=Math.max(0,Math.min(1,(clientX-rect.left)/Math.max(1,rect.width))),at=_chartView.now-(1-ratio)*_chartSeconds*1000;let nearest=_chartView.points[0];for(const p of _chartView.points)if(Math.abs(p.at-at)<Math.abs(nearest.at-at))nearest=p;showChartPoint(nearest);}
+function initChartInteraction(){
+ for(const id of ['speedChart','connectionSpeedChart']){const svg=document.getElementById(id);if(!svg)continue;const wrapper=document.createElement('div');wrapper.className='chart-surface';svg.before(wrapper);wrapper.append(svg);svg.setAttribute('tabindex','0');
+ const ns='http://www.w3.org/2000/svg',cursor=document.createElementNS(ns,'g');cursor.id=id==='speedChart'?'chartCursor':'connectionChartCursor';cursor.classList.add('chart-cursor');cursor.setAttribute('visibility','hidden');cursor.innerHTML='<line y1="15" y2="180"/><circle data-series="rx" r="4" fill="#25b7ac"/><circle data-series="tx" r="4" fill="#9b79df"/>';svg.append(cursor);
+ const tip=document.createElement('div');tip.id=id==='speedChart'?'chartTooltip':'connectionChartTooltip';tip.className='chart-tooltip';tip.hidden=true;tip.setAttribute('role','tooltip');wrapper.append(tip);svg.setAttribute('aria-describedby',tip.id);
+ const hint=document.createElement('p');hint.className='chart-hint';hint.dataset.label='Hover, touch, or use arrow keys to inspect real samples.';hint.textContent=hint.dataset.label;wrapper.after(hint);
+ svg.addEventListener('focus',()=>{_chartTarget=svg;});svg.addEventListener('pointermove',event=>{_chartTarget=svg;_chartPointer=event.clientX;if(_chartPointerFrame===null)_chartPointerFrame=requestAnimationFrame(()=>{_chartPointerFrame=null;chartPointAt(_chartPointer);});});
+ svg.addEventListener('pointerleave',()=>{if(_chartPointerFrame!==null){cancelAnimationFrame(_chartPointerFrame);_chartPointerFrame=null;}hideChartPoint();});svg.addEventListener('pointerdown',event=>{_chartTarget=svg;chartPointAt(event.clientX);});svg.addEventListener('blur',hideChartPoint);
+ svg.addEventListener('keydown',event=>{const points=_chartView?.points;if(!points?.length)return;let index=_chartPoint?points.indexOf(_chartPoint):points.length-1;if(event.key==='ArrowLeft')index--;else if(event.key==='ArrowRight')index++;else if(event.key==='Home')index=0;else if(event.key==='End')index=points.length-1;else if(event.key==='Escape'){hideChartPoint();return;}else return;event.preventDefault();showChartPoint(points[Math.max(0,Math.min(points.length-1,index))]);});
+ }
+}
+function initConnectionOverview(){
+ const scope=document.getElementById(embeddedProfile?'panel-connection':'main-account-connection');if(!scope)return;const controls=document.createElement('div');controls.style.minWidth='0';while(scope.firstChild)controls.append(scope.firstChild);scope.append(controls);scope.classList.add('connection-overview');
+ const overview=document.createElement('section');overview.id='connectionOverview';overview.className='overview-card overview-summary';overview.hidden=true;overview.innerHTML='<h2 data-label="Account traffic">Account traffic</h2><div class="overview-rates"><div><small data-label="Download">Download</small><strong id="overviewDownload">—</strong></div><div><small data-label="Upload">Upload</small><strong class="up" id="overviewUpload">—</strong></div></div><div id="overviewChart"></div><div class="overview-totals"><div><small data-label="Downloaded">Downloaded</small><b id="overviewReceived">—</b></div><div><small data-label="Uploaded">Uploaded</small><b id="overviewSent">—</b></div><div><small data-label="Connected duration">Connected duration</small><b id="overviewDuration">—</b></div></div>';
+ const svg=document.getElementById('speedChart').cloneNode(true);svg.id='connectionSpeedChart';for(const [old,id]of [['downloadLine','connectionDownloadLine'],['uploadLine','connectionUploadLine'],['downloadArea','connectionDownloadArea'],['downloadFill','connectionDownloadFill']])svg.querySelector('#'+old)?.setAttribute('id',id);svg.querySelector('#connectionDownloadArea').setAttribute('fill','url(#connectionDownloadFill)');overview.querySelector('#overviewChart').append(svg);scope.append(overview);
+}
+function renderConnectionOverview(s){const panel=document.getElementById('connectionOverview');if(!panel)return;panel.hidden=s.mode!=='client'||!s.tokenSet;const t=_telemetry.snapshot||{};for(const [id,value]of [['overviewDownload',_trafficStatusStale?'—':trafficRate(_telemetry.rxRate)],['overviewUpload',_trafficStatusStale?'—':trafficRate(_telemetry.txRate)],['overviewReceived',trafficVolume(t.receivedBytes)],['overviewSent',trafficVolume(t.sentBytes)],['overviewDuration',trafficDuration(t.sessionElapsedMs)]])document.getElementById(id).textContent=value;}
+Object.assign(translations,{'Your accounts':'حساب‌های شما','Manage accounts and ports':'مدیریت حساب‌ها و پورت‌ها','Back to main account':'بازگشت به حساب اصلی','Hover, touch, or use arrow keys to inspect real samples.':'برای مشاهدهٔ دادهٔ واقعی هر نقطه، موس را روی نمودار ببرید، لمس کنید یا از کلیدهای جهت استفاده کنید.'});
+Object.assign(translations,{'Account traffic':'ترافیک این حساب','Downloaded':'دانلود شده','Uploaded':'آپلود شده','TEST BUILD':'نسخهٔ آزمایشی'});
+initAccountHub();initConnectionOverview();initChartInteraction();loadAppearance();
+if(embeddedProfile&&typeof ResizeObserver==='function'){let resizeFrame=null;new ResizeObserver(()=>{if(resizeFrame!==null)return;resizeFrame=requestAnimationFrame(()=>{resizeFrame=null;window.parent.postMessage({type:'bale-profile-size',slot:embeddedProfile,height:Math.ceil(document.querySelector('.workspace-main').getBoundingClientRect().height)+10},location.origin);});}).observe(document.querySelector('.workspace-main'));}
+setInterval(pollState, 1000);
 </script>
 </body>
 </html>

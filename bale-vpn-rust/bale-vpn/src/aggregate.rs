@@ -41,6 +41,10 @@ pub struct PathConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_profiles: Option<Vec<u8>>,
     pub listen_port: u16,
     pub policy: Policy,
     pub paths: Vec<PathConfig>,
@@ -48,6 +52,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            primary_port: None,
+            selected_profiles: None,
             listen_port: 1088,
             policy: Policy::LeastConnections,
             paths: (0..2)
@@ -88,6 +94,15 @@ impl Config {
                 || !ports.insert(p.port)
                 || !ports.insert(p.management_port)
             {
+                return Err(invalid());
+            }
+        }
+        if let Some(port) = self.primary_port {
+            if port == 0 || !ports.insert(port) { return Err(invalid()); }
+        }
+        if let Some(selected) = &self.selected_profiles {
+            let unique: std::collections::HashSet<_> = selected.iter().collect();
+            if unique.len() != selected.len() || selected.iter().any(|id| !ids.contains(id)) {
                 return Err(invalid());
             }
         }
@@ -379,6 +394,16 @@ impl Aggregate {
         self.running.lock().take();
         let config = self.config();
         config.validate(self.management_port)?;
+        let mut config = config;
+        if let Some(selected) = &config.selected_profiles {
+            config.paths.retain(|p| selected.contains(&p.profile_id));
+        }
+        if let Some(port) = config.primary_port {
+            config.paths.push(PathConfig{profile_id:0,name:"Main account".into(),port,management_port:0,weight:1});
+        }
+        if config.paths.is_empty() {
+            return Err(io::Error::other("Select at least one tunnel before starting the pool"));
+        }
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.listen_port)).await?;
         let runtime = Arc::new(Runtime::new(config));
         let clone = runtime.clone();
@@ -634,6 +659,8 @@ mod tests {
     use super::*;
     fn config(policy: Policy) -> Config {
         Config {
+            primary_port: None,
+            selected_profiles: None,
             listen_port: 1088,
             policy,
             paths: vec![
@@ -695,6 +722,34 @@ mod tests {
             .paths
             .iter()
             .all(|p| p.active.load(Ordering::Relaxed) == 0));
+    }
+    #[test]
+    fn selected_paths_and_primary_port_are_validated_without_changing_legacy_defaults() {
+        let mut c=config(Policy::RoundRobin);
+        assert!(c.selected_profiles.is_none());
+        c.selected_profiles=Some(vec![2]);c.primary_port=Some(1080);
+        assert!(c.validate(37128).is_ok());
+        c.selected_profiles=Some(vec![2,2]);assert!(c.validate(37128).is_err());
+        c.selected_profiles=Some(vec![8]);assert!(c.validate(37128).is_err());
+        c.selected_profiles=Some(vec![2]);c.primary_port=Some(1081);assert!(c.validate(37128).is_err());
+        c.primary_port=Some(0);assert!(c.validate(37128).is_err());
+    }
+    #[tokio::test]
+    async fn pool_selection_preserves_unselected_profiles_and_can_include_main_proxy() {
+        let(a,ta,ha)=fake_proxy(0).await;let(b,tb,hb)=fake_proxy(0).await;
+        let reservation=TcpListener::bind("127.0.0.1:0").await.unwrap();let listen=reservation.local_addr().unwrap().port();drop(reservation);
+        let mut c=config(Policy::RoundRobin);c.listen_port=listen;c.paths[0].port=a;c.paths[1].port=b;
+        c.primary_port=Some(a); // Must not overlap even an unselected account's port.
+        assert!(c.validate(37128).is_err());
+        c.paths[0].port=1085;c.selected_profiles=Some(vec![2]);
+        let dir=tempfile::tempdir().unwrap();let aggregate=Aggregate::new(c,dir.path().into(),37128);
+        aggregate.start().await.unwrap();
+        assert_eq!(aggregate.config().paths.len(),2);
+        assert_eq!(aggregate.snapshot().paths.iter().map(|p|p.profile_id).collect::<Vec<_>>(),vec![2,0]);
+        let(mut first,code)=open(listen).await;assert_eq!(code,0);let(mut second,code)=open(listen).await;assert_eq!(code,0);
+        for stream in [&mut first,&mut second]{stream.write_all(b"selected-path-bytes").await.unwrap();let mut bytes=[0;19];stream.read_exact(&mut bytes).await.unwrap();assert_eq!(&bytes,b"selected-path-bytes");}
+        assert_eq!(ha.load(Ordering::Relaxed),1);assert_eq!(hb.load(Ordering::Relaxed),1);
+        aggregate.stop().await;assert!(!ta.is_finished());assert!(!tb.is_finished());assert!(aggregate.workers.snapshots().is_empty());ta.abort();tb.abort();
     }
     #[test]
     fn failover_prefers_primary_and_excludes_failed_paths_without_probes() {

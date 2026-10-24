@@ -30,6 +30,8 @@ const CONFIG_FILENAME: &str = ".bale-vpn_config.json";
 /// file from an old version round-trips cleanly.
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appearance: Option<serde_json::Value>,
     #[serde(default)]
     pub aggregate: crate::aggregate::Config,
     #[serde(default)]
@@ -90,6 +92,7 @@ fn default_max_clients() -> u32    { 5 }
 impl Default for Config {
     fn default() -> Self {
         Self {
+            appearance: None,
             aggregate: Default::default(),
             preferences: Default::default(),
             token: String::new(), admission: Vec::new(), blacklist: Vec::new(),

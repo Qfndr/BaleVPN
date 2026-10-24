@@ -94,7 +94,7 @@ const server=http.createServer(async(req,res)=>{
   await page.selectOption('#languageSelect','en');await page.selectOption('#themeSelect','light');
   await page.setViewportSize({width:1280,height:960});await tab('connection');await screenshot('connection-en-light');
   await tab('appearance');await screenshot('appearance-en-light');
-  assert.equal(writes.length,afterConnect,'Tabs and appearance must not write connection settings');
+  assert.equal(writes.filter(w=>w.url!=='/appearance').length,afterConnect,'Tabs and appearance must not write connection settings');
   state={...state,mode:'server',clientActivated:false,clientRoomReady:false,lkRooms:0,serverCallPrivacy:{everyone:true},traffic};await refresh();
   await tab('clients');assert.equal(await page.locator('#clientsEmpty').isVisible(),false);assert.equal(await page.locator('#clientsSection').isVisible(),true);
   assert.equal(await page.locator('#workspaceStatus').innerText(),'Accepting clients');await screenshot('clients-en-light');
@@ -105,18 +105,19 @@ const server=http.createServer(async(req,res)=>{
   await page.unroute('**/state');state={mode:null,tokenSet:false,wsReady:false,secureMode:true,traffic};await refresh();
   await tab('connection');assert.equal(await page.locator('#modePicker').isVisible(),true);assert.equal(await page.locator('#tunnelSection').isVisible(),false);
   assert.equal(new Set(await page.locator('[id]').evaluateAll(nodes=>nodes.map(node=>node.id))).size,await page.locator('[id]').count(),'Duplicate DOM IDs');
-  await tab('aggregate');await page.waitForFunction(()=>_aggregateLoaded);
+  await tab('connection');await page.waitForFunction(()=>_aggregateLoaded);await page.locator('.account-manager>summary').click();
   assert.equal(await page.locator('.aggregate-path').count(),2);
   await page.locator('.aggregate-path').nth(0).locator('summary').click();await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
   await page.locator('.aggregate-path').nth(0).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===1&&w.running));
   await page.locator('.aggregate-path').nth(1).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===2&&w.running));
-  assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),false);
+  assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),true);
   assert.equal(await page.locator('#aggregatePaths img').count(),0,'Configured names must remain text');
   for(let i=0;i<2;i++){await page.locator('.aggregate-path').nth(i).locator('[data-action=stop]').click();await page.waitForFunction(()=>_aggregateBusy===false);}
-  await page.locator('#aggregateAdvanced>summary').click();await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
+  await tab('aggregate');await page.locator('#aggregateAdvanced>summary').click();await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>_state.aggregate.running);assert.equal(await page.locator('#aggregatePort').isEnabled(),false);
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>!_state.aggregate.running);
   // Removing a row does not change the stable ID of another account/profile.
+  await tab('connection');
   await page.locator('.aggregate-path').nth(0).locator('[data-action=remove]').click();assert.equal(await page.locator('.aggregate-path').nth(0).getAttribute('data-profile-id'),'2');
   await page.locator('#aggregateAdd').click();assert.equal(await page.locator('.aggregate-path').nth(1).getAttribute('data-profile-id'),'1');
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await screenshot('aggregate-en-mobile');

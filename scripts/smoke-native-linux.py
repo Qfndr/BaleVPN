@@ -15,6 +15,7 @@ def main():
     base=f'http://127.0.0.1:{port}';binary=args.binary.resolve()
     with tempfile.TemporaryDirectory(prefix='bale native gtk isolated ')as tmp:
         work=Path(tmp);data=work/'data';data.mkdir();(data/'desktop-settings.json').write_text(json.dumps({'closeToTray':True,'startMinimized':False,'alwaysOnTop':False}))
+        (data/'.bale-vpn_config.json').write_text(json.dumps({'appearance':{'layout':'orbit','language':'fa','theme':'dark'}}))
         with (work/'native.log').open('wb')as log:
             p=subprocess.Popen([str(binary),'--port',str(port),'--config-dir',str(data)],stdout=log,stderr=log)
             def request(path):
@@ -29,14 +30,15 @@ def main():
                         except OSError:pass
                     time.sleep(.1)
                 else:raise RuntimeError('Isolated GTK application did not become ready')
-                window=int(windows[0]);shot=args.screenshot or work/'native.png'
+                window=int(windows[0]);shot=args.screenshot or work/'native.png';time.sleep(3)
                 # A mapped GTK window alone can still be a blank WebKit frame.
                 # Wait for actual painted content, including software rendering.
                 for _ in range(50):
                     captured=subprocess.run(['import','-window','root',str(shot)],capture_output=True)
                     if captured.returncode==0:
                         colors=int(subprocess.check_output(['identify','-format','%k',str(shot)]))
-                        if colors>16:break
+                        content_colors=int(subprocess.check_output(['convert',str(shot),'-crop','700x420+120+360','-format','%k','info:']))
+                        if colors>16 and content_colors>16:break
                     if p.poll()is not None:raise RuntimeError((work/'native.log').read_text(errors='replace'))
                     time.sleep(.2)
                 else:raise RuntimeError('GTK/WebKit window stayed blank: '+(work/'native.log').read_text(errors='replace'))
@@ -57,7 +59,7 @@ def main():
                 lib.XCloseDisplay(display)
             finally:
                 if p.poll()is None:p.terminate();p.wait(timeout=10)
-    report={'real_gtk_webkit_window':True,'painted_web_content_verified':True,'temporary_account_free_data':True,'close_to_tray_or_safe_unavailable_fallback':True,'restore_hidden_window':hidden,'tray_unavailable_fallback':fallback,'backend_shutdown_closes_native_shell':True,'test_display':'isolated X11/Xvfb','live_bale_sessions_tested':False}
+    report={'real_gtk_webkit_window':True,'painted_web_content_verified':True,'page_content_below_navigation_verified':True,'temporary_account_free_data':True,'close_to_tray_or_safe_unavailable_fallback':True,'restore_hidden_window':hidden,'tray_unavailable_fallback':fallback,'backend_shutdown_closes_native_shell':True,'test_display':'isolated X11/Xvfb','live_bale_sessions_tested':False}
     if args.report:args.report.write_text(json.dumps(report,indent=2),encoding='utf-8')
     print('PASS native GTK/WebKit startup, close/tray fallback, window restore and shutdown in isolated X11 display')
 

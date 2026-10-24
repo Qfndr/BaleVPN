@@ -1,0 +1,46 @@
+// Account-free browser tests for the actual embedded UI, not the design prototype.
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
+const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');
+const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');
+let appearance=null,failSave=false,started=Date.now();const writes=[];
+const poolConfig={listenPort:1088,policy:'leastConnections',paths:[{profileId:1,name:'مسیر یک',port:1081,managementPort:37201,weight:1},{profileId:2,name:'مسیر دو',port:1082,managementPort:37202,weight:1}]};
+const server=http.createServer(async(req,res)=>{try{
+ if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(fs.readFileSync(path.join(assets,'index.html')));}
+ if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(req.url))return res.end(fs.readFileSync(path.join(assets,req.url)));
+ let raw='';for await(const b of req)raw+=b;const body=raw?JSON.parse(raw):null;if(req.method==='POST')writes.push({url:req.url,body});
+ let result={ok:true};
+ if(req.url==='/appearance'){if(body&&!failSave)appearance=body;result=failSave&&body?{ok:false,error:'Fixture disk error'}:{ok:true,appearance};}
+ else if(req.url==='/state'){const elapsed=Date.now()-started;result={mode:'client',tokenSet:true,self:{name:'حساب نمایشی',id:'fixture'},wsReady:true,secureMode:true,peerAuthenticated:true,clientRoomReady:true,clientActivated:true,socks5Port:1080,sessions:2,metrics:{rttMs:84,sendWindowBytes:131072,congestionWindow:65536,profile:'balanced'},traffic:{sessionId:1,active:true,receivedBytes:10000000+elapsed*300,sentBytes:1000000+elapsed*30,sessionElapsedMs:elapsed+60000,processReceivedBytes:10000000+elapsed*300,processSentBytes:1000000+elapsed*30},aggregate:{running:false,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0})),listenPort:1088,elapsedMs:0,instance:1},aggregateWorkers:[]};}
+ else if(req.url==='/aggregate')result={ok:true,config:poolConfig,status:{running:false,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0})),listenPort:1088},workers:[]};
+ else if(req.url==='/settings')result={ok:true,preferences:{secureMode:true,serverCode:'bvp1:fixture',clientCodes:[],profile:'balanced',retryDelaySecs:10,maxCallsPerMinute:3},savedPeerId:'42',publicCode:'bvp1:fixture',fingerprint:'fixture',credentialStorage:'Fixture only'};
+ else if(req.url==='/peers')result={peers:[{id:'42',type:'0',name:'سرور نمایشی'}]};
+ else if(req.url.includes('max-clients'))result={maxClients:5,maxSupported:253};
+ else if(req.url==='/backup/accounts'||req.url.startsWith('/tunnel/')||req.url.startsWith('/server/'))result=[];
+ res.setHeader('Content-Type','application/json');res.end(JSON.stringify(result));
+ }catch(e){res.statusCode=500;res.end(JSON.stringify({error:e.message}));}});
+(async()=>{
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
+ const browser=await chromium.launch({headless:true,...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
+ try{const page=await browser.newPage({viewport:{width:1440,height:1050}}),errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith(base)&&!new URL(r.url()).hostname.endsWith('.kaspersky-labs.com'))external.push(r.url());});
+ await page.goto(base);await page.waitForFunction(()=>_state?.clientRoomReady&&_aggregateLoaded&&_appearanceInitialized);
+ const tab=key=>page.locator('#tab-'+key).click();
+ const saved=()=>page.waitForFunction(()=>!_appearanceSaving&&!_appearancePending&&_appearanceLastSaved===JSON.stringify(currentAppearance()));
+ async function seed(waves=false){await page.evaluate(waves=>{_telemetry=newTrafficModel();_chartSeconds=60;document.getElementById('chartRange').value='60';const now=performance.now(),wall=Date.now();let rx=0,tx=0;for(let i=0;i<61;i++){if(i){rx+=waves?Math.round(420000+160000*Math.sin(i*.29)+65000*Math.cos(i*.91)):300000;tx+=waves?Math.round(42000+19000*Math.cos(i*.35)):30000;}sampleTraffic(_telemetry,{..._state.traffic,receivedBytes:rx,sentBytes:tx,sessionElapsedMs:i*1000},now-60000+i*1000,_state.metrics);_telemetry.points.at(-1).wall=wall-60000+i*1000;}renderTrafficDashboard(_state);},waves);}
+ await tab('appearance');await page.selectOption('#languageSelect','fa');await page.selectOption('#themeSelect','dark');await page.selectOption('#designSelect','nova');await saved();
+ await page.evaluate(()=>localStorage.clear());await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.design==='nova'&&document.documentElement.lang==='fa');assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+ await tab('traffic');await seed();const svg=await page.locator('#speedChart').boundingBox();await page.mouse.move(svg.x+svg.width*.88,svg.y+40);await page.waitForFunction(()=>!document.getElementById('chartTooltip').hidden);assert.match(await page.locator('#chartTooltip').innerText(),/300 KB\/s/);assert.match(await page.locator('#chartTooltip').innerText(),/RTT: 84 ms/);
+ await page.locator('#speedChart').focus();await page.keyboard.press('End');assert.equal(await page.locator('#chartCursor').getAttribute('visibility'),'visible');await page.keyboard.press('Escape');assert.equal(await page.locator('#chartTooltip').isHidden(),true);
+ await page.locator('#pauseChart').click();const frozen=await page.locator('#downloadLine').getAttribute('d');await page.evaluate(()=>{sampleTraffic(_telemetry,{..._state.traffic,receivedBytes:99999999,sentBytes:5000000},performance.now()+2000,_state.metrics);renderTrafficDashboard(_state);});assert.equal(await page.locator('#downloadLine').getAttribute('d'),frozen);await page.locator('#pauseChart').click();
+ const benchmark=await page.evaluate(()=>{_telemetry=newTrafficModel();for(let i=0;i<1000;i++)sampleTraffic(_telemetry,{..._state.traffic,receivedBytes:i*300000,sentBytes:i*30000},i*1000,_state.metrics);const n=100,start=performance.now();for(let i=0;i<n;i++)renderTrafficDashboard(_state);return {points:_telemetry.points.length,meanRenderMs:(performance.now()-start)/n};});assert.equal(benchmark.points,901);
+ for(const design of ['classic','nova','orbit'])for(const language of ['fa','en'])for(const theme of ['dark','light']){
+  await tab('appearance');await page.selectOption('#designSelect',design);await page.selectOption('#languageSelect',language);await page.selectOption('#themeSelect',theme);await saved();
+  for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:1000});for(const key of ['connection','traffic','aggregate','clients','security','performance','backup','appearance']){await tab(key);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${design}/${language}/${theme}/${key}/${width}`);}}
+  if(process.env.BALEVPN_SCREENSHOTS&&language==='fa'&&theme==='dark'){fs.mkdirSync(process.env.BALEVPN_SCREENSHOTS,{recursive:true});await page.setViewportSize({width:1440,height:1050});await tab('connection');await seed(true);await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,design+'-connection-fa.png'),fullPage:true});await tab('traffic');await seed(true);const box=await page.locator('#speedChart').boundingBox();await page.mouse.move(box.x+box.width*.85,box.y+60);await page.waitForFunction(()=>!document.getElementById('chartTooltip').hidden);await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,design+'-chart-hover-fa.png'),fullPage:true});}
+ }
+ await page.setViewportSize({width:1280,height:960});await page.evaluate(()=>{document.documentElement.dataset.desktop='true';});
+ for(const design of ['classic','nova','orbit']){await tab('appearance');await page.selectOption('#designSelect',design);for(const width of [1280,390]){await page.setViewportSize({width,height:960});await tab('connection');assert.equal(await page.evaluate(()=>document.querySelector('.workspace-topbar').getBoundingClientRect().top<innerHeight*.65),true,design+' native content below viewport');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}}
+ await tab('appearance');failSave=true;await page.selectOption('#designSelect','nova');await page.waitForFunction(()=>document.getElementById('appearanceSaveState').dataset.error==='true');assert.equal(await page.locator('html').getAttribute('data-design'),'nova');failSave=false;await page.selectOption('#themeSelect','dark');await saved();
+ assert.ok(writes.every(w=>w.url==='/appearance'),'Presentation changes must never place calls or write transport settings');assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+ console.log(JSON.stringify({ok:true,threeDesigns:true,languages:2,themes:2,widths:[1440,900,390,320],tabs:8,preferencesRestoredWithoutLocalStorage:true,diskFailureVisible:true,realSampleHover:true,keyboardInspection:true,pauseFreezesGraph:true,benchmark,externalApplicationRequests:0}));
+ }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
+})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

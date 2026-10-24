@@ -50,7 +50,7 @@ PY
             (root/'install-desktop.sh').write_text(script,encoding='utf-8',newline='\n');(root/'install-desktop.sh').chmod(0o755)
         (root/('HEADLESS-README.txt'if args.headless else'DESKTOP-README.txt')).write_text('BaleVPN '+args.version+' headless\nOn Windows replace bale-vpn below with .\\BaleVPN-headless.exe.\nRun bale-vpn --headless --port 37128 --config-dir client-data client for a client, or --port 37127 --config-dir data server --nat-mode userspace for a server. Keep the HTTP panel on loopback and use SSH forwarding. See docs/linux-client-fa.md and docs/linux-server-windows-client-fa.md.\n'if args.headless else 'BaleVPN '+args.version+'\n\nWindows: open BaleVPN.exe or Start.vbs; no terminal is created.\nLinux: install GTK3, WebKitGTK 4.1 and Ayatana AppIndicator runtime packages, then run install-desktop.sh once to add a Terminal=false application-menu launcher.\nmacOS: open BaleVPN.app; data is kept in your user Application Support directory.\nClose-to-tray, start-hidden and always-on-top are in Personalization. Quit and disconnect fully exits. Opening the same application again restores its hidden window.\nThe headless server build is separate and does not need desktop dependencies.\n',encoding='utf-8')
         shutil.copy2(repo/'LICENSE',root/'LICENSE')
-        shutil.copytree(repo/'docs',root/'docs')
+        shutil.copytree(repo/'docs',root/'docs',ignore=shutil.ignore_patterns('design-preview'))
         shutil.copytree(repo/'bale-vpn-rust/bale-vpn/assets/fonts',root/'font-licenses',ignore=shutil.ignore_patterns('*.woff2'))
         licenses=root/'third-party-licenses'/'webrtc-dtls';licenses.mkdir(parents=True)
         for name in ['LICENSE-MIT','LICENSE-APACHE']:shutil.copy2(repo/'vendor/webrtc-dtls'/name,licenses/name)

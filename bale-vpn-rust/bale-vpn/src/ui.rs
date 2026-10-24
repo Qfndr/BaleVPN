@@ -38,6 +38,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/fonts/:name", get(font))
         .route("/config",        get(get_config).post(set_config))
         .route("/settings",      get(get_settings).post(set_settings))
+        .route("/appearance", get(get_appearance).post(set_appearance).layer(axum::extract::DefaultBodyLimit::max(4096)))
         .route("/client/auto-reconnect", post(set_auto_reconnect))
         .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
@@ -175,7 +176,15 @@ async fn desktop_show()->Json<OkBody>{
 }
 async fn get_aggregate(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(serde_json::json!({"config":s.aggregate.config(),"status":s.aggregate.snapshot(),"workers":s.aggregate.workers.snapshots()}))}
 async fn configure_aggregate(State(s):State<Arc<AppState>>,Json(config):Json<crate::aggregate::Config>)->Result<Json<OkBody>,ApiError>{s.aggregate.configure(config,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
-async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,ApiError>{s.aggregate.start().await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
+async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,ApiError>{
+    if let Some(port)=s.aggregate.config().primary_port {
+        let cfg=s.cfg.read().await;
+        if cfg.mode.as_deref()!=Some("client") || port!=cfg.socks5_port || !s.client.snapshot().await.is_some_and(|c|c.connected&&c.socks5_port==port) || !s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) {
+            return Err(ApiError::Internal("Connect and authenticate the main account before including it in the pool".into()));
+        }
+    }
+    s.aggregate.start().await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))
+}
 async fn stop_aggregate(State(s):State<Arc<AppState>>)->Json<OkBody>{s.aggregate.stop().await;Json(OkBody{ok:true})}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -225,6 +234,14 @@ async fn get_config(State(s): State<Arc<AppState>>) -> Json<ConfigBody> {
     })
 }
 
+async fn get_appearance(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({"ok":true,"appearance":s.config_file.load().appearance}))
+}
+async fn set_appearance(State(s): State<Arc<AppState>>, Json(value): Json<serde_json::Value>) -> Result<Json<OkBody>,ApiError> {
+    crate::appearance::validate(&value).map_err(|e|ApiError::Internal(e.into()))?;
+    s.config_file.update(|c|c.appearance=Some(value)).map_err(|_|ApiError::Internal("Could not save appearance preferences".into()))?;
+    Ok(Json(OkBody{ok:true}))
+}
 async fn get_settings(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let preferences = s.cfg.read().await.preferences.clone();
     Json(serde_json::json!({"preferences":preferences,
