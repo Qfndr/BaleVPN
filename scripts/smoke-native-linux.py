@@ -22,7 +22,7 @@ def main():
             try:
                 for _ in range(200):
                     if p.poll()is not None:raise RuntimeError((work/'native.log').read_text(errors='replace'))
-                    windows=subprocess.run(['xdotool','search','--pid',str(p.pid),'--name','^BaleVPN$'],capture_output=True,text=True).stdout.split()
+                    windows=subprocess.run(['xdotool','search','--onlyvisible','--pid',str(p.pid),'--name','^BaleVPN$'],capture_output=True,text=True).stdout.split()
                     if windows:
                         try:
                             if request('/desktop/show')['ok']:break
