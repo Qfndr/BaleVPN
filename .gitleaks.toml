@@ -5,3 +5,13 @@ useDefault = true
 [[allowlists]]
 description = "Published LiveKit SDK JWT fixture; never used by the application"
 paths = ['''^vendor/livekit-api/src/test_token\.txt$''']
+
+[[allowlists]]
+description = "Published upstream DTLS example certificates and unit-test fixture, provenance checked by check-crypto-dependencies.py"
+rules = ["private-key"]
+paths = ['''^vendor/webrtc-dtls/examples/certificates/(README\.md|client\.pem|server\.pem|client\.pem\.private_key\.pem|server\.pem\.private_key\.pem)$''', '''^vendor/webrtc-dtls/src/crypto/crypto_test\.rs$''']
+
+[[allowlists]]
+description = "Public upstream SHA256 provenance hashes, not API keys"
+rules = ["generic-api-key"]
+paths = ['''^vendor/webrtc-dtls/UPSTREAM\.json$''']

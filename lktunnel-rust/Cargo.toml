@@ -30,3 +30,6 @@ panic         = "abort"
 # Compatibility fix for signaling-only builds; see vendor/README.md.
 [patch.crates-io]
 livekit-api = { path = "../vendor/livekit-api" }
+
+# Upstream curve/constant-time security upgrade; see vendor/README.md.
+webrtc-dtls = { path = "../vendor/webrtc-dtls" }

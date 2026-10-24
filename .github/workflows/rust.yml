@@ -97,19 +97,24 @@ jobs:
       # Test runs first because it's the only step that catches
       # behaviour regressions; `cargo build` would still succeed
       # on a broken unit test.
+      - name: Verify fixed crypto dependency graph and DTLS interoperability
+        run: |
+          python scripts/check-crypto-dependencies.py
+          cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib
+
       - name: cargo test --workspace
         working-directory: lktunnel-rust
-        run: cargo test --workspace --release
+        run: cargo test --workspace --locked --release
 
       - name: cargo build --workspace
         working-directory: lktunnel-rust
-        run: cargo build --workspace --release
+        run: cargo build --workspace --locked --release
 
       - name: cargo clippy --workspace
         working-directory: lktunnel-rust
         # `--no-deps` keeps clippy to our own crates; not gated on
         # warnings for now — run for visibility only.
-        run: cargo clippy --workspace --release --no-deps
+        run: cargo clippy --workspace --locked --release --no-deps
 
       # bale-vpn-rust — the single Rust binary replacing the
       # deleted Node app. Builds for host, exercises the HTTP
@@ -130,7 +135,7 @@ jobs:
 
       - name: cargo build (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust
-        run: cargo build -p bale-vpn --release --no-default-features
+        run: cargo build -p bale-vpn --locked --release --no-default-features
 
       - name: Test multi-tunnel pool and managed profile lifecycle
         run: |
@@ -152,11 +157,11 @@ jobs:
 
       - name: cargo test (lk-signaling)
         working-directory: lk-signaling-rust
-        run: cargo test --workspace --release
+        run: cargo test --workspace --locked --release
 
       - name: cargo test (bale-signaling)
         working-directory: bale-signaling-rust
-        run: cargo test --workspace --release
+        run: cargo test --workspace --locked --release
 
       # The Android JNI shim depends on bale-signaling + lktunnel
       # + jni-shared; confirms the FFI shape compiles for the host
@@ -177,7 +182,7 @@ jobs:
       - name: cargo build (android jni shim)
         if: runner.os != 'Windows'
         working-directory: bale-vpn-android/rust
-        run: cargo build -p lktunnel-jni --release
+        run: cargo build -p lktunnel-jni --locked --release
 
   security-audit:
     name: Dependency security audit
@@ -191,11 +196,22 @@ jobs:
       - name: Audit every shipped dependency graph
         shell: bash
         run: |
+          mkdir -p security-evidence
+          python scripts/check-crypto-dependencies.py | tee security-evidence/crypto-dependencies.txt
           failed=0
-          for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust; do
-            cargo audit --file "$workspace/Cargo.lock" || failed=1
+          fetch_arg=""
+          for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust vendor/webrtc-dtls; do
+            name="${workspace//\//-}"
+            cargo audit $fetch_arg --file "$workspace/Cargo.lock" --json > "security-evidence/$name.json" || failed=1
+            fetch_arg="--no-fetch"
           done
           exit "$failed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-evidence
+          path: security-evidence/
+          if-no-files-found: error
 
   secret-scan:
     name: Tracked source secret scan

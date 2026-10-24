@@ -1,5 +1,10 @@
 # Bale VPN
 
+**Security update 2.6.2:** fixes the vulnerable WebRTC/DTLS arithmetic dependency
+chain (RUSTSEC-2026-0387) across desktop, headless and Android builds. See the
+[security and upgrade notes](docs/security-dtls-2.6.2.md). Downloads include source
+commit metadata, checksums and dependency audit evidence.
+
 > 🟢 **Simplest start — two Android phones.** A peer-to-peer VPN over Bale messenger: one phone shares its working internet with the other, with no third-party server, no signup, and no command line. Install the APK on both, sign in with your Bale account in the app, flip one to **Server** and the other to **Client**.
 >
 > **→ [Android setup guide](docs/android-en.md)**
@@ -42,7 +47,7 @@ There is no commercial relationship with Bale.
 
 ## ⚠️ Privacy & encryption
 
-The Rust desktop/headless **2.2 development build** requires authenticated
+The Rust desktop/headless **2.6.2 build** requires authenticated
 SOCKS5 encryption by default. Both devices keep a private TLS identity and
 exchange public pairing codes through a trusted channel, such as SSH. TLS 1.3
 inside QUIC verifies both certificates and handshake signatures. Unpaired peers
@@ -66,8 +71,7 @@ Windows protects stored tokens and private identities with user-bound DPAPI.
 Linux uses AES-256-GCM with a private key file or an externally supplied/systemd
 credential key. A local key backed up alongside its ciphertext does not protect
 against theft of the whole folder. Keep data and backups private; see the guide
-for migration, recovery limits, and external-key setup. Local builds are test
-artifacts; this change does not publish a GitHub release.
+for migration, recovery limits, and external-key setup.
 
 ## ⚠️ Responsible use
 

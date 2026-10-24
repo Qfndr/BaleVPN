@@ -153,7 +153,7 @@ val cargoBuild by tasks.registering(Exec::class) {
     val apiLevel = (android.defaultConfig.minSdk ?: 24).toString()
     commandLine(
         listOf(cargo, "ndk") + rustAbiArgs +
-            listOf("--platform", apiLevel, "-o", rustJniLibs.absolutePath, "build") + cargoProfileFlag
+            listOf("--platform", apiLevel, "-o", rustJniLibs.absolutePath, "build", "--locked") + cargoProfileFlag
     )
     // Source-set inputs — anything a human edit would touch.
     inputs.file("$rustDir/Cargo.toml")

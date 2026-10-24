@@ -35,6 +35,7 @@ env_logger="0.11"
 log="0.4"
 [patch.crates-io]
 livekit-api={{path={quote(repo / "vendor/livekit-api")}}}
+webrtc-dtls={{path={quote(repo / "vendor/webrtc-dtls")}}}
 [[test]]
 name="authenticated_quic"
 path={quote(repo / "lktunnel-rust/lktunnel/tests/authenticated_quic.rs")}
