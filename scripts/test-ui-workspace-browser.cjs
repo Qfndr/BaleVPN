@@ -4,7 +4,7 @@
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');
 const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');
-const keys=['connection','traffic','aggregate','clients','security','performance','appearance'];
+const keys=['connection','traffic','aggregate','clients','security','performance','backup','appearance'];
 const traffic={sessionId:null,active:false,receivedBytes:0,sentBytes:0,sessionElapsedMs:0,processReceivedBytes:0,processSentBytes:0};
 let state={mode:null,tokenSet:false,wsReady:false,secureMode:true,traffic};
 let preferences={secureMode:true,serverCode:'',clientCodes:[],profile:'balanced',retryDelaySecs:10,maxCallsPerMinute:3};
@@ -25,6 +25,7 @@ const server=http.createServer(async(req,res)=>{
   else if(req.url==='/aggregate/stop')poolRunning=false;
   else if(req.url==='/aggregate/worker')workers.set(data.slot,{slot:data.slot,running:data.start,managementPort:poolConfig.paths.find(p=>p.profileId===data.slot).managementPort});
   else if(req.url==='/settings'){if(data)preferences=data;result={ok:true,preferences,publicCode:'bvp1:fixture-public-code',fingerprint:'fixture',credentialStorage:'Fixture only'};}
+  else if(req.url==='/backup/accounts')result=[];
   else if(req.url==='/peers')result={peers:[{id:'42',type:'0',name:'Test server'}]};
   else if(req.url==='/server/max-clients')result={maxClients:5,maxSupported:253};
   else if(req.url.startsWith('/tunnel/')){
@@ -39,7 +40,7 @@ const server=http.createServer(async(req,res)=>{
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const base='http://127.0.0.1:'+server.address().port;
- const browser=await chromium.launch({headless:true,...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
+ const browser=await chromium.launch({headless:true,args:["--explicitly-allowed-ports="+server.address().port],...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
  try {
   const page=await browser.newPage({viewport:{width:1280,height:960}}),errors=[],external=[];
   page.on('pageerror',error=>errors.push(error.message));
@@ -102,20 +103,22 @@ const server=http.createServer(async(req,res)=>{
   assert.equal(new Set(await page.locator('[id]').evaluateAll(nodes=>nodes.map(node=>node.id))).size,await page.locator('[id]').count(),'Duplicate DOM IDs');
   await tab('aggregate');await page.waitForFunction(()=>_aggregateLoaded);
   assert.equal(await page.locator('.aggregate-path').count(),2);
-  await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
+  await page.locator('.aggregate-path').nth(0).locator('summary').click();await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
   await page.locator('.aggregate-path').nth(0).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===1&&w.running));
   await page.locator('.aggregate-path').nth(1).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===2&&w.running));
   assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),false);
   assert.equal(await page.locator('#aggregatePaths img').count(),0,'Configured names must remain text');
   for(let i=0;i<2;i++){await page.locator('.aggregate-path').nth(i).locator('[data-action=stop]').click();await page.waitForFunction(()=>_aggregateBusy===false);}
-  await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
+  await page.locator('#aggregateAdvanced>summary').click();await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>_state.aggregate.running);assert.equal(await page.locator('#aggregatePort').isEnabled(),false);
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>!_state.aggregate.running);
   // Removing a row does not change the stable ID of another account/profile.
   await page.locator('.aggregate-path').nth(0).locator('[data-action=remove]').click();assert.equal(await page.locator('.aggregate-path').nth(0).getAttribute('data-profile-id'),'2');
   await page.locator('#aggregateAdd').click();assert.equal(await page.locator('.aggregate-path').nth(1).getAttribute('data-profile-id'),'1');
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await screenshot('aggregate-en-mobile');
+  await page.setViewportSize({width:1280,height:960});
+  for(const language of ['fa','en']){await tab('appearance');await page.selectOption('#languageSelect',language);for(const theme of ['dark','light']){await page.selectOption('#themeSelect',theme);for(const key of keys){await tab(key);await screenshot('all-'+key+'-'+language+'-'+theme);}}}
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log('PASS workspace browser: seven tabs, RTL keyboard, preserved edits, no navigation writes, client/server/logout states, actionable failed Connect, stale status, 320/390/900/1280px, 120% text, themes, two profile starts/stops, pool configuration/start/stop, stable account IDs, no external application requests. Fixtures only.');
+  console.log('PASS workspace browser: eight tabs, RTL keyboard, preserved edits, no navigation writes, client/server/logout states, actionable failed Connect, stale status, 320/390/900/1280px, 120% text, themes, two profile starts/stops, pool configuration/start/stop, stable account IDs, no external application requests. Fixtures only.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

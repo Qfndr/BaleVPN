@@ -292,7 +292,7 @@ pub struct PathSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     instance: u64,
-    running: bool,
+    pub running: bool,
     listen_port: u16,
     policy: Policy,
     elapsed_ms: u64,
@@ -326,6 +326,10 @@ impl Aggregate {
     pub fn config(&self) -> Config {
         self.config.lock().clone()
     }
+    pub async fn maintenance(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.operation.lock().await
+    }
+    pub fn imported_config(&self,config:Config){*self.config.lock()=config;*self.last.lock()=None;}
     pub fn snapshot(&self) -> Snapshot {
         if let Some(r) = self.running.lock().as_ref() {
             let mut s = r.runtime.snapshot();

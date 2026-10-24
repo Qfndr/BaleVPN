@@ -7,163 +7,16 @@
 <style>
   @font-face {font-family:Inter;src:url('/fonts/InterVariable.woff2') format('woff2');font-weight:100 900;font-display:swap;}
   @font-face {font-family:Vazirmatn;src:url('/fonts/Vazirmatn.woff2') format('woff2');font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200F,U+FB50-FDFF,U+FE70-FEFF;}
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: system-ui, sans-serif;
-    background: #f0f2f5;
-    display: flex;
-    justify-content: center;
-    padding: 2rem 1rem;
-    min-height: 100vh;
-  }
-  .card {
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 2px 16px rgba(0,0,0,.1);
-    width: 100%;
-    max-width: 500px;
-    overflow: hidden;
-    align-self: flex-start;
-  }
-  .header {
-    background: #1877f2;
-    color: #fff;
-    padding: 1.1rem 1.4rem;
-    display: flex;
-    align-items: center;
-    gap: .7rem;
-  }
-  .header h1 { font-size: 1.05rem; font-weight: 600; }
-  .dot {
-    width: 10px; height: 10px; border-radius: 50%;
-    background: #f55; flex-shrink: 0; transition: background .4s;
-  }
-  .dot.on        { background: #5c5; }
-  .dot.connecting{ background: #ffb74d; animation: pulse 1.4s infinite; }
-  @keyframes pulse { 50% { opacity: .35; } }
-  /* WS status bar — sits right under the blue header so the user can always
-     read the WebSocket state at a glance, distinct from the tunnel/dot. */
-  #wsBar {
-    display: flex; align-items: center; gap: .55rem;
-    padding: .5rem 1.4rem; font-size: .82rem; font-weight: 500;
-    border-bottom: 1px solid #eee;
-  }
-  #wsBar.connected    { background: #e8f5e9; color: #2e7d32; }
-  #wsBar.connecting   { background: #fff8e1; color: #ef6c00; }
-  #wsBar.disconnected { background: #ffebee; color: #c62828; }
-  #wsBar .label { font-weight: 600; opacity: .7; }
-  .body { padding: 1.4rem; display: flex; flex-direction: column; gap: 1rem; }
-  label { font-size: .78rem; font-weight: 600; color: #555; display: block; margin-bottom: .3rem; }
-  .row { display: flex; gap: .7rem; align-items: flex-end; }
-  .row > * { flex: 1; }
-  input, select, textarea {
-    width: 100%; padding: .5rem .7rem;
-    border: 1.5px solid #ddd; border-radius: 8px;
-    font-size: .93rem; outline: none; transition: border-color .2s;
-  }
-  input:focus, select:focus, textarea:focus { border-color: #1877f2; }
-  textarea { resize: vertical; min-height: 75px; }
-  button {
-    background: #1877f2; color: #fff; border: none;
-    border-radius: 8px; padding: .6rem 1.1rem;
-    font-size: .93rem; font-weight: 600; cursor: pointer;
-    width: 100%; transition: background .2s;
-  }
-  button:hover { background: #1565d8; }
-  button:disabled { background: #a0b4d6; cursor: default; }
-  .refresh-btn {
-    background: none; color: #1877f2; border: 1.5px solid #1877f2;
-    width: auto; padding: .3rem .6rem; font-size: .8rem;
-  }
-  .refresh-btn:hover { background: #e8f0fe; }
-  .conn-btn {
-    width: auto; padding: .5rem 1.1rem; font-size: .88rem;
-  }
-  .conn-btn.disconnect { background: #e53935; }
-  .conn-btn.disconnect:hover { background: #c62828; }
-  .token-area {
-    font-family: monospace; font-size: .72rem;
-    min-height: 54px; max-height: 120px;
-    word-break: break-all; resize: vertical;
-  }
-  .entry {
-    font-size: .8rem; padding: .4rem .65rem;
-    border-radius: 6px; line-height: 1.45;
-    word-break: break-word;
-  }
-  .entry.ok   { background: #e8f5e9; color: #2e7d32; }
-  .entry.err  { background: #ffebee; color: #c62828; }
-  .entry.info { color: #aaa; font-style: italic; }
-  .tunnel-toggle {
-    padding: .75rem 1.4rem; font-size: .82rem; font-weight: 600;
-    color: #1877f2; border-top: 1px solid #eee;
-    display: flex; align-items: center; gap: .5rem;
-  }
-  .tunnel-body { padding: 1rem 1.4rem; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: .85rem; }
-  .tunnel-row { display: flex; gap: .6rem; align-items: flex-end; }
-  .tunnel-row > * { flex: 1; }
-  .tunnel-row input[type=number] { max-width: 90px; flex: none; }
-  #tunnelStatus { margin-top: .1rem; }
-  .client-row {
-    display: flex; align-items: center; gap: .7rem;
-    padding: .65rem .8rem; border-radius: 8px;
-    background: #f7f9fc; margin-bottom: .45rem;
-    font-family: monospace;
-  }
-  .client-row .client-dot {
-    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
-    background: #aaa;
-  }
-  .client-row .client-dot.active { background: #43a047; }
-  .client-row .client-info { flex: 1; display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
-  .client-row .client-id   { font-weight: 600; font-size: .85rem; }
-  .client-row .client-rate { font-size: .85rem; display: flex; gap: 1.2rem; }
-  .client-row .client-rate .up   { color: #1976d2; }
-  .client-row .client-rate .down { color: #2e7d32; }
-  .client-row .client-meta { font-size: .72rem; opacity: .55; display: flex; gap: 1rem; flex-wrap: wrap; }
-  .client-row .client-actions { display: flex; flex-direction: column; gap: .3rem; }
-  .client-row .disc-btn {
-    border: 1px solid #e53935; background: none; color: #e53935;
-    border-radius: 5px; padding: .2rem .55rem; cursor: pointer;
-    font-size: .72rem; white-space: nowrap;
-  }
-  .client-row .disc-btn:hover { background: #e53935; color: #fff; }
-  #clientsList .empty, #pendingList .empty, #admissionList .empty {
-    font-size: .78rem; opacity: .45; padding: .3rem .1rem;
-  }
-  .pending-row {
-    display: flex; align-items: center; gap: .55rem;
-    padding: .5rem .65rem; border-radius: 8px; background: #fff8e1;
-    border: 1px solid #ffe082; margin-bottom: .35rem;
-    font-size: .78rem; font-family: monospace;
-  }
-  .pending-row .pending-info { flex: 1; display: flex; flex-direction: column; gap: .15rem; }
-  .pending-row .pending-name { font-weight: 600; font-size: .8rem; }
-  .pending-row .pending-age { opacity: .6; }
-  .pending-row button {
-    border: 1px solid; background: none; border-radius: 5px;
-    padding: .2rem .55rem; cursor: pointer; font-size: .72rem; white-space: nowrap;
-  }
-  .pending-row .accept-btn       { color: #2e7d32; border-color: #2e7d32; }
-  .pending-row .accept-btn:hover { background: #2e7d32; color: #fff; }
-  .pending-row .always-btn       { color: #1565c0; border-color: #1565c0; }
-  .pending-row .always-btn:hover { background: #1565c0; color: #fff; }
-  .pending-row .reject-btn       { color: #c62828; border-color: #c62828; }
-  .pending-row .reject-btn:hover { background: #c62828; color: #fff; }
-  .admission-row {
-    display: flex; align-items: center; gap: .55rem;
-    padding: .45rem .65rem; border-radius: 8px;
-    background: #f0f7ff; margin-bottom: .25rem;
-    font-size: .78rem; font-family: monospace;
-  }
-  .admission-row .admission-info { flex: 1; }
-  .admission-row .remove-btn {
-    border: 1px solid #c62828; background: none; color: #c62828;
-    border-radius: 5px; padding: .2rem .55rem; cursor: pointer;
-    font-size: .72rem; white-space: nowrap;
-  }
-  .admission-row .remove-btn:hover { background: #c62828; color: #fff; }
-
+  *,*::before,*::after {box-sizing:border-box;margin:0;padding:0;}
+  body {display:flex;justify-content:center;min-height:100vh;}
+  .card {width:100%;align-self:flex-start;overflow:hidden;}
+  .dot {width:9px;height:9px;border-radius:50%;background:#dc5268;}
+  [hidden] {display:none!important;}
+  .body,.tunnel-body {display:flex;flex-direction:column;}
+  .tunnel-toggle {display:flex;align-items:center;}
+  .conn-btn,button {color:#fff;border:0;}
+  .conn-btn {background:var(--brand);}
+  .up {color:var(--positive);}.down {color:var(--accent);}
   :root { color-scheme: light; --surface:#fff; --bg:#edf2f8; --ink:#13253e; --muted:#52647b; --line:#dce4ee; --accent:#1263d7; }
   html[data-theme="dark"] { color-scheme:dark; --surface:#132237; --bg:#091321; --ink:#e6edf7; --muted:#a7b6c9; --line:#32465f; --accent:#76b3ff; }
   body { background:var(--bg); color:var(--ink); padding:24px 16px; }
@@ -392,9 +245,96 @@
  html[data-embedded="true"] .workspace-heading {padding-top:20px;}
  @media(max-width:700px){.profile-modal {padding:0;}.profile-dialog {height:100dvh;max-height:none;border-radius:0;border:0;}.profile-dialog>header {padding:12px;align-items:start;}.profile-dialog header p {max-width:210px;}.profile-dialog header button {font-size:.65rem;max-width:110px;}html[data-embedded="true"] .workspace-tab {font-size:.6rem;}}
 
+/* Shared control contract: every tab, role and embedded account uses these tokens. */
+:root {--bg:#f3f5f9;--surface:#fff;--ink:#18253b;--muted:#56657c;--line:#dce3ed;--panel-soft:#f7f9fc;--positive:#087858;--positive-bg:#eaf7f1;--negative:#b42339;--negative-bg:#fff0f2;--control-radius:clamp(0px,var(--corner,20px),10px);}
+html[data-theme="dark"] {--bg:#0c121d;--surface:#101b2a;--ink:#e6edf6;--muted:#a4b3c7;--line:#2b3c52;--panel-soft:#172436;--positive:#87e3bf;--positive-bg:#132f2b;--negative:#ffb6c3;--negative-bg:#361e2a;}
+body {color:var(--ink);background:var(--bg);line-height:1.7;}
+button:not(.workspace-tab):not(.titlebar-button) {font:600 .78rem/1.5 var(--ui-font,Inter,Vazirmatn,system-ui);padding:10px 15px;min-height:40px;border:1px solid transparent;border-radius:var(--control-radius);box-shadow:none;transition:background-color .12s,border-color .12s;letter-spacing:0;}
+button:not(.workspace-tab):not(.titlebar-button):disabled {background:var(--panel-soft)!important;color:var(--muted)!important;border-color:var(--line)!important;opacity:1;filter:none;cursor:not-allowed;box-shadow:none;}
+button.refresh-btn:not(.workspace-tab),button.refresh-btn:not(.workspace-tab):hover {background:var(--surface);border:1px solid var(--line);color:var(--ink);}
+button.refresh-btn:hover:enabled {background:var(--panel-soft);border-color:var(--accent);}
+button.disc-btn,button.reject-btn,button.remove-btn {background:var(--negative-bg);color:var(--negative);border-color:var(--line);}
+button.accept-btn,button.always-btn {background:var(--positive-bg);color:var(--positive);border-color:var(--line);}
+input:not([type=checkbox]):not([type=color]),select,textarea {width:100%;min-width:0;min-height:42px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--control-radius);background:var(--surface);color:var(--ink);font-size:.8rem;line-height:1.65;box-shadow:none;}
+textarea {resize:vertical;}input:disabled,select:disabled,textarea:disabled {background:var(--panel-soft);color:var(--muted);opacity:1;}
+input::placeholder,textarea::placeholder {color:var(--muted);opacity:.85;}
+input[type=checkbox] {width:17px;height:17px;accent-color:var(--brand);flex-shrink:0;}
+input[type=color] {min-height:42px;border:1px solid var(--line);background:var(--surface);}
+label {font-size:.75rem;line-height:1.75;color:var(--muted);margin-bottom:7px;}
+[dir=rtl] label,[dir=rtl] p,[dir=rtl] summary {letter-spacing:0;}
+[dir=rtl] #nameInput {direction:rtl;text-align:right;}
+.row {display:flex;gap:10px;align-items:stretch;}.row input {flex:1;}.row button {width:auto;min-width:100px;}
+.entry {padding:11px 14px;border:1px solid var(--line);border-radius:var(--control-radius);font-size:.76rem;line-height:1.9;overflow-wrap:anywhere;text-align:start;white-space:normal;}
+.entry.info {background:var(--panel-soft);color:var(--muted);font-style:normal;}
+.entry.ok {background:var(--positive-bg);color:var(--positive);border-color:var(--line);}
+.entry.err,html[data-theme=dark] .entry.err {background:var(--negative-bg);color:var(--negative);}
+.empty {font-size:.76rem;color:var(--muted);padding:14px;background:var(--panel-soft);border-radius:10px;}
+.card.workspace {box-shadow:0 12px 45px #00000008;min-height:min(820px,calc(100dvh - 48px));}
+.workspace-topbar {min-height:52px;padding-block:10px;}.workspace-context {font-size:.7rem;}
+.workspace-heading {padding-top:23px;padding-bottom:18px;}.workspace-heading h1 {font-size:1.55rem;letter-spacing:-.4px;}
+.workspace-eyebrow,.section-kicker {display:none;}#workspaceSubtitle {font-size:.76rem;margin-top:3px;}
+.workspace-bottom {padding-block:12px;}.workspace-panel:not([hidden]) {animation:none;}
+.workspace-sidebar {background:var(--surface);}.workspace-brand {padding-bottom:23px;}.workspace-nav {gap:5px;}
+.workspace-tab {border-radius:10px;min-height:43px;font-size:.76rem;letter-spacing:0;}.workspace-tab:hover {filter:none;}
+.connection-intro {padding:22px;background:var(--surface);}.connection-intro::after {display:none;}.connection-intro p {max-width:100%;}
+#modePicker,#loginSection,#tunnelSection {background:var(--surface);border-radius:14px;}
+.body,.tunnel-body {padding:20px;gap:16px;}.tunnel-toggle {padding:12px 20px;background:var(--panel-soft);}
+#clientFields {gap:16px!important;}.tunnel-row {display:grid;grid-template-columns:minmax(0,1fr) 124px;gap:12px;align-items:end;}
+#clientFields>.tunnel-row>div:first-child>div {min-height:38px;gap:12px;}
+#refreshPeers {min-height:30px;padding:4px 10px;font-size:.68rem;}
+#clientFields>.peer-lookup .tunnel-row {grid-template-columns:minmax(0,1fr) auto;}
+#peerSearchBtn {min-width:100px;}#peerResults {border-color:var(--line)!important;background:var(--panel-soft);font-size:.75rem;}
+#peerResults>div {padding:10px 12px!important;color:var(--muted)!important;border-color:var(--line)!important;}
+#peerResults>div[data-peer] {cursor:pointer;color:var(--ink)!important;}
+#tunnelApply {margin-top:0;min-height:44px;border-radius:var(--control-radius);}
+#securityBadge {margin-bottom:0;font-size:.73rem;padding:10px 12px;}
+.dashboard {padding:0;margin:0;gap:10px;}.metric {background:var(--panel-soft);padding:12px;border:0;}.metric strong {font-size:1.1rem;}.metric span {font-size:.67rem;}
+.advanced {margin-block:12px;border:1px solid var(--line);border-radius:12px;padding:0 14px;background:var(--surface);min-width:0;}
+.advanced>summary {padding:12px 0;cursor:pointer;color:var(--muted);font-size:.75rem;font-weight:600;}
+.advanced[open]>summary {border-bottom:1px solid var(--line);margin-bottom:14px;}.advanced[open] {padding-bottom:14px;}
+.advanced>.settings-actions {margin-top:14px;}.advanced .preferences-row {margin-bottom:0;}
+.aggregate-path {padding:17px;margin:12px 0;background:var(--surface);border-radius:14px;}.aggregate-path-heading {gap:10px;margin-bottom:9px;}.aggregate-path-title {min-width:0;overflow-wrap:anywhere;}
+.aggregate-path .account-state {padding:0;border:0;background:none;margin:8px 0 14px;color:var(--muted);font-size:.72rem;}
+.aggregate-path>.settings-actions {display:flex;gap:8px;margin-top:10px;}.aggregate-path>.settings-actions button {flex:0 1 auto;min-width:110px;}
+.aggregate-path>.aggregate-path-stats {font-size:.7rem;margin-top:10px;direction:ltr;text-align:start;font-variant-numeric:tabular-nums;}
+.aggregate-path>.advanced {margin-bottom:0;}.aggregate-path .advanced>.settings-actions button {flex:0 1 auto;}
+.aggregate-actions {position:sticky;bottom:12px;z-index:5;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 5px 25px #0000000a;gap:8px;}
+.aggregate-actions button {flex:1;min-width:140px;}.aggregate-summary {margin-bottom:16px;}.aggregate-summary .traffic-tile {padding:14px;}
+.aggregate-notice {padding:0 16px;background:var(--surface);}.aggregate-notice p {font-size:.74rem;}
+.settings fieldset {padding:20px;border-radius:14px;background:var(--surface);margin-top:0;}.settings legend {font-size:.9rem;}.settings fieldset p {font-size:.75rem;line-height:1.85;}
+.settings textarea {font-size:.7rem;min-height:85px;max-height:230px;overflow-wrap:anywhere;}
+#publicCode {min-height:78px;max-height:120px;resize:vertical;}.settings .preferences-row {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:16px;}
+.settings .preferences-row label {min-width:0;}.settings label:has(>input[type=checkbox]) {display:flex;align-items:center;gap:9px;padding-block:6px;}
+.workspace-settings-footer {position:sticky;bottom:12px;background:var(--surface);border-radius:12px;border:1px solid var(--line);box-shadow:0 4px 22px #00000008;}
+#maxClientsSection>div {flex-wrap:wrap;}#pendingSection,#clientsSection,#admissionSection,#blacklistSection {padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--surface);}
+.client-row,.pending-row,.admission-row,.blacklist-row {display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}.client-row:last-child,.pending-row:last-child,.admission-row:last-child {border-bottom:0;}
+.client-info,.pending-info,.admission-info {flex:1;min-width:140px;overflow-wrap:anywhere;}.client-id,.pending-name {font-weight:600;font-size:.8rem;}.client-rate,.client-meta {display:flex;gap:12px;font-size:.68rem;color:var(--muted);}.pending-age {display:block;font-size:.68rem;color:var(--muted);}
+.traffic-panel {background:var(--surface);padding:20px;border-radius:14px;}.traffic-details {font-size:.7rem;}.traffic-tile {border-radius:12px;background:var(--panel-soft);border:0;}.chart-toolbar {gap:12px;}.chart-toolbar select {font-size:.73rem;padding:6px 10px;}
+.transfer-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;}.transfer-card {min-width:0;padding:20px;border:1px solid var(--line);border-radius:14px;background:var(--surface);}.transfer-card h2 {font-size:1rem;margin-bottom:8px;}.transfer-card p {font-size:.74rem;color:var(--muted);margin-bottom:15px;}.transfer-card>label {display:block;margin-top:14px;}
+.account-checklist {display:flex;flex-direction:column;gap:8px;margin-block:14px;}.account-checklist label {display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin:0;color:var(--ink);}.account-checklist label>span {flex:1;min-width:0;overflow-wrap:anywhere;}.account-checklist small {color:var(--muted);font-size:.65rem;}.transfer-status {padding-top:14px;white-space:pre-wrap;font-size:.76rem;overflow-wrap:anywhere;}
+.profile-dialog>header>div {min-width:0;overflow-wrap:anywhere;}.profile-dialog {background:var(--surface);}.profile-dialog>header {background:var(--surface);}.profile-dialog header p {font-size:.72rem;}
+html[data-embedded=true] .workspace-heading {padding-block:16px;}html[data-embedded=true] .workspace-topbar {min-height:42px;}html[data-embedded=true] .workspace-content {padding-bottom:18px;}
+.native-titlebar,.resize-edge {display:none;}
+html[data-desktop=true]:not([data-embedded]) body {padding:48px 0 0;display:block;}
+html[data-desktop=true]:not([data-embedded]) .card.workspace {max-width:none;min-height:calc(100dvh - 48px);border:0;border-radius:0;box-shadow:none;}
+html[data-desktop=true]:not([data-embedded]) .native-titlebar {position:fixed;inset:0 0 auto;height:48px;background:var(--surface);color:var(--ink);display:flex;align-items:center;justify-content:space-between;padding-inline-start:18px;border-bottom:1px solid var(--line);z-index:2000;user-select:none;direction:ltr;}
+.native-titlebar>span {font:600 13px/1 Inter,system-ui;letter-spacing:.2px;}.titlebar-controls {display:flex;height:100%;}.titlebar-button {border:0;border-radius:0;width:48px;background:transparent;color:var(--muted);font:20px/1 system-ui;cursor:default;}.titlebar-button:hover {background:var(--panel-soft);color:var(--ink);filter:none;}.titlebar-button[data-command=close]:hover {background:#c92c35;color:#fff;}
+html[data-desktop=true]:not([data-embedded]) .resize-edge {display:block;position:fixed;z-index:3000;}.resize-edge[data-edge=n],.resize-edge[data-edge=s] {height:5px;left:7px;right:7px;cursor:ns-resize;}.resize-edge[data-edge=n] {top:0;}.resize-edge[data-edge=s] {bottom:0;}.resize-edge[data-edge=e],.resize-edge[data-edge=w] {width:5px;top:7px;bottom:7px;cursor:ew-resize;}.resize-edge[data-edge=e] {right:0;}.resize-edge[data-edge=w] {left:0;}.resize-edge[data-edge=ne],.resize-edge[data-edge=nw],.resize-edge[data-edge=se],.resize-edge[data-edge=sw] {width:7px;height:7px;}.resize-edge[data-edge=ne] {right:0;top:0;cursor:nesw-resize;}.resize-edge[data-edge=nw] {left:0;top:0;cursor:nwse-resize;}.resize-edge[data-edge=se] {right:0;bottom:0;cursor:nwse-resize;}.resize-edge[data-edge=sw] {left:0;bottom:0;cursor:nesw-resize;}
+html[data-desktop=true] .profile-modal {top:48px;}.desktop-settings {margin-top:18px;}#desktopPreferences {padding:16px;background:var(--panel-soft);border:1px solid var(--line);border-radius:12px;}
+@media(max-width:1000px){.transfer-grid {grid-template-columns:1fr;}}
+@media(max-width:700px){.workspace-heading h1 {font-size:1.35rem;}.workspace-heading {padding-top:18px;}.workspace-topbar {min-height:40px;}.workspace-brand {padding-bottom:12px;}.workspace-nav {grid-template-columns:repeat(4,minmax(0,1fr));}.workspace-tab {font-size:.65rem;min-height:42px;}.workspace-tab svg {display:none;}.body,.tunnel-body,.settings fieldset,.traffic-panel,.transfer-card {padding:16px;}.tunnel-row {grid-template-columns:minmax(0,1fr) 95px;gap:10px;}.aggregate-actions {bottom:8px;}.aggregate-actions button {min-width:125px;}.aggregate-path>.settings-actions button {flex:1;min-width:85px;}.aggregate-path {padding:14px;}.profile-dialog>header {gap:10px;}.profile-dialog header p {max-width:none;font-size:.65rem;}.profile-dialog header button {min-width:70px;}.aggregate-path-heading {align-items:start;}.aggregate-path-heading strong {font-size:.8rem;}.aggregate-path-heading span {font-size:.63rem;}html[data-embedded=true] .workspace-tab {font-size:.65rem;}.workspace-nav {padding-bottom:10px;}}
+@media(prefers-reduced-motion:reduce){button {transition:none!important;}}
+
+.aggregate-notice:not(details){padding:18px;background:var(--panel-soft);}.aggregate-notice h2{font-size:1rem;}
+#wsBar {display:flex;align-items:center;gap:10px;}#wsBar .label {display:none;}.peer-lookup.advanced {margin-block:0;}
+#accentColor {display:block;width:100%;height:42px;padding:4px;}
+html[data-gradient=on] .workspace-topbar,html[data-gradient=on] .native-titlebar {background:linear-gradient(110deg,var(--panel-soft),var(--surface));}
+html[data-desktop=true]:not([data-embedded]) .workspace-sidebar{top:48px;height:calc(100dvh - 48px);}
+@media(max-width:700px){html[data-desktop=true]:not([data-embedded]) .workspace-sidebar{position:static;height:auto;}}
 </style>
 </head>
 <body>
+<div id="nativeTitlebar" class="native-titlebar"><span>BaleVPN</span><div class="titlebar-controls"><button class="titlebar-button" data-command="minimize" aria-label="Minimize">−</button><button class="titlebar-button" data-command="maximize" aria-label="Maximize or restore">□</button><button class="titlebar-button" data-command="close" aria-label="Close window">×</button></div></div><div class="resize-edge" data-edge="n" aria-hidden="true"></div><div class="resize-edge" data-edge="s" aria-hidden="true"></div><div class="resize-edge" data-edge="e" aria-hidden="true"></div><div class="resize-edge" data-edge="w" aria-hidden="true"></div><div class="resize-edge" data-edge="ne" aria-hidden="true"></div><div class="resize-edge" data-edge="nw" aria-hidden="true"></div><div class="resize-edge" data-edge="se" aria-hidden="true"></div><div class="resize-edge" data-edge="sw" aria-hidden="true"></div>
 <div class="card workspace">
  <aside class="workspace-sidebar">
   <a class="workspace-brand" href="#connection" data-open-tab="connection" aria-label="BaleVPN"><span class="brand-mark">B<span>↗</span></span><span>BaleVPN<small data-label="YOUR PRIVATE WORKSPACE">YOUR PRIVATE WORKSPACE</small></span></a>
@@ -406,9 +346,11 @@
 <button type="button" class="workspace-tab" id="tab-clients" role="tab" aria-controls="panel-clients" aria-selected="false" tabindex="-1" data-tab="clients"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/></svg><span data-label="Client management">Client management</span><i aria-hidden="true"></i></button>
 <button type="button" class="workspace-tab" id="tab-security" role="tab" aria-controls="panel-security" aria-selected="false" tabindex="-1" data-tab="security"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v5c0 5-8 9-8 9s-8-4-8-9V7l8-4zM8 12l3 3 5-6"/></svg><span data-label="Security & pairing">Security & pairing</span><i aria-hidden="true"></i></button>
 <button type="button" class="workspace-tab" id="tab-performance" role="tab" aria-controls="panel-performance" aria-selected="false" tabindex="-1" data-tab="performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a9 9 0 1 1 16 0M12 13l4-5M7 20h10"/></svg><span data-label="Connection settings">Connection settings</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-backup" role="tab" aria-controls="panel-backup" aria-selected="false" tabindex="-1" data-tab="backup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM12 7v10M8 13l4 4 4-4"/></svg><span data-label="Session transfer">Session transfer</span><i aria-hidden="true"></i></button>
 <button type="button" class="workspace-tab" id="tab-appearance" role="tab" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4zM7 8h.01M6 12h.01M11 6h.01"/></svg><span data-label="Personalization">Personalization</span><i aria-hidden="true"></i></button>
+
   </nav>
-  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.5.0</b></span></div>
+  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.6.0</b></span></div>
  </aside>
  <main class="workspace-main">
   <header class="workspace-topbar"><span class="workspace-context" data-label="A clearer view. A better connection.">A clearer view. A better connection.</span><div class="workspace-account"><div class="dot" id="dot"></div><span id="selfName"></span><span class="account-placeholder" id="accountPlaceholder" data-label="Welcome">Welcome</span></div></header>
@@ -453,11 +395,11 @@
       <div id="authStatus" class="entry info" style="display:none; margin-top:.4rem"></div>
     </div>
 
-    <div style="border-top:1px solid #eee; padding-top:.8rem">
+    <details class="advanced"><summary data-label="Manual token sign-in">Manual token sign-in</summary><div>
       <label>Or paste token manually</label>
       <textarea id="tokenInput" class="token-area" placeholder="access_token cookie value…"></textarea>
       <button class="conn-btn" id="loginBtn" style="margin-top:.5rem">Login</button>
-    </div>
+    </div></details>
   </div>
 
   <!-- VPN section: shown after the user has a saved token. -->
@@ -487,14 +429,13 @@
           <input id="socks5Port" type="number" value="1080" min="1" max="65535">
         </div>
       </div>
-      <div>
-        <label>Find peer by phone number</label>
+      <details class="advanced peer-lookup"><summary data-label="Find peer by phone number">Find peer by phone number</summary>
         <div class="tunnel-row">
           <input id="peerSearch" type="tel" placeholder="+98912…" inputmode="tel">
           <button class="refresh-btn" id="peerSearchBtn">Search</button>
         </div>
         <div id="peerResults" style="display:none; margin-top:.35rem; border:1.5px solid #ddd; border-radius:8px; overflow:hidden; font-size:.82rem"></div>
-      </div>
+      </details>
     </div>
     <div id="serverFields" style="display:none">
       <div class="entry info" style="margin:0">
@@ -537,11 +478,18 @@
     </section></section><section class="workspace-panel" id="panel-aggregate" role="tabpanel" aria-labelledby="tab-aggregate" tabindex="0" hidden>
  <div class="aggregate-notice"><strong data-label="Independent tunnels. One local proxy.">Independent tunnels. One local proxy.</strong><p data-label="Distributes separate TCP connections, not packets of one stream. Multi-part downloads can use several tunnels. A single-stream download does not get bonded. No direct-internet fallback.">Distributes separate TCP connections, not packets of one stream. Multi-part downloads can use several tunnels. A single-stream download does not get bonded. No direct-internet fallback.</p></div>
  <div class="traffic-summary aggregate-summary"><div class="traffic-tile"><span data-label="Pool download">Pool download</span><strong id="aggregateDownload">0 B</strong><small id="aggregateDownloadRate">—</small></div><div class="traffic-tile"><span data-label="Pool upload">Pool upload</span><strong id="aggregateUpload">0 B</strong><small id="aggregateUploadRate">—</small></div><div class="traffic-tile"><span data-label="Active TCP connections">Active TCP connections</span><strong id="aggregateActive">0</strong><small id="aggregateState">—</small></div></div>
- <div class="settings"><fieldset><legend data-label="Distribution policy">Distribution policy</legend><div class="preferences-row"><label><span data-label="Local pool SOCKS5 port">Local pool SOCKS5 port</span><input id="aggregatePort" type="number" min="1" max="65535" value="1088"></label><label><span data-label="Policy">Policy</span><select id="aggregatePolicy"><option value="leastConnections" data-label="Weighted least connections">Weighted least connections</option><option value="roundRobin" data-label="Weighted round robin">Weighted round robin</option><option value="failover" data-label="Primary with backups">Primary with backups</option></select></label></div><p data-label="Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.">Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.</p></fieldset></div>
+ <details class="advanced" id="aggregateAdvanced"><summary data-label="Pool settings and external paths">Pool settings and external paths</summary><div class="settings"><fieldset><legend data-label="Distribution policy">Distribution policy</legend><div class="preferences-row"><label><span data-label="Local pool SOCKS5 port">Local pool SOCKS5 port</span><input id="aggregatePort" type="number" min="1" max="65535" value="1088"></label><label><span data-label="Policy">Policy</span><select id="aggregatePolicy"><option value="leastConnections" data-label="Weighted least connections">Weighted least connections</option><option value="roundRobin" data-label="Weighted round robin">Weighted round robin</option><option value="failover" data-label="Primary with backups">Primary with backups</option></select></label></div><p data-label="Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.">Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.</p></fieldset><div class="settings-actions" id="aggregateAdvancedActions"></div></div></details>
  <div id="aggregatePaths"></div>
  <div class="settings-actions aggregate-actions"><button id="addClientAccount" data-label="Add client account">Add client account</button><button class="refresh-btn" id="connectClientAccounts" data-label="Connect signed-in accounts">Connect signed-in accounts</button><button class="refresh-btn" id="aggregateAdd" data-label="Add tunnel">Add tunnel</button><button class="refresh-btn" id="aggregateSave" data-label="Save pool settings">Save pool settings</button><button id="aggregateToggle" data-label="Start local pool">Start local pool</button></div>
  <div id="aggregateFeedback" class="traffic-caption" role="status" aria-live="polite"></div>
- <div class="aggregate-notice"><h3 data-label="Four-account setup">Four-account setup</h3><p data-label="Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.">Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.</p><p data-label="Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.">Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.</p></div>
+ <details class="aggregate-notice advanced"><summary data-label="Four-account setup">Four-account setup</summary><p data-label="Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.">Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.</p><p data-label="Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.">Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.</p></details>
+</section>
+<section class="workspace-panel" id="panel-backup" role="tabpanel" aria-labelledby="tab-backup" tabindex="0" hidden>
+<p class="entry info" data-label="Transfers existing sessions and pairing keys without requesting a new login code. Stop the source before using the restored account. Revoked or expired Bale sessions cannot be revived by a backup.">Transfers existing sessions and pairing keys without requesting a new login code. Stop the source before using the restored account. Revoked or expired Bale sessions cannot be revived by a backup.</p>
+<div class="transfer-grid" style="margin-top:18px">
+<div class="transfer-card"><h2 data-label="Export accounts">Export accounts</h2><p data-label="Select one account or all accounts. Stop selected profiles before exporting; this keeps their saved sessions.">Select one account or all accounts. Stop selected profiles before exporting; this keeps their saved sessions.</p><div class="settings-actions"><button class="refresh-btn" id="backupRefresh" data-label="Refresh accounts">Refresh accounts</button><button class="refresh-btn" id="backupSelectAll" data-label="Select / clear all">Select / clear all</button></div><div id="backupAccounts" class="account-checklist"></div><p id="backupEmpty" data-label="No account profiles yet.">No account profiles yet.</p><button class="refresh-btn" id="backupStopSelected" data-label="Stop selected profiles, keep sessions">Stop selected profiles, keep sessions</button><label for="backupPassword" data-label="Archive password · at least 12 characters">Archive password · at least 12 characters</label><input id="backupPassword" type="password" autocomplete="new-password" minlength="12" maxlength="1024"><label for="backupPasswordConfirm" data-label="Repeat archive password">Repeat archive password</label><input id="backupPasswordConfirm" type="password" autocomplete="new-password" maxlength="1024"><div class="settings-actions"><button id="backupExport" data-label="Download encrypted account file">Download encrypted account file</button></div><div id="backupExportStatus" class="transfer-status" role="status"></div></div>
+<div class="transfer-card"><h2 data-label="Import accounts">Import accounts</h2><p data-label="Stop the local pool and managed profiles first. Restore selected accounts into unused slots; existing accounts and keys are kept. No calls are started automatically.">Stop the local pool and managed profiles first. Restore selected accounts into unused slots; existing accounts and keys are kept. No calls are started automatically.</p><label for="backupFile" data-label="Encrypted account file">Encrypted account file</label><input id="backupFile" type="file" accept=".balevault,application/json" hidden><div class="settings-actions"><button class="refresh-btn" id="backupChooseFile" data-label="Choose account file">Choose account file</button><span id="backupFilename" dir="auto" style="overflow-wrap:anywhere" data-label="No file selected">No file selected</span></div><label for="backupImportPassword" data-label="Archive password">Archive password</label><input id="backupImportPassword" type="password" autocomplete="off" maxlength="1024"><div class="settings-actions"><button class="refresh-btn" id="backupPreview" data-label="Unlock and preview accounts">Unlock and preview accounts</button></div><div id="backupImportAccounts" class="account-checklist"></div><button id="backupImport" disabled data-label="Restore selected accounts">Restore selected accounts</button><div id="backupImportStatus" class="transfer-status" role="status"></div></div>
+</div><details class="advanced"><summary data-label="What is inside the encrypted file?">What is inside the encrypted file?</summary><p data-label="Existing access tokens, original device identities, pairing keys and account settings. Password protection uses AES-256-GCM and PBKDF2-SHA256. Keep the file and password private and separate. Import does not bypass session expiry or Bale security checks.">Existing access tokens, original device identities, pairing keys and account settings. Password protection uses AES-256-GCM and PBKDF2-SHA256. Keep the file and password private and separate. Import does not bypass session expiry or Bale security checks.</p></details>
 </section>
 <section class="workspace-panel" id="panel-clients" role="tabpanel" aria-labelledby="tab-clients" tabindex="0" hidden><div class="workspace-empty" id="clientsEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/></svg><h2 data-label="A place for your clients">A place for your clients</h2><p data-label="Client management becomes available when this device is signed in as a server.">Client management becomes available when this device is signed in as a server.</p><button class="refresh-btn" data-open-tab="connection" data-label="Go to connection">Go to connection</button></div>  <!-- Max simultaneous clients (server mode) -->
   <div id="maxClientsSection" style="display:none; margin-top:1rem">
@@ -616,6 +564,7 @@
  <label><input type="checkbox" id="reduceMotion"><span data-label="Reduce motion">Reduce motion</span></label>
  <div class="appearance-preview"><strong>اتصال امن، ظاهر دلخواه</strong><span>Secure connection. Your own style. · ۱۲۳۴۵ · 12345</span></div>
  <p data-label="Appearance saves automatically on this device without interrupting the connection.">Appearance saves automatically on this device without interrupting the connection.</p>
+<div id="desktopPreferences" class="desktop-settings" hidden><p id="trayUnavailable" class="entry info" hidden data-label="System tray is unavailable. Closing the window will exit the application.">System tray is unavailable. Closing the window will exit the application.</p><label><input id="closeToTray" type="checkbox"><span data-label="Close window to tray">Close window to tray</span></label><label><input id="startMinimized" type="checkbox"><span data-label="Start with window hidden">Start with window hidden</span></label><label><input id="alwaysOnTop" type="checkbox"><span data-label="Keep window on top">Keep window on top</span></label><p data-label="Use Quit and disconnect in the tray menu to fully exit. Starting hidden does not enable OS auto-start.">Use Quit and disconnect in the tray menu to fully exit. Starting hidden does not enable OS auto-start.</p></div>
  <button class="refresh-btn" id="resetAppearance" data-label="Reset appearance">Reset appearance</button>
  </fieldset></section><div class="workspace-settings-footer" id="workspaceSettingsFooter" hidden> <div class="settings-actions"><button id="saveSettings" data-label="Save settings">Save settings</button><button class="refresh-btn" id="showDiagnostics" data-label="Safe diagnostic report">Safe diagnostic report</button></div>
  <div id="settingsFeedback" role="status" aria-live="polite"></div>
@@ -633,12 +582,12 @@
 const embeddedMatch=location.pathname.match(/^\/aggregate\/profiles\/([1-8])\//);
 const embeddedProfile=embeddedMatch?Number(embeddedMatch[1]):null;
 const configStorageKey=embeddedProfile?'bale_cfg_profile_'+embeddedProfile:'bale_cfg';
-let embeddedActive=true;
+let embeddedActive=true,_desktopHidden=false;
 if(embeddedProfile){
  document.documentElement.dataset.embedded='true';
  const nativeFetch=window.fetch.bind(window),prefix='/aggregate/profiles/'+embeddedProfile;
  window.fetch=(input,init)=>nativeFetch(typeof input==='string'&&input.startsWith('/')?prefix+input:input,init);
- document.getElementById('tab-aggregate').hidden=true;
+ document.getElementById('tab-aggregate').hidden=true;document.getElementById('tab-backup').hidden=true;
  document.addEventListener('keydown',event=>{if(event.key==='Escape')window.parent.postMessage({type:'bale-profile-close'},location.origin);});
  window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='bale-profile-active'){embeddedActive=!!event.data.active;if(embeddedActive)pollState();}});
 }
@@ -647,6 +596,7 @@ if(embeddedProfile){
 // ── Workspace navigation (presentation only; switching tabs never dials) ───────
 let _workspaceTab = 'connection';
 const workspaceDescriptions = {
+ backup:['Move saved account sessions securely between your devices.','انتقال امن نشست‌های ذخیره‌شده میان دستگاه‌های شما.'],
  connection:['Your devices. Your route. Everything starts here.','دستگاه‌های شما، مسیر شما؛ اتصال از اینجا شروع می‌شود.'],
  aggregate:['Combine independent paths without disturbing your single tunnel.','چند مسیر مستقل را با یک پروکسی محلی مدیریت کنید.'],
  traffic:['A live picture of the data moving through your tunnel.','نمای زندهٔ سرعت و حجم داده‌هایی که از تونل عبور می‌کنند.'],
@@ -670,6 +620,7 @@ function setWorkspaceTab(key, focus=false) {
  document.getElementById('workspaceTitle').textContent=button.querySelector('[data-label]').textContent;
  const description=workspaceDescriptions[key];
  document.getElementById('workspaceSubtitle').textContent=translated(...description);
+ if(changed&&key==='backup'&&typeof loadBackupAccounts==='function')loadBackupAccounts();
  if(changed&&key==='traffic'&&typeof _state!=='undefined'&&_state)renderTrafficDashboard(_state);
 }
 function syncWorkspace(s) {
@@ -732,12 +683,13 @@ function codeDeliveryMessage(type) {
 
 function scheduleOtpRetry(button, seconds) {
   if (_otpRetryTimer) clearInterval(_otpRetryTimer);
-  let remaining = Number.isFinite(seconds) ? Math.max(0, Math.min(86400, Math.ceil(seconds))) : 120;
+  const wait = Number.isFinite(seconds) ? Math.max(0, Math.min(86400, Math.ceil(seconds))) : 120;
+  const deadline=Date.now()+wait*1000;
   const update = () => {
+    const remaining=Math.max(0,Math.ceil((deadline-Date.now())/1000));
     button.disabled = remaining > 0;
     button.textContent = remaining > 0 ? authText('Retry in ','تلاش مجدد پس از ') + remaining + authText('s',' ثانیه') : authText('Send OTP','ارسال کد');
     if (remaining <= 0) { clearInterval(_otpRetryTimer); _otpRetryTimer = null; }
-    remaining--;
   };
   _otpRetryTimer = setInterval(update, 1000);
   update();
@@ -746,7 +698,7 @@ function scheduleOtpRetry(button, seconds) {
 function showAuthStatus(msg, cls) {
   const el = document.getElementById('authStatus');
   el.style.display = msg ? '' : 'none';
-  el.className = 'entry ' + (cls || 'info');
+  el.className = 'entry ' + (cls || 'info');el.dataset.message=msg;el.dataset.kind=cls||'info';
   const messages={'Sending…':'در حال درخواست کد…','Verifying…':'در حال بررسی کد…','Logging in…':'در حال ورود…','Creating account…':'در حال ساخت حساب…','Account created — logging in…':'حساب ساخته شد؛ در حال ورود…','New user — enter your name to register.':'برای ثبت‌نام نام خود را وارد کنید.','This code has expired. Request a new code when the retry timer finishes.':'این کد منقضی شده است؛ پس از پایان شمارش، کد جدید بگیرید.','Incorrect code. Check the latest code you received and try again.':'کد اشتباه است؛ آخرین کد دریافتی را بررسی کنید.'};
   el.textContent = authText(msg,messages[msg]||msg);
 }
@@ -869,15 +821,17 @@ function loadConfig() {
   return cfg;
 }
 
-async function loadPeers() {
+let _peersLoadedFor=null,_peersInFlight=false,_savedServerPeer=null;
+async function loadPeers(force=false) {
+  const identity=_state?.self?.id||(_state?.tokenSet?'signed-in':null);if(_peersInFlight||(!force&&identity&&_peersLoadedFor===identity))return;_peersInFlight=true;
   try {
     const r = await fetch('/peers');
     const { peers } = await r.json();
     const sel = document.getElementById('tunnelPeer');
     let cfg;
     try { cfg = JSON.parse(localStorage.getItem(configStorageKey) || '{}'); } catch { cfg = {}; }
-    populatePeerSelect(sel, peers, cfg.peer || sel.value);
-  } catch {}
+    const saved=peers.find(p=>String(p.id)===String(_savedServerPeer));populatePeerSelect(sel, peers, cfg.peer || sel.value || (saved?saved.id+':'+saved.type:''));_peersLoadedFor=identity;
+  } catch {} finally {_peersInFlight=false;}
 }
 
 function renderSelf(self) {
@@ -899,8 +853,10 @@ const hasToken  = () => !!_state?.tokenSet;
 const isAlive   = () => _tunnelMode === 'client' ? !!_state?.clientActivated : !!_state?.wsReady;
 const roomReady = () => !!_state?.clientRoomReady;
 
-async function pollState() {
-  if (_pollInFlight || (_state && (document.hidden || !embeddedActive))) return;
+const _pollWaiters=[];
+async function pollState(force=false) {
+  if(_pollInFlight){if(force){await new Promise(resolve=>_pollWaiters.push(resolve));return pollState(true);}return;}
+  if ( (!force && _state && (document.hidden || !embeddedActive || _desktopHidden))) return;
   _pollInFlight=true;
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),5000);
   try {
@@ -909,7 +865,7 @@ async function pollState() {
     sampleTraffic(_telemetry,_state.traffic,performance.now(),_state.metrics);
     sampleAggregate(_state.aggregate,performance.now());
     applyState();
-  } catch {_trafficStatusStale=true;if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);renderAggregate(_state.aggregate,_state.aggregateWorkers);}} finally {clearTimeout(timeout);_pollInFlight=false;}
+  } catch {_trafficStatusStale=true;if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);renderAggregate(_state.aggregate,_state.aggregateWorkers);}} finally {clearTimeout(timeout);_pollInFlight=false;const waiters=_pollWaiters.splice(0);for(const resolve of waiters)resolve();}
 }
 
 function applyState() {
@@ -1066,7 +1022,7 @@ function applyTunnelUI(s) {
     } else if (s.clientActivated && s.clientRoomReady) {
       st.style.display = '';
       const traffic = `  ↑ ${fmtKB(s.cliTxBytes || 0)}  ↓ ${fmtKB(s.cliRxBytes || 0)}`;
-      st.textContent = `SOCKS5 on 127.0.0.1:${s.socks5Port} → peer ${s.serverPeer?.id} [🔗 WebRTC] | sessions: ${s.sessions}${traffic}`;
+      st.textContent = `SOCKS5 on 127.0.0.1:${s.socks5Port} → peer ${s.serverPeer?.id} [🔗 WebRTC] | sessions: ${Number(s.sessions)||0}${traffic}`;
       st.className = 'entry ok';
     } else {
       st.style.display = 'none';
@@ -1161,7 +1117,7 @@ document.getElementById('refreshPeers').addEventListener('click', async (e) => {
   e.target.disabled = true;
   try {
     await fetch('/peers/refresh', { method: 'POST' });
-    await loadPeers();
+    await loadPeers(true);
   } finally {
     e.target.disabled = false;
   }
@@ -1173,7 +1129,7 @@ function showSearchResult(msg, isError) {
   box.style.display = '';
   const empty = document.createElement('div');
   empty.style.cssText = 'padding:.45rem .7rem; color:' + (isError ? '#c62828' : '#aaa');
-  empty.textContent = uiMessage(msg);
+  empty.textContent = uiMessage(msg);if(translations[msg])empty.dataset.label=msg;
   box.appendChild(empty);
 }
 
@@ -1196,7 +1152,7 @@ async function searchPeer() {
       for (const u of d.users) {
         const row = document.createElement('div');
         row.style.cssText = 'padding:.45rem .7rem; cursor:pointer; border-bottom:1px solid #eee';
-        row.textContent = (u.name || '(no name)') + (u.nick ? ` @${u.nick}` : '') + `  [${u.id}]`;
+        row.dataset.peer='true';row.textContent = (u.name || '(no name)') + (u.nick ? ` @${u.nick}` : '') + `  [${u.id}]`;
         row.onmouseover = () => row.style.background = '#f0f4ff';
         row.onmouseout  = () => row.style.background = '';
         row.onclick = () => {
@@ -1712,11 +1668,12 @@ const accountFrames=new Map(),accountStates=new Map();let visibleAccount=null,ac
 function publishProfileState(){if(embeddedProfile)window.parent.postMessage({type:'bale-profile-state',slot:embeddedProfile,state:{mode:_state?.mode,tokenSet:!!_state?.tokenSet,ready:!!_state?.clientRoomReady,authenticated:!!_state?.peerAuthenticated,name:_state?.self?.name||'',error:_state?.clientError||null}},location.origin);}
 window.baleProfileUI={
  ready:()=>!!_state,
- refresh:async()=>{const was=embeddedActive;embeddedActive=true;try{await pollState();}finally{embeddedActive=was;}},
+ refresh:async()=>{const was=embeddedActive;embeddedActive=true;try{await pollState(true);}finally{embeddedActive=was;}},
  connect:async()=>{await window.baleProfileUI.refresh();if(!_state?.tokenSet)throw new Error('Sign in to this account first');if(_state.mode!=='client')throw new Error('Choose Client mode in this account');if(_state.clientRoomReady)return;if(!document.getElementById('tunnelPeer').value)throw new Error('Select a server for this account');const response=await fetch('/settings');const data=await response.json();if(!data.preferences.secureMode||!data.preferences.serverCode)throw new Error('Save verified server pairing for this account first');await activateTunnel();if(_activationError||_state?.clientError)throw new Error(_activationError||_state.clientError);publishProfileState();},
+ resume:async()=>{await window.baleProfileUI.refresh();if(!_state?.tokenSet)throw new Error('Sign in to this account first');if(_state.mode==='server'){await activateTunnel();if(_activationError)throw new Error(_activationError);}else await window.baleProfileUI.connect();},
  tab:key=>setWorkspaceTab(key)
 };
-function signalAccountFrames(){for(const [slot,frame]of accountFrames)frame.contentWindow?.postMessage({type:'bale-profile-active',active:slot===visibleAccount&&!document.getElementById('profileModal').hidden},location.origin);}
+function signalAccountFrames(){for(const [slot,frame]of accountFrames)frame.contentWindow?.postMessage({type:'bale-profile-active',active:!_desktopHidden&&slot===visibleAccount&&!document.getElementById('profileModal').hidden},location.origin);}
 function removeAccountFrame(slot){accountFrames.get(slot)?.remove();accountFrames.delete(slot);accountStates.delete(slot);if(visibleAccount===slot)closeAccount();}
 function closeAccount(){document.getElementById('profileModal').hidden=true;visibleAccount=null;signalAccountFrames();lastAccountFocus?.focus();}
 async function openAccount(slot,show=true){
@@ -1757,7 +1714,7 @@ function aggregateRow(path) {
  for(const [key,en,fa,type,limit]of fields){const label=document.createElement('label'),span=document.createElement('span'),input=document.createElement('input');span.textContent=translated(en,fa);span.dataset.label=en;input.type=type;input.dataset.field=key;if(type==='number'){input.min='1';input.max=String(limit);}else input.maxLength=limit;input.value=String(path[key]);label.append(span,input);root.querySelector('.preferences-row').append(label);}
  const actions=[['start','Start profile','اجرای حساب'],['stop','Stop profile','توقف حساب'],['manage','Sign in / manage account','ورود / مدیریت حساب'],['connect','Connect account','اتصال حساب'],['copy','Copy account panel URL','کپی آدرس پنل حساب'],['remove','Remove path','حذف مسیر']];
  for(const [action,en,fa]of actions){const button=document.createElement('button');button.type='button';button.className='refresh-btn';button.dataset.action=action;button.dataset.label=en;button.textContent=translated(en,fa);button.onclick=async()=>{const rows=[...document.querySelectorAll('.aggregate-path')],slot=Number(root.dataset.profileId);if(action==='remove'){if(!_aggregateBusy&&!_aggregateSnapshot?.running&&!rows.some(r=>r.dataset.worker==='true')){root.remove();renderAggregate(_aggregateSnapshot,[]);}else aggregateMessage(translated('Stop the pool and profiles before editing paths.','پیش از ویرایش مسیرها، پروکسی تجمیع و حساب‌ها را متوقف کنید.'),true);return;}if(action==='manage'){try{await openAccount(slot,true);}catch(error){aggregateMessage(uiMessage(error.message),true);}return;}if(action==='connect'){await connectAccount(slot);return;}if(action==='copy'){const port=Number(root.querySelector('[data-field="managementPort"]').value);if(!Number.isInteger(port)||port<1||port>65535)return;try{await navigator.clipboard.writeText('http://127.0.0.1:'+port);aggregateMessage(translated('Open the copied URL in your browser. Remote profiles need SSH forwarding.','آدرس کپی‌شده را در مرورگر باز کنید؛ پنل سرور به فوروارد SSH نیاز دارد.'));}catch{aggregateMessage('http://127.0.0.1:'+port);}return;}if(action==='start'&&!await aggregateSave())return;const ok=await aggregateAction('/aggregate/worker',{slot,start:action==='start'});if(ok&&action==='stop')removeAccountFrame(slot);};root.querySelector('.settings-actions').append(button);}
- root.querySelector('.aggregate-path-title').textContent=path.name;document.getElementById('aggregatePaths').append(root);return root;
+ const details=document.createElement('details');details.className='advanced';const summary=document.createElement('summary');summary.dataset.label='Advanced account settings';summary.textContent=translated('Advanced account settings','تنظیمات پیشرفتهٔ حساب');const extras=document.createElement('div');extras.className='settings-actions';for(const key of ['copy','remove'])extras.append(root.querySelector('[data-action='+key+']'));details.append(summary,root.querySelector('.preferences-row'),extras,root.querySelector('a'));root.append(details);root.querySelector('.aggregate-path-title').textContent=path.name;document.getElementById('aggregatePaths').append(root);return root;
 }
 function readAggregateConfig(){return {listenPort:Number(document.getElementById('aggregatePort').value),policy:document.getElementById('aggregatePolicy').value,paths:[...document.querySelectorAll('.aggregate-path')].map(root=>{const field=key=>root.querySelector('[data-field="'+key+'"]').value;return {profileId:Number(root.dataset.profileId),name:field('name').trim(),port:Number(field('port')),managementPort:Number(field('managementPort')),weight:Number(field('weight'))};})};}
 async function loadAggregate(){try{const response=await fetch('/aggregate');if(!response.ok)throw new Error('Cannot load multi-tunnel settings');const data=await response.json();document.getElementById('aggregatePort').value=String(data.config.listenPort);document.getElementById('aggregatePolicy').value=data.config.policy;document.getElementById('aggregatePaths').replaceChildren();for(const path of data.config.paths)aggregateRow(path);_aggregateSavedConfig=readAggregateConfig();_aggregateLoaded=true;renderAggregate(data.status,data.workers);}catch(error){aggregateMessage(error.message,true);}}
@@ -1774,7 +1731,7 @@ function renderAggregate(snapshot,workers){
  const rows=[...document.querySelectorAll('.aggregate-path')],workerList=workers||[];const anyWorker=workerList.some(w=>w.running);
  for(const id of ['aggregateSave','aggregateAdd','aggregatePort','aggregatePolicy'])document.getElementById(id).disabled=_aggregateBusy||snapshot.running||anyWorker;
  toggle.disabled=_aggregateBusy||!_aggregateLoaded;document.getElementById('addClientAccount').disabled=_aggregateBusy||accountBusy||snapshot.running;document.getElementById('connectClientAccounts').disabled=_aggregateBusy||accountBusy;
- rows.forEach((root,index)=>{const profileId=Number(root.dataset.profileId),status=paths.find(p=>p.profileId===profileId),worker=workerList.find(w=>w.slot===profileId),running=!!worker?.running;root.dataset.worker=String(running);const name=root.querySelector('[data-field="name"]').value;root.querySelector('.aggregate-path-title').textContent=name;root.querySelector('.aggregate-worker-state').textContent=running?translated('Profile running','حساب در حال اجرا'):translated('Profile stopped / external path','حساب متوقف / مسیر خارجی');for(const input of root.querySelectorAll('input'))input.disabled=_aggregateBusy||snapshot.running||anyWorker;for(const button of root.querySelectorAll('[data-action]'))button.disabled=_aggregateBusy||(button.dataset.action==='start'&&running)||(button.dataset.action==='stop'&&!running)||(['manage','connect'].includes(button.dataset.action)&&!running)||(button.dataset.action==='remove'&&(snapshot.running||anyWorker));const link=root.querySelector('a');const port=Number(root.querySelector('[data-field="managementPort"]').value);link.textContent='http://127.0.0.1:'+port;link.href='http://127.0.0.1:'+port;link.hidden=!running;root.querySelector('.aggregate-path-stats').textContent=status?translated('Active: ','فعال: ')+status.active+' · ↓ '+trafficVolume(status.receivedBytes)+' · ↑ '+trafficVolume(status.sentBytes)+(status.error?' · '+translated('Local tunnel unavailable; connect its profile.','تونل محلی در دسترس نیست؛ حساب آن را متصل کنید.'):''):'';});renderAccountStates();
+ rows.forEach((root,index)=>{const profileId=Number(root.dataset.profileId),status=paths.find(p=>p.profileId===profileId),worker=workerList.find(w=>w.slot===profileId),running=!!worker?.running;root.dataset.worker=String(running);const name=root.querySelector('[data-field="name"]').value;root.querySelector('.aggregate-path-title').textContent=name;root.querySelector('.aggregate-worker-state').textContent=running?translated('Profile running','حساب در حال اجرا'):translated('Profile stopped / external path','حساب متوقف / مسیر خارجی');for(const input of root.querySelectorAll('input'))input.disabled=_aggregateBusy||snapshot.running||anyWorker;for(const button of root.querySelectorAll('[data-action]')){button.hidden=(button.dataset.action==='start'&&running)||(['stop','manage','connect'].includes(button.dataset.action)&&!running);button.disabled=_aggregateBusy||(button.dataset.action==='start'&&running)||(button.dataset.action==='stop'&&!running)||(['manage','connect'].includes(button.dataset.action)&&!running)||(button.dataset.action==='remove'&&(snapshot.running||anyWorker));}const link=root.querySelector('a');const port=Number(root.querySelector('[data-field="managementPort"]').value);link.textContent='http://127.0.0.1:'+port;link.href='http://127.0.0.1:'+port;link.hidden=!running;root.querySelector('.aggregate-path-stats').textContent=status?translated('Active: ','فعال: ')+status.active+' · ↓ '+trafficVolume(status.receivedBytes)+' · ↑ '+trafficVolume(status.sentBytes)+(status.error?' · '+translated('Local tunnel unavailable; connect its profile.','تونل محلی در دسترس نیست؛ حساب آن را متصل کنید.'):''):'';});renderAccountStates();
 }
 document.getElementById('aggregateAdd').onclick=()=>{const rows=document.querySelectorAll('.aggregate-path');if(rows.length>=8)return;const used=new Set([...rows].map(r=>Number(r.dataset.profileId)));const id=[1,2,3,4,5,6,7,8].find(i=>!used.has(i));aggregateRow({profileId:id,name:'Tunnel '+id,port:1080+id,managementPort:37200+id,weight:1});};
 document.getElementById('aggregateSave').onclick=aggregateSave;
@@ -1809,14 +1766,17 @@ Object.assign(translations,{"Add client account": "افزودن حساب کلا�
 
 Object.assign(translations,{"DESKTOP": "دسکتاپ", "Each account has its own sign-in, server selection and secure pairing.": "هر حساب ورود، انتخاب سرور و جفت‌سازی امن مستقل دارد.", "Clears the saved token and stops the tunnel.": "توکن ذخیره‌شده پاک و تونل متوقف می‌شود.", "No results": "نتیجه‌ای پیدا نشد", "Traffic analytics": "آمار ترافیک", "Download and upload speed history": "تاریخچهٔ سرعت دریافت و ارسال", "Traffic CSV without account details": "CSV ترافیک بدون اطلاعات حساب", "Redacted diagnostic report": "گزارش عیب‌یابی بدون اطلاعات حساس", "Bale accepted the request. Check Bale, Telegram or SMS for your code.": "بله درخواست را پذیرفت؛ کد را در بله، تلگرام یا پیامک بررسی کنید.", "Bale did not confirm a code request. Please retry.": "بله درخواست کد را تأیید نکرد؛ دوباره تلاش کنید.", "Sign-in failed. Please retry.": "ورود ناموفق بود؛ دوباره تلاش کنید.", "Invalid code": "کد نامعتبر است", "Registration failed": "ثبت‌نام ناموفق بود", "Connection closed. Press Connect to start another call.": "تماس پایان یافت؛ برای تماس تازه اتصال را بزنید.", "Failed to configure tunnel": "پیکربندی تونل انجام نشد", "Failed to fetch": "ارتباط با برنامه قطع شد", "NetworkError when attempting to fetch resource.": "ارتباط شبکه با برنامه برقرار نشد", "Account profile is unavailable": "حساب در دسترس نیست؛ وضعیت اجرای آن را بررسی کنید", "Account process identity check failed": "هویت پردازش حساب تأیید نشد", "Account request was rejected": "درخواست حساب رد شد", "Account request is too large": "اندازهٔ درخواست حساب بیش از حد مجاز است", "Account profile response was interrupted": "دریافت پاسخ حساب قطع شد", "Account profile response is too large": "پاسخ حساب بیش از حد بزرگ است", "Bale refused the call (CallNotApproved). On the server account, verify that incoming calls are allowed for Everyone, using the server privacy check or the official Bale app. The tunnel request has not reached the server approval list.": "بله تماس را رد کرد (CallNotApproved). در حساب سرور، مجوز تماس را با بررسی حریم خصوصی برنامه یا در پیام‌رسان رسمی بله روی «همه» قرار دهید. درخواست تونل هنوز به فهرست تأیید سرور نرسیده است."});
 Object.assign(translations,{'Session expired — please log in again.':'نشست حساب منقضی شده است؛ دوباره وارد شوید.','App version is incompatible with Bale. Please update.':'نسخهٔ برنامه با بله سازگار نیست؛ برنامه را به‌روز کنید.'});
+Object.assign(translations,{"Session transfer": "انتقال نشست‌ها", "Export accounts": "خروجی حساب‌ها", "Import accounts": "ورودی حساب‌ها", "Transfers existing sessions and pairing keys without requesting a new login code. Stop the source before using the restored account. Revoked or expired Bale sessions cannot be revived by a backup.": "نشست و کلیدهای جفت‌سازی فعلی بدون درخواست کد ورود تازه منتقل می‌شوند. پیش از استفاده از حساب بازیابی‌شده، اجرای آن را در دستگاه مبدأ متوقف کنید. نشست باطل‌شده یا منقضی‌شدهٔ بله با پشتیبان قابل احیا نیست.", "Select one account or all accounts. Stop selected profiles before exporting; this keeps their saved sessions.": "یک حساب یا همهٔ حساب‌ها را انتخاب کنید. پیش از خروجی، حساب‌های انتخاب‌شده را متوقف کنید؛ نشست‌های ذخیره‌شدهٔ آن‌ها حفظ می‌شوند.", "Refresh accounts": "بازخوانی حساب‌ها", "Select / clear all": "انتخاب / لغو انتخاب همه", "No account profiles yet.": "هنوز حسابی اضافه نشده است.", "Stop selected profiles, keep sessions": "توقف حساب‌های انتخاب‌شده با حفظ نشست", "Archive password · at least 12 characters": "رمز فایل؛ حداقل ۱۲ نویسه", "Repeat archive password": "تکرار رمز فایل", "Download encrypted account file": "دریافت فایل رمزگذاری‌شدهٔ حساب‌ها", "Stop the local pool and managed profiles first. Restore selected accounts into unused slots; existing accounts and keys are kept. No calls are started automatically.": "ابتدا پروکسی تجمیع و حساب‌های تحت مدیریت را متوقف کنید. حساب‌های انتخاب‌شده در جایگاه‌های خالی بازیابی می‌شوند؛ حساب‌ها و کلیدهای موجود حفظ می‌شوند و تماس خودکار آغاز نمی‌شود.", "Encrypted account file": "فایل رمزگذاری‌شدهٔ حساب‌ها", "Archive password": "رمز فایل", "Unlock and preview accounts": "باز کردن فایل و بررسی حساب‌ها", "Restore selected accounts": "بازیابی حساب‌های انتخاب‌شده", "What is inside the encrypted file?": "فایل رمزگذاری‌شده شامل چیست؟", "Existing access tokens, original device identities, pairing keys and account settings. Password protection uses AES-256-GCM and PBKDF2-SHA256. Keep the file and password private and separate. Import does not bypass session expiry or Bale security checks.": "توکن‌های نشست فعلی، هویت اصلی دستگاه، کلیدهای جفت‌سازی و تنظیمات حساب‌ها. فایل با AES-256-GCM و PBKDF2-SHA256 محافظت می‌شود. فایل و رمز را خصوصی و جدا از هم نگه دارید. وارد کردن فایل، انقضای نشست یا بررسی‌های امنیتی بله را دور نمی‌زند.", "Minimize": "کوچک کردن پنجره", "Maximize or restore": "بزرگ کردن / بازگرداندن پنجره", "Close window": "بستن پنجره", "Close window to tray": "بستن پنجره در ناحیهٔ اعلان", "Start with window hidden": "شروع با پنجرهٔ پنهان", "Keep window on top": "همیشه روی پنجره‌های دیگر", "System tray is unavailable. Closing the window will exit the application.": "ناحیهٔ اعلان در دسترس نیست؛ بستن پنجره از برنامه خارج می‌شود.", "Use Quit and disconnect in the tray menu to fully exit. Starting hidden does not enable OS auto-start.": "برای خروج کامل، «خروج و قطع اتصال‌ها» را از منوی ناحیهٔ اعلان بزنید. شروع با پنجرهٔ پنهان، اجرای خودکار با روشن‌شدن سیستم را فعال نمی‌کند.", "Manual token sign-in": "ورود دستی با توکن", "Pool settings and external paths": "تنظیمات تجمیع و مسیرهای خارجی", "Advanced account settings": "تنظیمات پیشرفتهٔ حساب", "Display name": "نام نمایشی", "Register": "ثبت‌نام", "Connection metrics": "آمار اتصال", "Workspace": "فضای کار", "Allow Bale calls and recheck": "مجاز کردن تماس بله و بررسی دوباره", "Server mode: relay internet connections and auto-answer incoming calls (LiveKit WebRTC tunnel). Activating Server sets this Bale account's incoming-call privacy to Everyone. Tunnel requests still require your approval or allow-list.": "حالت سرور: پذیرش تماس و انتقال اینترنت از طریق تونل WebRTC. فعال‌کردن سرور، مجوز تماس این حساب بله را روی «همه» می‌گذارد؛ دسترسی به تونل همچنان نیازمند تأیید شما یا حضور در فهرست حساب‌های مجاز است.", "Use an archive password of at least 12 characters": "رمز فایل باید حداقل ۱۲ نویسه داشته باشد", "Archive passwords do not match": "رمز و تکرار رمز یکسان نیستند", "Select at least one account": "حداقل یک حساب را انتخاب کنید", "Select at least one valid account": "حداقل یک حساب معتبر انتخاب کنید", "Could not load account list": "فهرست حساب‌ها بارگیری نشد", "Could not stop selected accounts": "توقف حساب‌های انتخاب‌شده انجام نشد", "Choose an encrypted account file first": "ابتدا فایل رمزگذاری‌شدهٔ حساب‌ها را انتخاب کنید", "Account transfer failed": "انتقال حساب‌ها انجام نشد", "Unsupported account archive format": "قالب فایل حساب‌ها پشتیبانی نمی‌شود", "Account archive is too large": "فایل حساب‌ها بیش از حد بزرگ است", "Incorrect archive password or damaged account file": "رمز فایل اشتباه است یا فایل آسیب دیده است", "Invalid encrypted account file": "فایل رمزگذاری‌شده معتبر نیست", "Invalid account archive contents": "محتوای فایل حساب‌ها معتبر نیست", "Account encryption failed": "رمزگذاری حساب‌ها انجام نشد", "Stop selected account profiles before exporting": "پیش از خروجی، حساب‌های انتخاب‌شده را متوقف کنید", "Stop the pool and managed profiles before importing accounts": "پیش از بازیابی، پروکسی تجمیع و حساب‌های تحت مدیریت را متوقف کنید", "Another account transfer is in progress": "انتقال دیگری در حال انجام است؛ تا پایان آن منتظر بمانید", "This account identity already exists on this installation": "این هویت حساب در همین برنامه موجود است؛ برای جلوگیری از نشست تکراری وارد نشد", "Not enough unused account slots; maximum is eight": "جایگاه خالی کافی وجود ندارد؛ حداکثر هشت حساب تحت مدیریت است", "Invalid saved account session": "نشست ذخیره‌شدهٔ حساب معتبر نیست", "Account identity is missing": "کلید هویت حساب پیدا نشد", "Invalid account selection": "انتخاب حساب معتبر نیست", "Account destination changed; nothing was overwritten": "مقصد حساب تغییر کرده است؛ حسابی بازنویسی نشد", "No free local account port": "پورت محلی آزاد برای حساب پیدا نشد", "Saved session": "نشست ذخیره‌شده", "No saved session": "بدون نشست ذخیره‌شده", "Main account": "حساب اصلی", "Could not disconnect account": "قطع اتصال حساب انجام نشد"});
+Object.assign(translations,{'Choose account file':'انتخاب فایل حساب‌ها','No file selected':'فایلی انتخاب نشده است','Done. Verify each tunnel in its own account panel.':'انجام شد. وضعیت هر تونل را در پنل حساب خودش بررسی کنید.','This account already has a saved session; no login code was requested':'این حساب نشست ذخیره‌شده دارد؛ هیچ کد ورود تازه‌ای درخواست نشد','Could not save account device identity':'مشخصات نشست حساب ذخیره نشد','Could not save account session':'نشست حساب ذخیره نشد','This saved session already exists on this installation':'این نشست ذخیره‌شده در همین برنامه موجود است؛ دوباره وارد نشد'});
 // Translate presentation updates only. No timers or traffic-path hooks.
 const localizedNodes=new WeakMap(),localizedAttributes=new WeakMap();
 function uiMessage(value){
  const text=String(value??'');if(document.documentElement.lang!=='fa')return text;
- const trimmed=text.trim(),exact=translations[trimmed];if(exact)return text.replace(trimmed,exact);
+ const trimmed=text.trim().replace(/\s+/g,' '),exact=translations[trimmed];if(exact)return exact;
  const patterns=[
  [/^Server — (\d+) clients? connected$/,m=>'سرور — '+m[1]+' کلاینت متصل'],
  [/^\(max (\d+)\)$/,m=>'(حداکثر '+m[1]+')'],
+ [/^⚡ Tunnel proxy$/,()=> '⚡ پروکسی تونلی'],
  [/^up (.*)$/,m=>'مدت اتصال: '+m[1]],
  [/^waiting (.*)$/,m=>'مدت انتظار: '+m[1]],
  [/^total (.*)$/,m=>'مجموع '+m[1]],
@@ -1824,15 +1784,15 @@ function uiMessage(value){
  [/^Tunnel (\d+)$/,m=>'تونل '+m[1]],
  [/^Could not verify Bale call privacy: (.*)$/,m=>'بررسی حریم خصوصی تماس بله ناموفق بود: '+uiMessage(m[1])],
  [/^(?:Error|Failed|Connection failed): (.*)$/,m=>'خطای اتصال: '+uiMessage(m[1])],
- [/^SOCKS5 on (.*?) → peer (.*?) \[🔗 WebRTC\] \| sessions: (.*)$/,m=>'SOCKS5 روی '+m[1]+' ← حساب '+m[2]+' [WebRTC] | نشست‌ها: '+m[3]],
+ [/^SOCKS5 on (.*?) → peer (.*?) \[.*?WebRTC\] \| sessions: (.*)$/,m=>'SOCKS5 روی '+m[1]+' ← حساب '+m[2]+' [WebRTC] | نشست‌ها: '+m[3]],
  [/^Bale accepted the request\. Check (.*?) for your code\.$/,m=>'بله درخواست را پذیرفت؛ کد را در '+({'a phone call':'تماس تلفنی','a missed call':'تماس ازدست‌رفته',email:'ایمیل',Bale:'بله',Telegram:'تلگرام',WhatsApp:'واتس‌اپ',SMS:'پیامک'}[m[1]]||m[1])+' بررسی کنید.'],
  ];
- for(const [pattern,replace]of patterns){const match=trimmed.match(pattern);if(match)return text.replace(trimmed,replace(match));}
+ for(const [pattern,replace]of patterns){const match=trimmed.match(pattern);if(match)return replace(match);}
  return text;
 }
 function localizeInterface(root){
  if(!root)return;
- const skip='script,style,textarea,input,#selfName,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
+ const skip='script,style,textarea,input,#backupAccounts,#backupImportAccounts,#selfName,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
  const translate=node=>{if(!node.parentElement||node.parentElement.closest(skip))return;const before=node.nodeValue,record=localizedNodes.get(node);const original=record&&before===record.output?record.original:before;const output=uiMessage(original);localizedNodes.set(node,{original,output});if(output!==before)node.nodeValue=output;};
  if(root.nodeType===3)translate(root);else{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())translate(node);}
 }
@@ -1876,11 +1836,13 @@ function applyAppearance() {
  try {localStorage.setItem('bale_appearance',JSON.stringify(p));}catch{}
  if (_state) applyState();
  else setWorkspaceTab(_workspaceTab);
+ const auth=document.getElementById('authStatus');if(auth.dataset.message)showAuthStatus(auth.dataset.message,auth.dataset.kind);
  localizeInterface(document.body);localizeAttributes();
+ if(typeof desktopCommand==='function')desktopCommand('theme',{language,dark});
 }
 async function loadSettings() {
  try {
-  const response=await fetch('/settings');const d=await response.json();const p=d.preferences;
+  const response=await fetch('/settings');const d=await response.json();const p=d.preferences;_savedServerPeer=d.savedPeerId||null;
   document.getElementById('secureMode').checked=p.secureMode;
   document.getElementById('publicCode').value=d.publicCode;
   document.getElementById('keyFingerprint').textContent='SHA-256: '+d.fingerprint;
@@ -1914,7 +1876,39 @@ for(const id of Object.values(appearanceFields))document.getElementById(id).addE
 document.getElementById('accentColor').addEventListener('input',()=>{document.getElementById('paletteSelect').value='custom';applyAppearance();});
 document.getElementById('resetAppearance').onclick=()=>{fillAppearance(appearanceDefaults);applyAppearance();};
 if(systemTheme.addEventListener)systemTheme.addEventListener('change',()=>{if(document.getElementById('themeSelect').value==='system')applyAppearance();});
-initializeWorkspace();applyAppearance();
+window.desktopVisibility=visible=>{const changed=_desktopHidden!==!visible;_desktopHidden=!visible;signalAccountFrames();if(visible&&changed)pollState(true);};
+// Desktop controls are a bounded native bridge; account secrets never use IPC.
+function desktopCommand(cmd,extra={}){if(window.__BALE_DESKTOP__&&!embeddedProfile)window.ipc?.postMessage(JSON.stringify({cmd,...extra}));}
+window.desktopSettingsReceived=settings=>{const panel=document.getElementById('desktopPreferences');panel.hidden=false;for(const key of ['closeToTray','startMinimized','alwaysOnTop'])document.getElementById(key).checked=!!settings[key];document.getElementById('trayUnavailable').hidden=settings.trayAvailable!==false;};
+window.desktopDownloadFinished=success=>{document.getElementById('backupExportStatus').textContent=success?translated('Encrypted account file saved.','فایل رمزگذاری‌شدهٔ حساب‌ها ذخیره شد.'):translated('Download failed. No account file was saved.','ذخیرهٔ فایل انجام نشد؛ دوباره تلاش کنید.');};
+window.desktopConnect=async()=>{desktopCommand('show');await pollState(true);const workers=(_state?.aggregateWorkers||[]).filter(w=>w.running);if(workers.length){setWorkspaceTab('aggregate');for(const w of workers){try{const ui=await openAccount(w.slot,false);await ui.resume();}catch(error){aggregateMessage(uiMessage(error.message),true);await openAccount(w.slot,true).catch(()=>{});break;}}}else{setWorkspaceTab('connection');if(_state?.tokenSet&&_state.mode)await activateTunnel();}};
+window.desktopDisconnectAll=async()=>{try{await pollState(true);if(_aggregateSnapshot?.running)await aggregateAction('/aggregate/stop');const results=await Promise.allSettled((_state?.aggregateWorkers||[]).filter(w=>w.running).map(async w=>{const prefix='/aggregate/profiles/'+w.slot;try{const response=await fetch(prefix+'/state'),state=await response.json();if(state.error)throw new Error(state.error);await backupRequest(prefix+(state.mode==='client'?'/tunnel/disconnect':'/disconnect'),{});}catch(error){if(!await aggregateAction('/aggregate/worker',{slot:w.slot,start:false}))throw error;removeAccountFrame(w.slot);}}));await backupRequest(_state?.mode==='client'?'/tunnel/disconnect':'/disconnect',{});for(const f of accountFrames.values())await f.contentWindow.baleProfileUI?.refresh();await pollState(true);if(results.some(r=>r.status==='rejected'))throw new Error('Could not disconnect account');}catch(error){aggregateMessage(uiMessage(error.message),true);setWorkspaceTab('aggregate');desktopCommand('show');}};
+window.desktopTogglePool=async()=>{if(!_aggregateLoaded)await loadAggregate();await pollState(true);await document.getElementById('aggregateToggle').onclick();};
+if(window.__BALE_DESKTOP__&&!embeddedProfile){
+ document.documentElement.dataset.desktop='true';
+ const titlebar=document.getElementById('nativeTitlebar');titlebar.addEventListener('mousedown',event=>{if(event.button===0&&!event.target.closest('button'))desktopCommand('drag');});titlebar.addEventListener('dblclick',event=>{if(!event.target.closest('button'))desktopCommand('maximize');});
+ for(const button of titlebar.querySelectorAll('[data-command]'))button.onclick=()=>desktopCommand(button.dataset.command);
+ for(const edge of document.querySelectorAll('.resize-edge'))edge.addEventListener('mousedown',event=>{if(event.button===0)desktopCommand('resize',{edge:edge.dataset.edge});});
+ for(const key of ['closeToTray','startMinimized','alwaysOnTop'])document.getElementById(key).addEventListener('change',()=>{const settings={};for(const key of ['closeToTray','startMinimized','alwaysOnTop'])settings[key]=document.getElementById(key).checked;desktopCommand('desktopSettings',{settings});});
+}
+let _backupBusy=false,_backupArchive=null,_backupPreview=false;
+function backupMessage(id,text,error=false){const e=document.getElementById(id);e.textContent=text;e.dataset.error=String(error);e.style.color=error?'var(--negative)':'var(--muted)';}
+function accountChecklist(container,accounts,imported=false){container.replaceChildren();for(const a of accounts){const label=document.createElement('label'),input=document.createElement('input'),name=document.createElement('span'),status=document.createElement('small');input.type='checkbox';input.value=String(imported?a.index:a.slot);input.checked=!!a.hasSession;input.disabled=_backupBusy;name.textContent=a.name==='Main account'?translated('Main account','حساب اصلی'):a.name;status.textContent=a.hasSession?translated('Saved session','نشست ذخیره‌شده'):translated('No saved session','بدون نشست ذخیره‌شده');label.append(input,name,status);container.append(label);}}
+async function loadBackupAccounts(){if(embeddedProfile)return;try{const r=await fetch('/backup/accounts');const a=await r.json();if(!Array.isArray(a))throw new Error(a.error||'Could not load account list');accountChecklist(document.getElementById('backupAccounts'),a);document.getElementById('backupEmpty').hidden=!!a.length;}catch(e){backupMessage('backupExportStatus',uiMessage(e.message),true);}}
+async function backupRequest(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||d.ok===false||d.error)throw new Error(d.error||'Account transfer failed');return d;}
+function selectedBackup(container){return [...document.querySelectorAll(container+' input:checked')].map(e=>Number(e.value));}
+function backupLock(value){_backupBusy=value;for(const e of document.querySelectorAll('#panel-backup button,#panel-backup input'))e.disabled=value;document.getElementById('backupImport').disabled=value||!_backupPreview;}
+document.getElementById('backupRefresh').onclick=loadBackupAccounts;
+document.getElementById('backupSelectAll').onclick=()=>{const inputs=[...document.querySelectorAll('#backupAccounts input')];const select=inputs.some(i=>!i.checked);for(const i of inputs)i.checked=select;};
+document.getElementById('backupStopSelected').onclick=async()=>{if(_backupBusy)return;backupLock(true);try{const selected=selectedBackup('#backupAccounts');if(!selected.length)throw new Error('Select at least one account');if(_aggregateSnapshot?.running)await aggregateAction('/aggregate/stop');for(const slot of selected){if(slot===0){await backupRequest(_state?.mode==='client'?'/tunnel/disconnect':'/disconnect',{});}else if((_state?.aggregateWorkers||[]).some(w=>w.slot===slot&&w.running)){if(!await aggregateAction('/aggregate/worker',{slot,start:false}))throw new Error('Could not stop selected accounts');removeAccountFrame(slot);}}await loadBackupAccounts();for(const slot of selected){const input=document.querySelector('#backupAccounts input[value="'+slot+'"]');if(input)input.checked=true;}backupMessage('backupExportStatus',translated('Selected profiles stopped. Their saved sessions are kept.','حساب‌های انتخاب‌شده متوقف شدند؛ نشست‌های ذخیره‌شده حفظ شده‌اند.'));}catch(e){backupMessage('backupExportStatus',uiMessage(e.message),true);}finally{backupLock(false);}};
+document.getElementById('backupExport').onclick=async()=>{if(_backupBusy)return;const password=document.getElementById('backupPassword'),confirmation=document.getElementById('backupPasswordConfirm');backupLock(true);try{if(password.value!==confirmation.value)throw new Error('Archive passwords do not match');if([...password.value].length<12)throw new Error('Use an archive password of at least 12 characters');const slots=selectedBackup('#backupAccounts');if(!slots.length)throw new Error('Select at least one account');const archive=await backupRequest('/backup/export',{password:password.value,slots});if(window.__BALE_DESKTOP__&&!embeddedProfile){desktopCommand('saveAccountArchive',{archive});}else{const blob=new Blob([JSON.stringify(archive)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='BaleVPN-accounts-'+new Date().toISOString().replace(/[:.]/g,'-')+'.balevault';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}backupMessage('backupExportStatus',translated('Encrypted file download requested. Keep its password separately.','دریافت فایل رمزگذاری‌شده آغاز شد؛ رمز آن را جدا از فایل نگه دارید.'));}catch(e){backupMessage('backupExportStatus',uiMessage(e.message),true);}finally{password.value='';confirmation.value='';backupLock(false);}};
+document.getElementById('backupChooseFile').onclick=()=>document.getElementById('backupFile').click();
+document.getElementById('backupFile').onchange=async event=>{_backupArchive=null;_backupPreview=false;document.getElementById('backupImportAccounts').replaceChildren();document.getElementById('backupImport').disabled=true;try{const file=event.target.files[0];const filename=document.getElementById('backupFilename');if(file){delete filename.dataset.label;filename.textContent=file.name;}else{filename.dataset.label='No file selected';filename.textContent=uiMessage('No file selected');return;}if(file.size>3*1024*1024)throw new Error('Account archive is too large');const archive=JSON.parse(await file.text());if(archive.format!=='balevpn-account-v1')throw new Error('Unsupported account archive format');_backupArchive=archive;backupMessage('backupImportStatus',translated('File loaded. Enter its password and preview accounts.','فایل خوانده شد؛ رمز را وارد و حساب‌ها را بررسی کنید.'));}catch(e){backupMessage('backupImportStatus',uiMessage(e.message),true);}};
+document.getElementById('backupPreview').onclick=async()=>{if(_backupBusy)return;backupLock(true);try{if(!_backupArchive)throw new Error('Choose an encrypted account file first');const result=await backupRequest('/backup/preview',{password:document.getElementById('backupImportPassword').value,archive:_backupArchive});accountChecklist(document.getElementById('backupImportAccounts'),result.accounts,true);_backupPreview=true;backupMessage('backupImportStatus',translated('Choose accounts to restore. Existing accounts will not be overwritten.','حساب‌های موردنظر را انتخاب کنید؛ حساب‌های موجود بازنویسی نمی‌شوند.'));}catch(e){_backupPreview=false;backupMessage('backupImportStatus',uiMessage(e.message),true);}finally{backupLock(false);}};
+document.getElementById('backupImport').onclick=async()=>{if(_backupBusy||!_backupPreview)return;backupLock(true);try{const entries=selectedBackup('#backupImportAccounts');if(!entries.length)throw new Error('Select at least one account');const result=await backupRequest('/backup/import',{password:document.getElementById('backupImportPassword').value,archive:_backupArchive,entries});for(const slot of [...accountFrames.keys()])removeAccountFrame(slot);for(const a of result.accounts){try{localStorage.removeItem('bale_cfg_profile_'+a.slot);}catch{}}await loadAggregate();await loadBackupAccounts();backupMessage('backupImportStatus',translated('Restored accounts: ','حساب‌های بازیابی‌شده: ')+result.accounts.map(a=>a.name).join('، ')+translated('. Start their profiles from Multi-tunnel; no OTP was requested.','. حساب‌ها را از تب تجمیع اجرا کنید؛ هیچ کد ورود جدیدی درخواست نشد.'));_backupArchive=null;_backupPreview=false;document.getElementById('backupFile').value='';document.getElementById('backupFilename').dataset.label='No file selected';document.getElementById('backupFilename').textContent=uiMessage('No file selected');document.getElementById('backupImportAccounts').replaceChildren();}catch(e){backupMessage('backupImportStatus',uiMessage(e.message),true);}finally{document.getElementById('backupImportPassword').value='';backupLock(false);}};
+
+for(const id of ['aggregateAdd','aggregateSave'])document.getElementById('aggregateAdvancedActions')?.append(document.getElementById(id));
+initializeWorkspace();applyAppearance();desktopCommand('desktopReady',{language:document.documentElement.lang,dark:document.documentElement.dataset.theme==='dark'});
 new MutationObserver(records=>{for(const record of records){if(record.type==='characterData')localizeInterface(record.target);else for(const node of record.addedNodes)localizeInterface(node);}}).observe(document.body,{childList:true,subtree:true,characterData:true});
 window.addEventListener('storage',event=>{if(event.key==='bale_appearance'){try{fillAppearance(JSON.parse(event.newValue||'{}'));applyAppearance();}catch{}}});
 loadSettings();if(!embeddedProfile)loadAggregate();

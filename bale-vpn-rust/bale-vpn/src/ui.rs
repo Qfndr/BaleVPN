@@ -42,7 +42,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/state",         get(get_state))
         .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
         .route("/shutdown", post(shutdown))
+        .route("/desktop/show",post(desktop_show))
         .route("/aggregate", get(get_aggregate).post(configure_aggregate))
+        .route("/backup/accounts",get(crate::backup::accounts))
+        .route("/backup/export",post(crate::backup::export))
+        .route("/backup/preview",post(crate::backup::preview).layer(axum::extract::DefaultBodyLimit::max(4*1024*1024)))
+        .route("/backup/import",post(crate::backup::import).layer(axum::extract::DefaultBodyLimit::max(4*1024*1024)))
         .route("/aggregate/start", post(start_aggregate))
         .route("/aggregate/stop", post(stop_aggregate))
         .route("/aggregate/worker", post(aggregate_worker))
@@ -162,6 +167,11 @@ pub async fn serve(state: Arc<AppState>, listener: tokio::net::TcpListener) -> s
 pub(crate) const INDEX_HTML: &str = include_str!("../assets/index.html");
 
 async fn shutdown(State(s):State<Arc<AppState>>)->Json<OkBody>{s.shutdown.notify_one();Json(OkBody{ok:true})}
+async fn desktop_show()->Json<OkBody>{
+    #[cfg(feature="gui")]let ok=crate::ui_native::request_show();
+    #[cfg(not(feature="gui"))]let ok=false;
+    Json(OkBody{ok})
+}
 async fn get_aggregate(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(serde_json::json!({"config":s.aggregate.config(),"status":s.aggregate.snapshot(),"workers":s.aggregate.workers.snapshots()}))}
 async fn configure_aggregate(State(s):State<Arc<AppState>>,Json(config):Json<crate::aggregate::Config>)->Result<Json<OkBody>,ApiError>{s.aggregate.configure(config,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
 async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,ApiError>{s.aggregate.start().await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
@@ -217,6 +227,7 @@ async fn get_config(State(s): State<Arc<AppState>>) -> Json<ConfigBody> {
 async fn get_settings(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let preferences = s.cfg.read().await.preferences.clone();
     Json(serde_json::json!({"preferences":preferences,
+        "savedPeerId":s.config_file.load().peer_id,
         "publicCode":crate::settings::code(&s.identity.certificate),
         "fingerprint":crate::settings::hex(ring::digest::digest(&ring::digest::SHA256,&s.identity.certificate).as_ref()),
         "credentialStorage":if cfg!(windows) {"Windows DPAPI (current OS user)"} else {"AES-256-GCM; private master key or BALEVPN_MASTER_KEY_FILE"}}))
@@ -573,6 +584,7 @@ async fn disconnect(State(s): State<Arc<AppState>>) -> Json<OkBody> {
 }
 
 async fn logout(State(s): State<Arc<AppState>>) -> Json<OkBody> {
+    let _flow=s.auth_flow.lock().await;
     s.client.clear_error();
     s.server.reset_call_privacy();
     s.auth.clear_completed_auth().await;
@@ -619,6 +631,10 @@ async fn auth_start(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<AuthStartBody>,
 ) -> Result<Json<AuthStartReply>, ApiError> {
+    let _flow=s.auth_flow.lock().await;
+    if s.signaling.is_authenticated(){return Err(ApiError::Internal("This account already has a saved session; no login code was requested".into()));}
+    let device=crate::device::prepare_login(s.config_file.dir()).map_err(|_|ApiError::Internal("Could not save account device identity".into()))?;
+    s.auth.use_device(&device.hash,&device.label).map_err(|e|ApiError::Internal(e.to_string()))?;
     let r: StartResult = s.auth.start_phone_auth(&body.phone).await
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(Json(AuthStartReply {
@@ -664,6 +680,7 @@ async fn auth_verify(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Json<AuthReply> {
+    let _flow=s.auth_flow.lock().await;
     match s.auth.submit_otp(&body.transaction_hash, &body.code).await {
         // A registered phone with no JWT isn't a signup — it's a
         // wrong/expired code. Surface it as an error instead of
@@ -689,6 +706,7 @@ async fn auth_signup(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<AuthSignupBody>,
 ) -> Json<AuthReply> {
+    let _flow=s.auth_flow.lock().await;
     match s.auth.submit_signup_name(&body.transaction_hash, &body.name).await {
         Ok(outcome) => Json(persist_outcome(&s, outcome).await),
         Err(e)      => Json(AuthReply { ok: false, error: Some(e.to_string()), ..Default::default() }),
@@ -701,7 +719,9 @@ async fn auth_signup(
 async fn persist_outcome(s: &AppState, outcome: AuthOutcome) -> AuthReply {
     match outcome {
         AuthOutcome::Authenticated { access_token } => {
+            if crate::device::mark_used(s.config_file.dir()).is_err(){return AuthReply{ok:false,error:Some("Could not save account device identity".into()),..Default::default()};}
             s.token_store.save(access_token.as_bytes());
+            if s.token_store.load().as_deref()!=Some(access_token.as_bytes()){return AuthReply{ok:false,error:Some("Could not save account session".into()),..Default::default()};}
             // Kick the signaling layer to bring the WS up so /state
             // flips to authenticated quickly — otherwise the UI sits
             // on "Logging in…" until run_mode's 1-second auth-poll
@@ -989,8 +1009,9 @@ async fn reject_pending(
 /// `call_active=false` via the global LK observer and the WS
 /// will resume on its own.
 async fn tunnel_disconnect(State(s): State<Arc<AppState>>) -> Result<Json<OkBody>, ApiError> {
-    s.config_file.update(|c| { c.peer_id = None; })
-        .map_err(|e| ApiError::Internal(format!("persist: {e}")))?;
+    // Keep the last peer on disk for restored UI selection. Startup always
+    // clears the live peer before running a mode; this cannot auto-dial.
+    // Ending a call must also work when the config filesystem is read-only.
     let restart_mode = {
         let mut cfg = s.cfg.write().await;
         cfg.peer_id = None;

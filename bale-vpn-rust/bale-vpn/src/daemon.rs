@@ -18,6 +18,8 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    pub auth_flow: tokio::sync::Mutex<()>,
+    pub backup_job: tokio::sync::Mutex<()>,
     pub profile_http: reqwest::Client,
     pub aggregate: crate::aggregate::Aggregate,
     pub shutdown: tokio::sync::Notify,
@@ -105,7 +107,8 @@ pub async fn run_with_startup(
     // so a cold start with saved credentials brings the WS up
     // automatically (no waiting for an explicit /connect call).
     signaling.auto_load_token();
-    let auth        = BaleAuth::new();
+    let device = crate::device::identity(&cfg.config_dir)?;
+    let auth = BaleAuth::for_device(&device.hash, &device.label)?;
 
     let (mode_tx, _) = watch::channel(cfg.mode.clone());
 
@@ -121,6 +124,8 @@ pub async fn run_with_startup(
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        auth_flow: tokio::sync::Mutex::new(()),
+        backup_job: tokio::sync::Mutex::new(()),
         profile_http: crate::profiles::client()?,
         aggregate: crate::aggregate::Aggregate::new(persisted.aggregate.clone(), cfg.config_dir.clone(), cfg.port),
         shutdown: tokio::sync::Notify::new(),

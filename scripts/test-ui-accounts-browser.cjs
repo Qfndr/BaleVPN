@@ -32,7 +32,7 @@ const server=http.createServer(async(req,res)=>{try{
  }catch(error){res.statusCode=500;res.end(JSON.stringify({error:error.message}));}});
 (async()=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
- const browser=await chromium.launch({headless:true,...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
+ const browser=await chromium.launch({headless:true,args:["--explicitly-allowed-ports="+server.address().port],...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
  try{
  const page=await browser.newPage({viewport:{width:1280,height:960}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(base);await page.waitForFunction(()=>_aggregateLoaded);
@@ -63,7 +63,7 @@ const server=http.createServer(async(req,res)=>{try{
  await page.locator('#tab-aggregate').click();await page.locator('.aggregate-path').nth(0).locator('[data-action=manage]').click();
  await one.locator('#tab-connection').click();
  assert.match(await one.locator('#wsStateText').textContent(),/متصل/);
- await one.locator('#peerSearchBtn').click();await one.waitForFunction(()=>document.getElementById('peerResults').textContent.includes('شماره تلفن'));
+ await one.locator('.peer-lookup>summary').click();await one.locator('#peerSearchBtn').click();await one.waitForFunction(()=>document.getElementById('peerResults').textContent.includes('شماره تلفن'));
  await one.evaluate(()=>{_state={..._state,mode:'server',serverCallPrivacy:{everyone:true},lkRooms:2};applyState();});
  await one.waitForFunction(()=>document.getElementById('callPrivacyStatus').textContent.includes('تأیید شده'));
  assert.match(await one.locator('#tunnelStatus').textContent(),/۲|2/);

@@ -1,7 +1,7 @@
 # Single Rust binary replacing the Node bale-vpn application.
 [package]
 name        = "bale-vpn"
-version     = "2.5.0"
+version     = "2.6.0"
 edition.workspace = true
 publish.workspace = true
 description = "Bale VPN — single Rust binary (headless or GUI) replacing bale-vpn-node."
@@ -20,7 +20,7 @@ path = "src/main.rs"
 # That drops the tao + wry deps + skips webview wiring; the
 # binary stays headless-only (HTTP UI still works).
 default = ["gui"]
-gui     = ["dep:tao", "dep:wry", "dep:muda"]
+gui     = ["dep:tao", "dep:wry", "dep:muda", "dep:tray-icon"]
 
 [dependencies]
 # The signaling stack — three crates layered top-down.
@@ -46,6 +46,7 @@ serde_json = "1"
 tempfile = "3"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 ring = "0.17"
+zeroize = "1"
 
 # Logging.
 log        = "0.4"
@@ -68,6 +69,7 @@ tower-http = { version = "0.6", features = ["fs", "trace", "cors", "set-header"]
 tao        = { version = "0.30", optional = true }
 wry        = { version = "0.45", optional = true }
 muda       = { version = "0.13", optional = true }
+tray-icon  = { version = "=0.14.3", optional = true }
 
 # libc — TUNSETIFF / SIOCSIF* ioctls for the Linux/macOS kernel-TUN
 # path. Unix-only; the userspace-NAT path (and Windows) don't need it.

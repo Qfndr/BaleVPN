@@ -18,3 +18,4 @@ target/
 bale-vpn-android/rust/jniLibs/
 
 .DS_Store
+__pycache__/

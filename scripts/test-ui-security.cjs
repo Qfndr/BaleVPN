@@ -144,20 +144,20 @@ test('secure status requires actual peer authentication and cooldown does not di
 function authHarness(reply) {
   const elements = new Map();
   const timers = new Map();
-  let nextTimer = 0;
+  let nextTimer = 0,now=0;
   const get = id => {
     if (!elements.has(id)) elements.set(id, { value: '', style: {}, disabled: false,
-      textContent: '', focus() {}, addEventListener(type, handler) { this[type] = handler; } });
+      textContent: '', dataset:{}, focus() {}, addEventListener(type, handler) { this[type] = handler; } });
     return elements.get(id);
   };
-  const context = vm.createContext({ document: { getElementById: get },
+  const context = vm.createContext({ document: { getElementById: get }, Date:{now:()=>now},
     fetch: async () => ({ json: async () => reply }),
     setInterval: callback => { timers.set(++nextTimer, callback); return nextTimer; },
     clearInterval: timer => timers.delete(timer),
   });
   vm.runInContext(authScript, context);
   get('phoneInput').value = '+989121234567';
-  return { get, timers, context, send: () => get('sendOtpBtn').click({ target: get('sendOtpBtn') }) };
+  return { get, timers, context, advance:ms=>{now+=ms;[...timers.values()].forEach(callback=>callback());}, send: () => get('sendOtpBtn').click({ target: get('sendOtpBtn') }) };
 }
 
 test('auth shows Telegram delivery and restores resend after the server cooldown', async () => {
@@ -167,7 +167,7 @@ test('auth shows Telegram delivery and restores resend after the server cooldown
   assert.match(h.get('authStatus').textContent, /Telegram/);
   assert.equal(h.get('otpRow').style.display, '');
   assert.equal(h.get('sendOtpBtn').disabled, true);
-  for (let i = 0; i < 2; i++) [...h.timers.values()].forEach(callback => callback());
+  h.advance(2000);
   assert.equal(h.get('sendOtpBtn').disabled, false);
   assert.equal(h.timers.size, 0);
 });
@@ -212,7 +212,7 @@ test('expired OTP clears the consumed transaction and respects resend cooldown',
   h.get('otpInput').value = '123456';
   await h.get('verifyBtn').click({ target: h.get('verifyBtn') });
   assert.equal(attempts, 1);
-  for (let i = 0; i < 2; i++) [...h.timers.values()].forEach(callback => callback());
+  h.advance(2000);
   assert.equal(h.get('sendOtpBtn').disabled, false);
 });
 
@@ -226,4 +226,8 @@ test('wrong OTP permits correction within the same transaction', async () => {
   assert.match(h.get('authStatus').textContent, /Incorrect code/);
   assert.equal(h.get('otpRow').style.display, '');
   assert.equal(h.get('verifyBtn').disabled, false);
+});
+
+test('OTP cooldown follows elapsed time when a hidden window throttles timers',async()=>{
+ const h=authHarness({ok:true,transactionHash:'fixture-hidden',isRegistered:true,sentCodeType:2,nextSendCodeWaitTime:60});await h.send();assert.equal(h.get('sendOtpBtn').disabled,true);h.advance(120000);assert.equal(h.get('sendOtpBtn').disabled,false);assert.equal(h.timers.size,0);
 });

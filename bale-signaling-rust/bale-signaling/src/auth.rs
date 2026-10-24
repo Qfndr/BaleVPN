@@ -96,6 +96,8 @@ pub struct BaleAuth {
     jar:  Arc<Jar>,
     endpoint: String,
     device_hash: Vec<u8>,
+    device_label: String,
+    device_override:std::sync::Mutex<Option<(Vec<u8>,String)>>,
     // Serialize auth attempts and retain one successful result briefly so a
     // repeated Verify click cannot consume the same one-time code twice.
     completed: tokio::sync::Mutex<Option<(String, String, Instant)>>,
@@ -119,7 +121,17 @@ impl BaleAuth {
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let uuid = format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..]);
-        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), completed: tokio::sync::Mutex::new(None) }
+        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), device_label: CLIENT_LABEL.into(), device_override:std::sync::Mutex::new(None), completed: tokio::sync::Mutex::new(None) }
+    }
+    /// Reuse the account installation identity on restart and session import.
+    /// This does not create or refresh a server session.
+    pub fn for_device(hash: &str, label: &str) -> Result<Self, AuthError> {
+        if hash.len()!=36 || !hash.bytes().enumerate().all(|(i,b)|if [8,13,18,23].contains(&i){b==b'-'}else{b.is_ascii_hexdigit()}) || label.is_empty() || label.len()>64 || label.chars().any(char::is_control) {return Err(AuthError::Malformed("Invalid device identity"));}
+        let mut client=Self::new();client.device_hash=hash.as_bytes().to_vec();client.device_label=label.into();Ok(client)
+    }
+    pub fn use_device(&self,hash:&str,label:&str)->Result<(),AuthError>{
+        if hash.len()!=36 || !hash.bytes().enumerate().all(|(i,b)|if [8,13,18,23].contains(&i){b==b'-'}else{b.is_ascii_hexdigit()}) || label.is_empty()||label.len()>64||label.chars().any(char::is_control){return Err(AuthError::Malformed("Invalid device identity"));}
+        *self.device_override.lock().unwrap_or_else(|e|e.into_inner())=Some((hash.as_bytes().to_vec(),label.into()));Ok(())
     }
 
     /// Step 1: request a code using Bale's default delivery channel.
@@ -129,7 +141,9 @@ impl BaleAuth {
     /// whether the phone is already registered.
     pub async fn start_phone_auth(&self, phone: &str) -> Result<StartResult, AuthError> {
         let mut completed = self.completed.lock().await;
-        let payload = encode_start_phone_auth(normalize_phone(phone)?, &self.device_hash);
+        let device=self.device_override.lock().unwrap_or_else(|e|e.into_inner()).clone();
+        let(hash,label)=device.as_ref().map(|(h,l)|(h.as_slice(),l.as_str())).unwrap_or((&self.device_hash,&self.device_label));
+        let payload = encode_start_phone_auth_named(normalize_phone(phone)?, hash, label);
         let resp = self.rpc("StartPhoneAuth", &payload).await?;
         let result = decode_start_phone_auth(&resp)?;
         *completed = None;
@@ -286,11 +300,15 @@ fn decode_start_phone_auth(buf: &[u8]) -> Result<StartResult, AuthError> {
     Ok(StartResult { transaction_hash: hash, is_registered: registered, sent_code_type, next_send_code_wait_time })
 }
 
+#[cfg(test)]
 fn encode_start_phone_auth(phone: i64, device_hash: &[u8]) -> Vec<u8> {
+    encode_start_phone_auth_named(phone, device_hash, CLIENT_LABEL)
+}
+fn encode_start_phone_auth_named(phone: i64, device_hash: &[u8], label: &str) -> Vec<u8> {
     // Official web client: DEFAULT delivery lets Bale choose the channel;
     // packed field 10 advertises Telegram Gateway (0) and six-digit OTP (1).
     ProtoWriter::new().int64(1, phone).int32(2, AUTH_APP_ID)
-        .string(3, AUTH_API_KEY).bytes(4, device_hash).string(5, CLIENT_LABEL)
+        .string(3, AUTH_API_KEY).bytes(4, device_hash).string(5, label)
         .string(7, DEFAULT_LANGUAGE).int32(9, SENDCODE_DEFAULT)
         .bytes(10, &[0, 1]).build()
 }

@@ -11,6 +11,8 @@
 //! See `ui.rs`. `--headless` skips opening the (future) native
 //! webview but the HTTP server runs either way.
 
+#![cfg_attr(all(windows, feature = "gui"), windows_subsystem = "windows")]
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -18,6 +20,8 @@ mod client;
 mod aggregate;
 mod workers;
 mod profiles;
+mod backup;
+mod device;
 mod config;
 mod vault;
 mod settings;
@@ -93,6 +97,11 @@ enum ModeCmd {
 enum NatMode { Kernel, Userspace }
 
 fn main() {
+    #[cfg(all(windows, feature="gui"))]
+    if std::env::args().any(|arg| matches!(arg.as_str(),"--headless"|"--help"|"--version"|"-h"|"-V")) {
+        #[link(name="kernel32")] extern "system" {fn AttachConsole(pid:u32)->i32;}
+        unsafe {AttachConsole(u32::MAX);}
+    }
     env_logger::Builder::from_env(
         env_logger::Env::default().default_filter_or(
             // `quinn::endpoint=off` suppresses an ERROR-level
@@ -110,7 +119,11 @@ fn main() {
     .format_timestamp_millis()
     .init();
 
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    #[cfg(feature="gui")]
+    if !cli.headless && cli.config_dir.is_none() {
+        cli.config_dir=Some(desktop_directory());
+    }
 
     // Flatten subcommand back into the merge-cli args. The
     // subcommand shape just gates which per-mode args are
@@ -138,6 +151,8 @@ fn main() {
 
     let cfg = config::Config::load(cli.config_dir.as_deref())
         .expect("failed to load config");
+    #[cfg(feature="gui")]
+    if !cli.headless&&cli.port.is_none(){cli.port=Some(if cfg.port==3001{37126}else{cfg.port});}
     let mut resolved = config::Resolved::merge_cli(
         &cfg,
         cli_mode,
@@ -159,6 +174,12 @@ fn main() {
     if !cli.headless {
         if let Err(e) = ui_native::run_gui(resolved) {
             log::error!("gui shell exited with error: {e}");
+            #[cfg(windows)]{
+                #[link(name="user32")]extern "system"{fn MessageBoxW(window:isize,text:*const u16,title:*const u16,flags:u32)->i32;}
+                let message:Vec<u16>=format!("BaleVPN could not start.\n\n{e}\n\nCheck that the management port is free and the data folder is writable.").encode_utf16().chain(Some(0)).collect();
+                let title:Vec<u16>="BaleVPN".encode_utf16().chain(Some(0)).collect();
+                unsafe{MessageBoxW(0,message.as_ptr(),title.as_ptr(),0x10);}
+            }
             std::process::exit(1);
         }
         return;
@@ -176,4 +197,22 @@ fn main() {
             std::process::exit(1);
         }
     });
+}
+
+#[cfg(feature="gui")]
+fn desktop_directory()->PathBuf {
+    let portable=std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.join("data")));
+    if let Some(path)=&portable {if path.is_dir(){return path.clone();}}
+    if let Some(path)=portable.as_ref().and_then(|p|p.parent()){if path.join(".bale-vpn_config.json").is_file(){return path.to_owned();}}
+    #[cfg(windows)]{
+        if let Some(path)=&portable {if std::fs::create_dir_all(path).is_ok(){return path.clone();}}
+        if let Some(path)=std::env::var_os("LOCALAPPDATA"){return PathBuf::from(path).join("BaleVPN").join("data");}
+    }
+    #[cfg(target_os="macos")]
+    if let Some(path)=std::env::var_os("HOME"){return PathBuf::from(path).join("Library/Application Support/BaleVPN");}
+    #[cfg(target_os="linux")]{
+        if let Some(path)=std::env::var_os("XDG_DATA_HOME"){return PathBuf::from(path).join("balevpn");}
+        if let Some(path)=std::env::var_os("HOME"){return PathBuf::from(path).join(".local/share/balevpn");}
+    }
+    portable.unwrap_or_else(||PathBuf::from("data"))
 }
