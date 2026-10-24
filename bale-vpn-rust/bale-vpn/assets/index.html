@@ -251,24 +251,145 @@
   html[data-metrics="hidden"] .traffic-panel {display:none;}
   @media(max-width:520px) {.traffic-panel {padding:12px;}.traffic-summary {grid-template-columns:1fr;}.traffic-tile strong {font-size:1.25rem;}.chart-toolbar {gap:8px;}}
 
+
+  /* Workspace shell: native SVG, bounded motion and no external UI runtime. */
+  [hidden] {display:none!important;}
+  :root {--surface:#ffffff;--bg:#f2f4f7;--ink:#182434;--muted:#657285;--line:#e4e9f0;--panel-soft:#f7f9fc;--sidebar:#fafbfd;}
+  html[data-theme="dark"] {--surface:#121b28;--bg:#090f18;--ink:#e8eef6;--muted:#9eacc0;--line:#293648;--panel-soft:#172231;--sidebar:#0f1723;}
+  body {padding:24px;display:block;background:var(--bg);}
+  .card.workspace {display:grid;grid-template-columns:224px minmax(0,1fr);max-width:var(--card-width,1180px);min-height:calc(100vh - 48px);margin:auto;overflow:clip;border-radius:var(--corner,20px);box-shadow:0 12px 60px #07162c09;}
+  .workspace-sidebar {background:var(--sidebar);border-inline-end:1px solid var(--line);padding:30px 16px 20px;display:flex;flex-direction:column;min-width:0;position:sticky;top:24px;align-self:start;height:calc(100vh - 48px);min-height:600px;}
+  .workspace-brand {display:flex;align-items:center;gap:12px;padding:0 10px 34px;text-decoration:none;color:var(--ink);font-size:1.15rem;font-weight:750;letter-spacing:-.6px;}
+  .workspace-brand small {display:block;font-size:.47rem;letter-spacing:1.1px;font-weight:550;color:var(--muted);margin-top:3px;}
+  .brand-mark {display:grid;place-items:center;position:relative;width:40px;height:44px;flex-shrink:0;border-radius:13px;background:var(--brand);color:white;font-size:1.55rem;font-weight:800;letter-spacing:-3px;direction:ltr;}
+  .brand-mark>span {font-size:.8rem;position:absolute;top:2px;right:4px;letter-spacing:0;}
+  .nav-caption {font-size:.58rem;letter-spacing:1.6px;color:var(--muted);padding:0 14px;margin:5px 0 12px;}
+  .workspace-nav {display:flex;flex-direction:column;gap:6px;}
+  .workspace-tab,.workspace-tab:hover {display:flex;align-items:center;gap:11px;width:100%;min-height:46px;padding:11px 13px;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:min(var(--corner),11px);font-size:.77rem;text-align:start;font-weight:550;filter:none;}
+  .workspace-tab svg {width:19px;height:19px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+  .workspace-tab:hover {background:var(--panel-soft);color:var(--ink);}
+  .workspace-tab[aria-selected="true"] {background:var(--surface);color:var(--accent);border-color:var(--line);box-shadow:0 3px 8px #07162c04;}
+  .workspace-tab i {width:5px;height:5px;background:currentColor;border-radius:50%;margin-inline-start:auto;opacity:0;}
+  .workspace-tab[aria-selected="true"] i {opacity:1;}
+  .sidebar-footer {margin-top:auto;padding:40px 12px 0;display:grid;gap:14px;}
+  .sidebar-status {display:flex;align-items:center;gap:8px;font-size:.67rem;color:var(--muted);}
+  #workspaceDot {width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+  #workspaceDot[data-state="ready"] {background:#16a381;box-shadow:0 0 0 4px #16a38114;}
+  #workspaceDot[data-state="waiting"] {background:#c99231;}
+  .sidebar-version {display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:14px;font-size:.55rem;letter-spacing:1px;color:var(--muted);direction:ltr;}
+  .sidebar-version b {font-weight:500;font-variant-numeric:tabular-nums;}
+  .workspace-main {min-width:0;display:flex;flex-direction:column;}
+  .workspace-topbar {min-height:74px;padding:18px 32px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:14px;}
+  .workspace-context {font-size:.68rem;color:var(--muted);}
+  .workspace-account {display:flex;align-items:center;gap:9px;font-size:.75rem;min-width:0;}
+  #selfName {max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .workspace-account .dot {width:7px;height:7px;flex-shrink:0;}
+  .workspace-heading {padding:32px 32px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;}
+  .workspace-eyebrow {font-size:.54rem;letter-spacing:1.8px;color:var(--accent);margin-bottom:7px;}
+  .workspace-heading h1 {font-size:1.9rem;letter-spacing:-1px;line-height:1.5;font-weight:700;}
+  #workspaceSubtitle {color:var(--muted);font-size:.76rem;margin-top:7px;max-width:590px;}
+  .workspace-role {border:1px solid var(--line);border-radius:30px;padding:5px 12px;font-size:.65rem;color:var(--muted);white-space:nowrap;}
+  .workspace-content {padding:0 32px 28px;flex:1;min-width:0;}
+  .workspace-panel {min-width:0;outline:none;}
+  .workspace-panel:not([hidden]) {animation:workspaceIn .18s ease-out;}
+  @keyframes workspaceIn {from {opacity:.5;transform:translateY(4px);}to {opacity:1;transform:none;}}
+  .workspace-panel:focus-visible {outline:2px solid var(--accent);outline-offset:6px;}
+  #wsBar {margin:0 32px 20px;border:1px solid var(--line);border-radius:10px;font-size:.7rem;padding:9px 12px;}
+  #wsBar.connected {background:#13a67d0b;color:#16755e;border-color:#16a38130;}
+  html[data-theme="dark"] #wsBar.connected {color:#6fdbb9;}
+  html[data-theme="dark"] #wsBar.disconnected {background:#d83d5514;color:#ffb8c5;}
+  .connection-intro {padding:28px;border:1px solid var(--line);border-radius:min(var(--corner),18px);background:var(--panel-soft);margin-bottom:20px;position:relative;overflow:hidden;}
+  .connection-intro::after {content:'↗';font:100px/1 Inter,system-ui;color:var(--accent);opacity:.07;position:absolute;inset-inline-end:25px;bottom:-6px;pointer-events:none;}
+  .section-kicker {font-size:.55rem;letter-spacing:1.6px;color:var(--muted);}
+  .connection-intro h2 {font-size:1.25rem;letter-spacing:-.4px;margin:7px 0;}
+  .connection-intro p {font-size:.76rem;color:var(--muted);max-width:85%;}
+  #modePicker,#loginSection,#tunnelSection {border:1px solid var(--line);border-radius:min(var(--corner),16px);overflow:hidden;background:var(--surface);}
+  .body,.tunnel-body {padding:22px;}
+  .entry.info {font-style:normal;}
+  #modePicker>div:nth-child(2) {flex-wrap:wrap;}
+  #modePicker button {min-width:180px;text-align:start;padding:20px;min-height:92px;line-height:1.8;background:var(--panel-soft);color:var(--ink);border:1px solid var(--line);}
+  #modePicker button:hover {border-color:var(--accent);color:var(--accent);}
+  .tunnel-toggle {padding:15px 22px;border-top:0;border-bottom:1px solid var(--line);color:var(--muted);font-size:.74rem;}
+  .tunnel-body {border-color:var(--line);}
+  #logoutBtn {color:var(--muted)!important;border-color:var(--line)!important;}
+  #securityBadge {background:var(--panel-soft);border-radius:10px;color:var(--muted);font-size:.71rem;}
+  .dashboard {gap:12px;padding:18px 0;}
+  .metric {background:var(--panel-soft);border-color:transparent;padding:16px;border-radius:min(var(--corner),12px);}
+  .metric span {font-size:.65rem;font-weight:500;}
+  .metric strong {font-size:1.35rem;letter-spacing:-.5px;}
+  .metric:last-child strong {font-size:.95rem;}
+  label {font-size:.72rem;font-weight:550;}
+  input,select,textarea {padding:11px 12px;font-size:.8rem;}
+  button {font-size:.79rem;min-height:42px;}
+  #tunnelApply {margin-top:8px;padding:13px;box-shadow:0 4px 14px #07162c0a;}
+  #tunnelStatus {margin-top:10px;}
+  #peerResults {border-color:var(--line)!important;}
+  .settings {margin:0;padding:0;border:0;}
+  .settings fieldset {margin:0;padding:24px;border-radius:min(var(--corner),16px);background:var(--surface);}
+  .settings legend {font-size:.84rem;padding:0 10px;color:var(--ink);}
+  .settings p {font-size:.75rem;}
+  .settings textarea {font-size:.74rem;background:var(--panel-soft);}
+  .preferences-row {gap:18px;margin-bottom:16px;}
+  .preferences-row label {min-width:180px;}
+  .settings input[type=checkbox] {accent-color:var(--brand);}
+  .workspace-settings-footer {margin-top:18px;padding:18px 22px;border:1px solid var(--line);border-radius:min(var(--corner),14px);background:var(--panel-soft);}
+  .workspace-settings-footer .settings-actions {margin:0;}
+  .workspace-settings-footer .settings-actions button {flex:1;}
+  .appearance-preview {background:var(--panel-soft);border-inline-start-width:3px;}
+  .traffic-panel {margin:0;padding:24px;border-radius:min(var(--corner),16px);}
+  .traffic-heading {padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+  .traffic-heading h2 {font-size:1rem;}
+  .traffic-tile {padding:18px;background:var(--panel-soft);border-color:transparent;}
+  .traffic-tile strong {font-size:1.5rem;margin:10px 0;letter-spacing:-.6px;}
+  #speedChart {height:240px;}
+  .chart-toolbar {margin:24px 0 20px;}
+  .traffic-panel .settings-actions {border-top:1px solid var(--line);padding-top:20px;}
+  #panel-clients>div:not(.workspace-empty) {padding:20px;border:1px solid var(--line);border-radius:min(var(--corner),14px);margin-top:14px!important;}
+  .client-row,.pending-row,.admission-row,.blacklist-row {background:var(--panel-soft);color:var(--ink);border-color:var(--line);padding:12px;border-radius:10px;}
+  #maxClientsSection>div {flex-wrap:wrap;}
+  .client-row,.pending-row,.admission-row {flex-wrap:wrap;overflow-wrap:anywhere;}
+  .pending-info,.admission-info {min-width:0;}
+  #clientsList .empty,#pendingList .empty,#admissionList .empty {opacity:1;}
+  .workspace-empty {padding:55px 24px;text-align:center;border:1px dashed var(--line);border-radius:min(var(--corner),16px);background:var(--panel-soft);}
+  .workspace-empty svg {width:48px;height:48px;fill:none;stroke:var(--accent);stroke-width:1;stroke-linecap:round;stroke-linejoin:round;margin-bottom:16px;}
+  .workspace-empty h2 {font-size:1.1rem;margin-bottom:9px;}
+  .workspace-empty p {font-size:.76rem;color:var(--muted);max-width:400px;margin:0 auto 22px;}
+  .workspace-empty button {width:auto;}
+  .workspace-bottom {display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 32px;padding:18px 0;border-top:1px solid var(--line);font-size:.6rem;color:var(--muted);}
+  .workspace-bottom>span:first-child {font-weight:700;color:var(--ink);}
+  a:focus-visible {outline:3px solid var(--accent);outline-offset:3px;}
+  html[data-density="compact"] .workspace-heading {padding-top:22px;}
+  html[data-density="compact"] .workspace-content {padding-bottom:18px;}
+  html[data-gradient="on"] .brand-mark {background:linear-gradient(135deg,var(--brand),var(--brand-end));}
+  @media(min-width:1500px) {.card.workspace {min-height:850px;}}
+  @media(max-width:950px) {.card.workspace {grid-template-columns:195px minmax(0,1fr);}.workspace-sidebar {padding-inline:12px;}.workspace-tab {font-size:.7rem;gap:8px;padding-inline:10px;}.workspace-brand {font-size:1rem;gap:8px;}.workspace-brand small {font-size:.4rem;}.workspace-topbar,.workspace-heading {padding-inline:22px;}.workspace-content {padding-inline:22px;}.workspace-bottom {margin-inline:22px;}#wsBar {margin-inline:22px;}.workspace-context {display:none;}.workspace-topbar {justify-content:flex-end;}.traffic-summary {grid-template-columns:1fr;}.traffic-tile {display:grid;grid-template-columns:1fr auto;gap:3px 12px;}.traffic-tile strong {grid-column:2;grid-row:1/4;align-self:center;margin:0;}.traffic-tile small {grid-column:1;}.dashboard {gap:8px;}.metric {padding:10px;}.metric strong {font-size:1rem;}}
+  @media(max-width:700px) {body {padding:0;}.card.workspace {display:block;min-height:100vh;border:0;border-radius:0;}.workspace-sidebar {padding:16px 16px 0;border-inline-end:0;border-bottom:1px solid var(--line);}.workspace-brand {padding:0 2px 17px;font-size:1.05rem;}.workspace-brand small {font-size:.45rem;}.brand-mark {width:35px;height:38px;}.nav-caption,.sidebar-footer {display:none;}.workspace-nav {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding-bottom:12px;}.workspace-tab,.workspace-tab:hover {justify-content:center;font-size:.64rem;padding:9px 5px;gap:6px;min-height:40px;}.workspace-tab svg {width:16px;height:16px;}.workspace-tab i {display:none;}.workspace-topbar {min-height:52px;padding:12px 20px;}.workspace-heading {padding:24px 20px 18px;}.workspace-heading h1 {font-size:1.6rem;}.workspace-eyebrow {font-size:.5rem;}.workspace-role {padding:4px 9px;font-size:.6rem;}.workspace-content {padding:0 16px 24px;}#wsBar {margin:0 16px 16px;}.connection-intro {padding:21px;}.connection-intro h2 {font-size:1.1rem;}.body,.tunnel-body {padding:18px;}.workspace-bottom {margin-inline:20px;}.settings fieldset {padding:18px;}.traffic-panel {padding:16px;}.traffic-tile {padding:14px;}.traffic-tile strong {font-size:1.25rem;}#speedChart {height:200px;}.dashboard {grid-template-columns:repeat(3,minmax(0,1fr));}.metric strong {font-size:.9rem;}.metric:last-child strong {font-size:.72rem;}.metric span {font-size:.6rem;}.preferences-row label {min-width:145px;}.workspace-settings-footer {padding:14px;}.workspace-empty {padding:36px 18px;}}
+  @media(max-width:370px) {.workspace-tab,.workspace-tab:hover {font-size:.57rem;gap:4px;}.workspace-tab svg {width:14px;height:14px;}.workspace-role {display:none;}.metric strong {font-size:.78rem;}.workspace-heading h1 {font-size:1.4rem;}}
+  @media(max-width:700px) {.workspace-sidebar {position:static;height:auto;min-height:0;}}
+
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="header">
-    <div class="dot" id="dot"></div>
-    <h1>BaleVPN</h1>
-    <span id="selfName" style="margin-left:auto; font-size:.85rem; color:rgba(255,255,255,.85); font-weight:500"></span>
-  </div>
-
-  <!-- Post-login WebSocket state. Distinct from the dot (which combines
-       WS + tunnel) so users can tell exactly what's up at any moment. Hidden
-       on the login screen — there's no WS to talk about until you sign in. -->
-  <div id="wsBar" class="disconnected" style="display:none">
-    <span class="label" data-label="Connection">Connection</span>
-    <span id="wsStateText">disconnected</span>
-  </div>
-  <!-- Mode picker — shown FIRST. Login + tunnel sections
+<div class="card workspace">
+ <aside class="workspace-sidebar">
+  <a class="workspace-brand" href="#connection" data-open-tab="connection" aria-label="BaleVPN"><span class="brand-mark">B<span>↗</span></span><span>BaleVPN<small data-label="YOUR PRIVATE WORKSPACE">YOUR PRIVATE WORKSPACE</small></span></a>
+  <p class="nav-caption" data-label="WORKSPACE">WORKSPACE</p>
+  <nav class="workspace-nav" role="tablist" aria-label="Workspace" aria-orientation="vertical">
+<button type="button" class="workspace-tab" id="tab-connection" role="tab" aria-controls="panel-connection" aria-selected="true" tabindex="0" data-tab="connection"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14 M4 4h16v16H4z"/></svg><span data-label="Connection">Connection</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-traffic" role="tab" aria-controls="panel-traffic" aria-selected="false" tabindex="-1" data-tab="traffic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18M5 14l4-5 4 4 6-9"/></svg><span data-label="Traffic & insights">Traffic & insights</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-clients" role="tab" aria-controls="panel-clients" aria-selected="false" tabindex="-1" data-tab="clients"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/></svg><span data-label="Client management">Client management</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-security" role="tab" aria-controls="panel-security" aria-selected="false" tabindex="-1" data-tab="security"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 4v5c0 5-8 9-8 9s-8-4-8-9V7l8-4zM8 12l3 3 5-6"/></svg><span data-label="Security & pairing">Security & pairing</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-performance" role="tab" aria-controls="panel-performance" aria-selected="false" tabindex="-1" data-tab="performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a9 9 0 1 1 16 0M12 13l4-5M7 20h10"/></svg><span data-label="Connection settings">Connection settings</span><i aria-hidden="true"></i></button>
+<button type="button" class="workspace-tab" id="tab-appearance" role="tab" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4zM7 8h.01M6 12h.01M11 6h.01"/></svg><span data-label="Personalization">Personalization</span><i aria-hidden="true"></i></button>
+  </nav>
+  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.3.0</b></span></div>
+ </aside>
+ <main class="workspace-main">
+  <header class="workspace-topbar"><span class="workspace-context" data-label="A clearer view. A better connection.">A clearer view. A better connection.</span><div class="workspace-account"><div class="dot" id="dot"></div><span id="selfName"></span><span class="account-placeholder" id="accountPlaceholder" data-label="Welcome">Welcome</span></div></header>
+  <div class="workspace-heading"><div><p class="workspace-eyebrow" data-label="BALEVPN / WORKSPACE">BALEVPN / WORKSPACE</p><h1 id="workspaceTitle">Connection</h1><p id="workspaceSubtitle"></p></div><span class="workspace-role" id="workspaceRole">—</span></div>
+  <div id="wsBar" class="disconnected" style="display:none"><span class="label" data-label="Connection">Connection</span><span id="wsStateText">disconnected</span></div>
+  <div class="workspace-content">
+<section class="workspace-panel" id="panel-connection" role="tabpanel" aria-labelledby="tab-connection" tabindex="0" ><div class="connection-intro"><span class="section-kicker" data-label="YOUR NEXT DESTINATION">YOUR NEXT DESTINATION</span><h2 data-label="One connection. More possibilities.">One connection. More possibilities.</h2><p data-label="Choose your role, pair your devices and connect at your own pace.">Choose your role, pair your devices and connect at your own pace.</p></div>  <!-- Mode picker — shown FIRST. Login + tunnel sections
        stay hidden until the user has picked a mode. -->
   <div class="body" id="modePicker" style="display:none">
     <div class="entry info" style="margin:0 0 .85rem" data-label="Pick a mode to get started.">
@@ -359,7 +480,11 @@
     </div>
     <button id="tunnelApply">Connect</button>
     <div id="tunnelStatus" class="entry info" style="display:none"></div>
-    <section class="traffic-panel" id="trafficAnalytics" aria-label="Traffic analytics">
+
+  </div>
+  </div>
+
+</section><section class="workspace-panel" id="panel-traffic" role="tabpanel" aria-labelledby="tab-traffic" tabindex="0" hidden><div class="workspace-empty" id="trafficEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18M5 14l4-5 4 4 6-9"/></svg><h2 data-label="Your connection, in detail">Your connection, in detail</h2><p data-label="Traffic charts appear after signing in as a client. Server connections are managed in Client management.">Traffic charts appear after signing in as a client. Server connections are managed in Client management.</p><button class="refresh-btn" data-open-tab="connection" data-label="Go to connection">Go to connection</button></div>    <section class="traffic-panel" id="trafficAnalytics" aria-label="Traffic analytics">
       <div class="traffic-heading"><div><h2 data-label="Traffic overview">Traffic overview</h2><span id="trafficSessionLabel">—</span></div><span class="live-pill" id="trafficLive">—</span></div>
       <div class="traffic-summary">
         <div class="traffic-tile"><span data-label="Downloaded this session">Downloaded this session</span><strong id="downloadTotal">0 B</strong><small id="downloadAverage">—</small><small id="downloadPeak">—</small></div>
@@ -383,11 +508,7 @@
       <p class="traffic-caption" data-label="Averages include idle time. Peaks and charts cover observed samples. Volumes include tunnel overhead and retransmissions; they are not file sizes or ISP billing.">Averages include idle time. Peaks and charts cover observed samples. Volumes include tunnel overhead and retransmissions; they are not file sizes or ISP billing.</p>
       <details class="traffic-help"><summary data-label="Why can speed be limited?">Why can speed be limited?</summary><p data-label="400 KB/s is about 3.2 Mbps. RTT, packet loss, peer windows and the carrier can limit speed. Try Throughput on both peers after disconnecting. The window/RTT number is a local estimate, not a guaranteed ceiling. KB means 1,000 bytes. Charts pause while this window is hidden.">400 KB/s is about 3.2 Mbps. RTT, packet loss, peer windows and the carrier can limit speed. Try Throughput on both peers after disconnecting. The window/RTT number is a local estimate, not a guaranteed ceiling. KB means 1,000 bytes. Charts pause while this window is hidden.</p></details>
       <p id="trafficFeedback" class="traffic-caption" role="status"></p><textarea id="trafficExport" readonly hidden aria-label="Traffic CSV without account details"></textarea>
-    </section>
-  </div>
-  </div>
-
-  <!-- Max simultaneous clients (server mode) -->
+    </section></section><section class="workspace-panel" id="panel-clients" role="tabpanel" aria-labelledby="tab-clients" tabindex="0" hidden><div class="workspace-empty" id="clientsEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/></svg><h2 data-label="A place for your clients">A place for your clients</h2><p data-label="Client management becomes available when this device is signed in as a server.">Client management becomes available when this device is signed in as a server.</p><button class="refresh-btn" data-open-tab="connection" data-label="Go to connection">Go to connection</button></div>  <!-- Max simultaneous clients (server mode) -->
   <div id="maxClientsSection" style="display:none; margin-top:1rem">
     <div style="display:flex; align-items:center; gap:.5rem; font-size:.85rem">
       <span style="opacity:.7" data-label="Max simultaneous clients:">Max simultaneous clients:</span>
@@ -422,9 +543,22 @@
     <div id="blacklistList"></div>
   </div>
 
-<details class="settings" id="settingsPanel">
- <summary data-label="Security, performance and appearance">Security, performance and appearance</summary>
- <fieldset id="appearancePanel"><legend data-label="Personalize your workspace">Personalize your workspace</legend>
+</section><div class="settings" id="settingsPanel"><section class="workspace-panel" id="panel-security" role="tabpanel" aria-labelledby="tab-security" tabindex="0" hidden> <fieldset><legend data-label="Secure pairing">Secure pairing</legend>
+  <label><input type="checkbox" id="secureMode" checked><span data-label="Require verified encryption">Require verified encryption</span></label>
+  <p data-label="Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.">Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.</p>
+  <label for="publicCode" data-label="This device's public code">This device's public code</label><textarea id="publicCode" readonly spellcheck="false"></textarea>
+  <div id="keyFingerprint" class="technical" style="font-size:11px;overflow-wrap:anywhere;direction:ltr"></div>
+  <button class="refresh-btn" id="copyPublicCode" data-label="Copy public code">Copy public code</button>
+  <div id="serverTrust"><label for="serverCode" data-label="Trusted server's public code">Trusted server's public code</label><textarea id="serverCode" spellcheck="false"></textarea></div>
+  <div id="clientTrust"><label for="clientCodes" data-label="Trusted client public codes (one per line)">Trusted client public codes (one per line)</label><textarea id="clientCodes" spellcheck="false"></textarea></div>
+  <p id="credentialStorage"></p>
+  <p data-label="Turning verified encryption off enables legacy compatibility and permits relay impersonation.">Turning verified encryption off enables legacy compatibility and permits relay impersonation.</p>
+ </fieldset></section><section class="workspace-panel" id="panel-performance" role="tabpanel" aria-labelledby="tab-performance" tabindex="0" hidden> <fieldset><legend data-label="Performance and connection limits">Performance and connection limits</legend>
+  <label for="performanceProfile" data-label="Performance profile">Performance profile</label><select id="performanceProfile"><option value="balanced" data-label="Balanced — current transfer windows">Balanced — current transfer windows</option><option value="throughput" data-label="Throughput — larger windows, more memory">Throughput — larger windows, more memory</option></select>
+  <p data-label="No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.">No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.</p>
+  <div class="preferences-row"><label><span data-label="Minimum seconds between calls">Minimum seconds between calls</span><input id="retryDelay" type="number" min="5" max="120" value="10"></label><label><span data-label="Maximum calls per minute">Maximum calls per minute</span><input id="callBudget" type="number" min="1" max="6" value="3"></label></div>
+  <p data-label="These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.">These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.</p>
+ </fieldset></section><section class="workspace-panel" id="panel-appearance" role="tabpanel" aria-labelledby="tab-appearance" tabindex="0" hidden> <fieldset id="appearancePanel"><legend data-label="Personalize your workspace">Personalize your workspace</legend>
  <div class="preferences-row">
   <label><span data-label="Language">Language</span><select id="languageSelect"><option value="en">English</option><option value="fa">فارسی</option><option value="auto" data-label="Device language">Device language</option></select></label>
   <label><span data-label="Appearance">Appearance</span><select id="themeSelect"><option value="system" data-label="Follow system">Follow system</option><option value="light" data-label="Light">Light</option><option value="dark" data-label="Dark">Dark</option></select></label>
@@ -448,31 +582,74 @@
  <div class="appearance-preview"><strong>اتصال امن، ظاهر دلخواه</strong><span>Secure connection. Your own style. · ۱۲۳۴۵ · 12345</span></div>
  <p data-label="Appearance saves automatically on this device without interrupting the connection.">Appearance saves automatically on this device without interrupting the connection.</p>
  <button class="refresh-btn" id="resetAppearance" data-label="Reset appearance">Reset appearance</button>
- </fieldset>
- <fieldset><legend data-label="Secure pairing">Secure pairing</legend>
-  <label><input type="checkbox" id="secureMode" checked><span data-label="Require verified encryption">Require verified encryption</span></label>
-  <p data-label="Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.">Exchange public codes through SSH or another trusted channel. Never share the data folder or private keys.</p>
-  <label for="publicCode" data-label="This device's public code">This device's public code</label><textarea id="publicCode" readonly spellcheck="false"></textarea>
-  <div id="keyFingerprint" class="technical" style="font-size:11px;overflow-wrap:anywhere;direction:ltr"></div>
-  <button class="refresh-btn" id="copyPublicCode" data-label="Copy public code">Copy public code</button>
-  <div id="serverTrust"><label for="serverCode" data-label="Trusted server's public code">Trusted server's public code</label><textarea id="serverCode" spellcheck="false"></textarea></div>
-  <div id="clientTrust"><label for="clientCodes" data-label="Trusted client public codes (one per line)">Trusted client public codes (one per line)</label><textarea id="clientCodes" spellcheck="false"></textarea></div>
-  <p id="credentialStorage"></p>
-  <p data-label="Turning verified encryption off enables legacy compatibility and permits relay impersonation.">Turning verified encryption off enables legacy compatibility and permits relay impersonation.</p>
- </fieldset>
- <fieldset><legend data-label="Performance and connection limits">Performance and connection limits</legend>
-  <label for="performanceProfile" data-label="Performance profile">Performance profile</label><select id="performanceProfile"><option value="balanced" data-label="Balanced — current transfer windows">Balanced — current transfer windows</option><option value="throughput" data-label="Throughput — larger windows, more memory">Throughput — larger windows, more memory</option></select>
-  <p data-label="No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.">No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.</p>
-  <div class="preferences-row"><label><span data-label="Minimum seconds between calls">Minimum seconds between calls</span><input id="retryDelay" type="number" min="5" max="120" value="10"></label><label><span data-label="Maximum calls per minute">Maximum calls per minute</span><input id="callBudget" type="number" min="1" max="6" value="3"></label></div>
-  <p data-label="These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.">These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.</p>
- </fieldset>
- <div class="settings-actions"><button id="saveSettings" data-label="Save settings">Save settings</button><button class="refresh-btn" id="showDiagnostics" data-label="Safe diagnostic report">Safe diagnostic report</button></div>
+ </fieldset></section><div class="workspace-settings-footer" id="workspaceSettingsFooter" hidden> <div class="settings-actions"><button id="saveSettings" data-label="Save settings">Save settings</button><button class="refresh-btn" id="showDiagnostics" data-label="Safe diagnostic report">Safe diagnostic report</button></div>
  <div id="settingsFeedback" role="status" aria-live="polite"></div>
  <textarea id="diagnosticReport" readonly hidden aria-label="Redacted diagnostic report"></textarea>
-</details>
+</div></div>
+  </div>
+  <footer class="workspace-bottom"><span>BaleVPN</span><span data-label="Built for a connection you control.">Built for a connection you control.</span></footer>
+ </main>
 </div>
 
 <script>
+
+// ── Workspace navigation (presentation only; switching tabs never dials) ───────
+let _workspaceTab = 'connection';
+const workspaceDescriptions = {
+ connection:['Your devices. Your route. Everything starts here.','دستگاه‌های شما، مسیر شما؛ اتصال از اینجا شروع می‌شود.'],
+ traffic:['A live picture of the data moving through your tunnel.','نمای زندهٔ سرعت و حجم داده‌هایی که از تونل عبور می‌کنند.'],
+ clients:['Review requests and manage who can use your server.','درخواست‌ها را بررسی کنید و دسترسی به سرور را مدیریت کنید.'],
+ security:['Verify your peer and keep your device identity protected.','هویت طرف مقابل را تأیید و دستگاه‌ها را به‌صورت امن جفت کنید.'],
+ performance:['Tune the next connection to suit your network.','تنظیمات اتصال بعدی را متناسب با شبکهٔ خود انتخاب کنید.'],
+ appearance:['Make this workspace feel like yours.','زبان، رنگ‌ها و جزئیات این فضا را به سلیقهٔ خود تغییر دهید.']
+};
+function setWorkspaceTab(key, focus=false) {
+ if (!Object.hasOwn(workspaceDescriptions,key)) return;
+ const changed=_workspaceTab!==key;
+ _workspaceTab=key;
+ for (const button of document.querySelectorAll('[data-tab]')) {
+  const selected=button.dataset.tab===key;
+  button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
+  document.getElementById(button.getAttribute('aria-controls')).hidden=!selected;
+  if(selected&&focus)button.focus();
+ }
+ document.getElementById('workspaceSettingsFooter').hidden=!['security','performance'].includes(key);
+ const button=document.getElementById('tab-'+key);
+ document.getElementById('workspaceTitle').textContent=button.querySelector('[data-label]').textContent;
+ const description=workspaceDescriptions[key];
+ document.getElementById('workspaceSubtitle').textContent=translated(...description);
+ if(changed&&key==='traffic'&&typeof _state!=='undefined'&&_state)renderTrafficDashboard(_state);
+}
+function syncWorkspace(s) {
+ const stale=_trafficStatusStale,client=s.mode==='client',signedIn=!!s.tokenSet;
+ const ready=signedIn&&(client?!!s.clientRoomReady:s.mode==='server'&&!!s.wsReady);
+ document.getElementById('workspaceStatus').textContent=stale?translated('Status unavailable','وضعیت در دسترس نیست'):ready?(client?translated('Tunnel ready','تونل آماده است'):translated('Accepting clients','آمادهٔ پذیرش کلاینت')):s.wsReady?translated('Ready to connect','آمادهٔ اتصال'):signedIn?translated('Connecting to Bale','در حال اتصال به بله'):translated('Not signed in','وارد حساب نشده‌اید');
+ document.getElementById('workspaceDot').dataset.state=stale?'idle':ready?'ready':signedIn?'waiting':'idle';
+ document.getElementById('workspaceRole').textContent=s.mode?client?translated('CLIENT','کلاینت'):translated('SERVER','سرور'):translated('GET STARTED','شروع کنید');
+ document.getElementById('accountPlaceholder').hidden=!!s.self;
+ document.getElementById('trafficEmpty').hidden=client&&signedIn;
+ document.getElementById('trafficAnalytics').hidden=!(client&&signedIn);
+ document.getElementById('clientsEmpty').hidden=s.mode==='server'&&signedIn&&!!s.wsReady;
+ document.querySelector('.connection-intro').hidden=signedIn&&!!s.mode;
+ if(stale){document.getElementById('wsStateText').textContent=translated('Status unavailable','وضعیت در دسترس نیست');document.getElementById('wsBar').className='disconnected';}
+ setWorkspaceTab(_workspaceTab);
+}
+function initializeWorkspace() {
+ const tabs=[...document.querySelectorAll('[data-tab]')];
+ for(const button of tabs){
+  button.addEventListener('click',()=>setWorkspaceTab(button.dataset.tab));
+  button.addEventListener('keydown',event=>{
+   const rtl=document.documentElement.dir==='rtl',index=tabs.indexOf(button);let next;
+   if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;
+   else if(event.key==='ArrowDown'||event.key===(rtl?'ArrowLeft':'ArrowRight'))next=(index+1)%tabs.length;
+   else if(event.key==='ArrowUp'||event.key===(rtl?'ArrowRight':'ArrowLeft'))next=(index+tabs.length-1)%tabs.length;
+   if(next!==undefined){event.preventDefault();setWorkspaceTab(tabs[next].dataset.tab,true);}
+  });
+ }
+ for(const button of document.querySelectorAll('[data-open-tab]'))button.addEventListener('click',event=>{event.preventDefault();setWorkspaceTab(button.dataset.openTab,true);});
+ setWorkspaceTab('connection');
+}
+
 const dot        = document.getElementById('dot');
 const tokenInput = document.getElementById('tokenInput');
 
@@ -679,12 +856,13 @@ async function pollState() {
     _state=await r.json();_trafficStatusStale=false;
     sampleTraffic(_telemetry,_state.traffic,performance.now(),_state.metrics);
     applyState();
-  } catch {_trafficStatusStale=true;if(_state)renderTrafficDashboard(_state);} finally {clearTimeout(timeout);_pollInFlight=false;}
+  } catch {_trafficStatusStale=true;if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);}} finally {clearTimeout(timeout);_pollInFlight=false;}
 }
 
 function applyState() {
   if (!_state) return;
   const s = _state;
+  if (typeof syncWorkspace === 'function') syncWorkspace(s);
 
   // Mode: drives mode-picker vs mode-specific fields. Re-call
   // unconditionally so the picker hides as soon as a mode lands
@@ -1430,7 +1608,7 @@ function trafficDuration(value) {const seconds=Math.floor(trafficNumber(value)/1
 function trafficCSV(m) {return 'elapsed_seconds,download_bytes_per_second,upload_bytes_per_second,rtt_ms,gap\n'+m.points.map(p=>[(p.at-(m.points[0]?.at||0))/1000,p.rx.toFixed(2),p.tx.toFixed(2),p.rtt===null?'':p.rtt.toFixed(2),p.gap?1:0].join(',')).join('\n');}
 // ── Traffic rendering (one small SVG redraw per existing 2-second poll) ──
 function renderTrafficDashboard(s) {
- const panel=document.getElementById('trafficAnalytics');panel.hidden=s.mode!=='client';
+ const panel=document.getElementById('trafficAnalytics');panel.hidden=s.mode!=='client'||!s.tokenSet;
  if(panel.hidden){document.getElementById('downloadRate').textContent='—';document.getElementById('uploadRate').textContent='—';return;}
  const m=_telemetry,t=m.snapshot||{},active=!!t.active;
  for(const [id,value] of [['downloadRate',m.rxRate],['uploadRate',m.txRate]]) {
@@ -1453,7 +1631,7 @@ function renderTrafficDashboard(s) {
  document.getElementById('trafficWindows').textContent=metrics?translated('Local flow window: ','پنجرهٔ محلی: ')+trafficVolume(windowBytes)+' · cwnd '+trafficVolume(metrics.congestionWindow)+' · '+(metrics.profile||''):'—';
  document.getElementById('trafficWindowEstimate').textContent=rtt&&windowBytes?translated('Local window / RTT ≈ ','پنجرهٔ محلی / RTT ≈ ')+trafficRate(windowBytes/(rtt/1000))+translated(' · estimate, not a speed test',' · تخمین، نه تست سرعت'):'';
  document.getElementById('pauseChart').textContent=_chartPaused?translated('Resume chart','ادامهٔ نمودار'):translated('Pause chart','توقف نمودار');
- if(_chartPaused || document.hidden)return;
+ if(_chartPaused || document.hidden || document.getElementById('panel-traffic').hidden)return;
  const points=m.points.filter(p=>p.at>=m.at-_chartSeconds*1000);
  const maximum=Math.max(1000,...points.map(p=>Math.max(p.rx,p.tx)))*1.15;
  const x=p=>Math.max(0,Math.min(640,640*(1-(m.at-p.at)/(_chartSeconds*1000))));
@@ -1494,6 +1672,7 @@ const translations={
  'No compression or extra payload cipher. Profile changes require Disconnect and apply to the next connection.':'فشرده‌سازی یا رمزگذاری اضافی روی بسته‌ها انجام نمی‌شود. تغییر تنظیمات پس از قطع اتصال و برای اتصال بعدی اعمال می‌شود.',
  'These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.':'این‌ها محدودیت‌های محافظتی همین برنامه‌اند؛ سهمیهٔ بله یا تضمین ضدبن نیستند. فرادادهٔ تماس برای بله قابل مشاهده است.'
 };
+Object.assign(translations,{"YOUR PRIVATE WORKSPACE": "فضای اختصاصی اتصال شما", "WORKSPACE": "فضای کار", "A clearer view. A better connection.": "نمایی روشن‌تر، اتصالی بهتر.", "Welcome": "خوش آمدید", "BALEVPN / WORKSPACE": "بله‌وی‌پی‌ان / فضای کار", "Traffic & insights": "ترافیک و آمار", "Client management": "مدیریت کلاینت‌ها", "Security & pairing": "امنیت و جفت‌سازی", "Connection settings": "تنظیمات اتصال", "Personalization": "شخصی‌سازی", "YOUR NEXT DESTINATION": "مقصد بعدی شما", "One connection. More possibilities.": "یک اتصال، فرصت‌های بیشتر.", "Choose your role, pair your devices and connect at your own pace.": "نقش خود را انتخاب کنید، دستگاه‌ها را جفت کنید و متصل شوید.", "Your connection, in detail": "اتصال شما، با تمام جزئیات", "Traffic charts appear after signing in as a client. Server connections are managed in Client management.": "نمودار ترافیک پس از ورود در نقش کلاینت نمایش داده می‌شود. اتصال‌های سرور در بخش مدیریت کلاینت‌ها قرار دارند.", "Go to connection": "رفتن به اتصال", "A place for your clients": "همهٔ کلاینت‌ها در یک جا", "Client management becomes available when this device is signed in as a server.": "مدیریت کلاینت‌ها پس از ورود این دستگاه در نقش سرور در دسترس قرار می‌گیرد.", "Built for a connection you control.": "کنترل اتصال، در دست شما."});
 const appearanceDefaults={language:'en',theme:'system',palette:'ocean',accent:'#1263d7',font:'modern',size:'100',width:'standard',density:'comfortable',corners:'20',gradient:true,metrics:true,motion:false};
 const appearanceChoices={language:['en','fa','auto'],theme:['light','dark','system'],palette:['ocean','teal','violet','rose','amber','custom'],font:['modern','system'],size:['90','100','110','120'],width:['compact','standard','wide'],density:['comfortable','compact'],corners:['0','10','20']};
 const appearanceFields={language:'languageSelect',theme:'themeSelect',palette:'paletteSelect',accent:'accentColor',font:'fontSelect',size:'textSize',width:'panelWidth',density:'densitySelect',corners:'cornerSelect',gradient:'gradientHeader',metrics:'showMetrics',motion:'reduceMotion'};
@@ -1525,12 +1704,13 @@ function applyAppearance() {
  const css=c=>'#'+c.map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
  root.style.setProperty('--brand',css(brand));root.style.setProperty('--brand-end',css(brand.map((v,i)=>Math.min(255,v+(i===2?45:15)))));
  root.style.setProperty('--accent',dark?css(rgb.map(v=>v+(255-v)*.65)):css(brand));
- root.style.setProperty('--ui-size',(16*Number(p.size)/100)+'px');root.style.setProperty('--card-width',({compact:560,standard:760,wide:1000}[p.width])+'px');root.style.setProperty('--corner',p.corners+'px');
+ root.style.setProperty('--ui-size',(16*Number(p.size)/100)+'px');root.style.setProperty('--card-width',({compact:980,standard:1180,wide:1400}[p.width])+'px');root.style.setProperty('--corner',p.corners+'px');
  root.style.setProperty('--ui-font',p.font==='modern'?'Inter,Vazirmatn,system-ui,sans-serif':'system-ui,sans-serif');
  for (const element of document.querySelectorAll('label,button')) {if(element.children.length===0 && translations[element.textContent] && !element.dataset.label)element.dataset.label=element.textContent;}
  for (const element of document.querySelectorAll('[data-label]')) {const en=element.dataset.label;element.textContent=language==='fa'?(translations[en]||en):en;}
  try {localStorage.setItem('bale_appearance',JSON.stringify(p));}catch{}
  if (_state) applyState();
+ else setWorkspaceTab(_workspaceTab);
 }
 async function loadSettings() {
  try {
@@ -1568,7 +1748,7 @@ for(const id of Object.values(appearanceFields))document.getElementById(id).addE
 document.getElementById('accentColor').addEventListener('input',()=>{document.getElementById('paletteSelect').value='custom';applyAppearance();});
 document.getElementById('resetAppearance').onclick=()=>{fillAppearance(appearanceDefaults);applyAppearance();};
 if(systemTheme.addEventListener)systemTheme.addEventListener('change',()=>{if(document.getElementById('themeSelect').value==='system')applyAppearance();});
-applyAppearance();loadSettings();
+initializeWorkspace();applyAppearance();loadSettings();
 
 
 try {const p=JSON.parse(localStorage.getItem('bale_telemetry')||'{}');if(['bytes','bits'].includes(p.units))_trafficUnits=p.units;if([60,300,900].includes(p.range))_chartSeconds=p.range;}catch{}
