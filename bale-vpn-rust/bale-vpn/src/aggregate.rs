@@ -345,7 +345,13 @@ impl Aggregate {
         let _op = self.operation.lock().await;
         self.ensure_running_app()?;
         config.validate(self.management_port)?;
-        if self.running.lock().is_some() || self.workers.any_running() {
+        let previous = self.config();
+        let changes_running_profile = self.workers.snapshots().iter().filter(|w| w.running).any(|w| {
+            let old = previous.paths.iter().find(|p| usize::from(p.profile_id) == w.slot);
+            let new = config.paths.iter().find(|p| usize::from(p.profile_id) == w.slot);
+            !matches!((old, new), (Some(a), Some(b)) if a.port == b.port && a.management_port == b.management_port)
+        });
+        if self.running.lock().is_some() || changes_running_profile {
             return Err(io::Error::other(
                 "Stop the pool and managed workers before changing paths or ports",
             ));

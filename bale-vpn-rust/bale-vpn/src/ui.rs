@@ -46,6 +46,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/aggregate/start", post(start_aggregate))
         .route("/aggregate/stop", post(stop_aggregate))
         .route("/aggregate/worker", post(aggregate_worker))
+        .route("/aggregate/profiles/:slot/",get(crate::profiles::view))
+        .route("/aggregate/profiles/:slot/*path",get(crate::profiles::forward).post(crate::profiles::forward).delete(crate::profiles::forward))
         .route("/connect",       post(connect))
         .route("/disconnect",    post(disconnect))
         .route("/logout",        post(logout))
@@ -78,13 +80,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
         .with_state(state)
         .layer(middleware::from_fn(protect_management_ui))
-        .layer(SetResponseHeaderLayer::overriding(
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"),
         ))
         .layer(SetResponseHeaderLayer::overriding(
             header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"),
         ))
-        .layer(SetResponseHeaderLayer::overriding(
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"),
         ))
         .layer(TraceLayer::new_for_http())
@@ -157,7 +159,7 @@ pub async fn serve(state: Arc<AppState>, listener: tokio::net::TcpListener) -> s
 // unescaped so the embedded asset is plain HTML. Drives every
 // /auth/*, /state, /peers, /connect, /tunnel/*, /server/* call;
 // the URL surface in `router()` matches what the JS expects.
-const INDEX_HTML: &str = include_str!("../assets/index.html");
+pub(crate) const INDEX_HTML: &str = include_str!("../assets/index.html");
 
 async fn shutdown(State(s):State<Arc<AppState>>)->Json<OkBody>{s.shutdown.notify_one();Json(OkBody{ok:true})}
 async fn get_aggregate(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(serde_json::json!({"config":s.aggregate.config(),"status":s.aggregate.snapshot(),"workers":s.aggregate.workers.snapshots()}))}
@@ -460,7 +462,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
 
     let (socks5_port, client_room_ready, cli_tx, cli_rx) = match s.client.snapshot().await {
         Some(snap) => (snap.socks5_port, snap.connected, snap.tx_bytes, snap.rx_bytes),
-        None       => (0, false, 0, 0),
+        None       => (cfg.socks5_port, false, 0, 0),
     };
     let lk_rooms = s.server.client_count().await;
 
@@ -1076,7 +1078,7 @@ struct OkBody { ok: bool }
 /// HTTP status) can surface the message. Matches the Node app's
 /// response shape — calling code stays branch-free.
 #[derive(Debug)]
-enum ApiError {
+pub(crate) enum ApiError {
     Internal(String),
 }
 impl IntoResponse for ApiError {

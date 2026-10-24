@@ -88,3 +88,12 @@ The runtime changes at [6450ce2](https://github.com/Qfndr/BaleVPN/commit/6450ce2
 The final contacts-refresh URL correction was checked against the Axum route table, and all four JavaScript regression tests were rerun afterward. The final documentation download links were checked to resolve to this repository's releases.
 
 CI evidence: [Rust tests and security checks](https://github.com/Qfndr/BaleVPN/actions/runs/39976123599), [desktop builds](https://github.com/Qfndr/BaleVPN/actions/runs/39976123656), [Android APK build](https://github.com/Qfndr/BaleVPN/actions/runs/39976123622).
+
+
+## In-app account controls — 2.5.0
+
+The local profile gateway is restricted to subprocesses owned by the current controller, checks each process PID and uses an explicit HTTP method/path allowlist. Requests cannot choose a destination host, follow redirects, inherit ambient proxy settings, forward arbitrary cookies/headers, invoke shutdown or recursively manage workers. Request/response sizes are bounded. The existing loopback Host, Origin and Sec-Fetch-Site guard also protects these routes. Only owned profile HTML permits same-origin framing; the root workspace retains DENY and frame-ancestors none.
+
+Account login transactions, tokens and private identities remain separate. Parent summaries contain only readiness, role and display name. Browser storage contains appearance and per-profile non-sensitive peer/port selections. Hidden account views suspend state polling. Data-plane encryption, buffers and transport settings are unchanged by this UI work.
+
+Run `node scripts/test-ui-accounts-browser.cjs` with a local Playwright/browser installation for mock account-isolation and Persian UI checks. Run `python scripts/smoke-aggregate.py BINARY` for real owned-process identity, profile routing/Origin restrictions, adding a third account without disturbing existing keys and shutdown checks. These tests do not sign into live Bale accounts or measure internet speed.

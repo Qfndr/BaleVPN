@@ -18,6 +18,7 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    pub profile_http: reqwest::Client,
     pub aggregate: crate::aggregate::Aggregate,
     pub shutdown: tokio::sync::Notify,
     _directory_lock: std::fs::File,
@@ -120,6 +121,7 @@ pub async fn run_with_startup(
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        profile_http: crate::profiles::client()?,
         aggregate: crate::aggregate::Aggregate::new(persisted.aggregate.clone(), cfg.config_dir.clone(), cfg.port),
         shutdown: tokio::sync::Notify::new(),
         _directory_lock: directory_lock,

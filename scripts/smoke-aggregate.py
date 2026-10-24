@@ -16,6 +16,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.request
 from urllib.parse import urlparse
 
 helpers = runpy.run_path(str(Path(__file__).with_name('smoke-desktop.py')))
@@ -167,7 +168,41 @@ def main():
                 assert child_state['tokenSet'] is False and child_state['mode'] is None
                 codes.append(request(child, '/settings')['publicCode'])
             assert codes[0] != codes[1]
-            assert request(base, '/aggregate', config)['ok'] is False
+            assert request(base, '/aggregate', config)['ok']
+            changed = json.loads(json.dumps(config))
+            changed['paths'][0]['port'] = free_ports(1)[0]
+            assert request(base, '/aggregate', changed)['ok'] is False
+            # Managed account panels stay on the controller's origin and cannot
+            # forward shutdown, recursive worker control, arbitrary hosts or methods.
+            for slot in [1, 2]:
+                prefix = f'/aggregate/profiles/{slot}'
+                assert request(base, prefix + '/state')['socks5Port'] == config['paths'][slot-1]['port']
+                assert request(base, prefix + '/settings')['publicCode'] == codes[slot-1]
+                with urllib.request.urlopen(base + prefix + '/') as panel:
+                    assert panel.headers['X-Frame-Options'] == 'SAMEORIGIN'
+                    assert "frame-ancestors 'self'" in panel.headers['Content-Security-Policy']
+                    assert 'baleProfileUI' in panel.read().decode()
+                for path in ['/shutdown', '/aggregate/worker', '/instance']:
+                    try:
+                        request(base, prefix + path, {})
+                    except urllib.error.HTTPError as error:
+                        assert error.code == 403
+                    else:
+                        raise AssertionError('Disallowed profile route accepted')
+                try:
+                    request(base, prefix + '/settings', {}, origin='https://attacker.invalid')
+                except urllib.error.HTTPError as error:
+                    assert error.code == 403
+                else:
+                    raise AssertionError('Hostile profile Origin accepted')
+            # Adding a third account must not stop, renumber or re-key the first two.
+            socks3, admin3 = free_ports(2)
+            config['paths'].append({'profileId':3,'name':'Account C','port':socks3,'managementPort':admin3,'weight':1})
+            assert request(base, '/aggregate', config)['ok']
+            worker(base, 3, True)
+            assert request(base, '/aggregate/profiles/1/settings')['publicCode'] == codes[0]
+            assert request(base, '/aggregate/profiles/2/settings')['publicCode'] == codes[1]
+            worker(base, 3, False)
             worker(base, 1, False)
             assert request(f'http://127.0.0.1:{admin2}', '/instance')['pid'] > 0
             worker(base, 2, False)
@@ -216,6 +251,8 @@ def main():
               'hostile_origin_rejected': True, 'stop_closes_streams': True, 'restart_resets_counters': True,
               'parent_shutdown_stops_children_and_listener': True, 'config_survives_restart': True,
               'forced_parent_termination_stops_child_via_pipe_eof':True,
+              'in_app_account_panels_identity_scoped_and_origin_guarded':True,
+              'third_account_added_while_two_workers_running':True,
               'live_bale_calls_tested': False}
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

@@ -378,6 +378,20 @@
  .aggregate-actions {margin:18px 0;}.aggregate-actions button {flex:1;min-width:120px;}
  #aggregateFeedback {white-space:pre-wrap;margin-bottom:20px;}#aggregateFeedback[data-error="true"] {color:#c92c35;}html[data-theme="dark"] #aggregateFeedback[data-error="true"] {color:#ffb8c5;}
 
+
+ .profile-modal {position:fixed;inset:0;z-index:1000;padding:24px;background:#030c1caa;display:grid;place-items:center;}
+ .profile-dialog {width:min(1140px,100%);height:calc(100dvh - 48px);max-height:1100px;background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 90px #0005;}
+ .profile-dialog>header {padding:16px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid var(--line);}.profile-dialog header p {font-size:.68rem;color:var(--muted);margin-top:4px;}.profile-dialog header button {width:auto;flex-shrink:0;}
+ #profileFrames {flex:1;min-height:0;}#profileFrames iframe {width:100%;height:100%;border:0;display:block;background:var(--surface);}
+ .account-state {padding:10px 12px;background:var(--panel-soft);border:1px solid var(--line);border-radius:10px;margin-top:12px;font-size:.75rem;line-height:1.8;}
+ html[data-embedded="true"] body {padding:0;}html[data-embedded="true"] .card.workspace {display:block;border:0;border-radius:0;min-height:100vh;}
+ html[data-embedded="true"] .workspace-sidebar {position:static;height:auto;min-height:0;border-inline-end:0;padding:12px 16px;border-bottom:1px solid var(--line);}
+ html[data-embedded="true"] .workspace-brand,html[data-embedded="true"] .nav-caption,html[data-embedded="true"] .sidebar-footer,html[data-embedded="true"] .workspace-context,html[data-embedded="true"] .workspace-bottom {display:none;}
+ html[data-embedded="true"] .workspace-nav {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;}
+ html[data-embedded="true"] .workspace-tab {justify-content:center;padding:8px;font-size:.7rem;min-height:38px;}html[data-embedded="true"] .workspace-tab i {display:none;}
+ html[data-embedded="true"] .workspace-heading {padding-top:20px;}
+ @media(max-width:700px){.profile-modal {padding:0;}.profile-dialog {height:100dvh;max-height:none;border-radius:0;border:0;}.profile-dialog>header {padding:12px;align-items:start;}.profile-dialog header p {max-width:210px;}.profile-dialog header button {font-size:.65rem;max-width:110px;}html[data-embedded="true"] .workspace-tab {font-size:.6rem;}}
+
 </style>
 </head>
 <body>
@@ -394,7 +408,7 @@
 <button type="button" class="workspace-tab" id="tab-performance" role="tab" aria-controls="panel-performance" aria-selected="false" tabindex="-1" data-tab="performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17a9 9 0 1 1 16 0M12 13l4-5M7 20h10"/></svg><span data-label="Connection settings">Connection settings</span><i aria-hidden="true"></i></button>
 <button type="button" class="workspace-tab" id="tab-appearance" role="tab" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4zM7 8h.01M6 12h.01M11 6h.01"/></svg><span data-label="Personalization">Personalization</span><i aria-hidden="true"></i></button>
   </nav>
-  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.4.0</b></span></div>
+  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">DESKTOP <b>v2.5.0</b></span></div>
  </aside>
  <main class="workspace-main">
   <header class="workspace-topbar"><span class="workspace-context" data-label="A clearer view. A better connection.">A clearer view. A better connection.</span><div class="workspace-account"><div class="dot" id="dot"></div><span id="selfName"></span><span class="account-placeholder" id="accountPlaceholder" data-label="Welcome">Welcome</span></div></header>
@@ -525,9 +539,9 @@
  <div class="traffic-summary aggregate-summary"><div class="traffic-tile"><span data-label="Pool download">Pool download</span><strong id="aggregateDownload">0 B</strong><small id="aggregateDownloadRate">—</small></div><div class="traffic-tile"><span data-label="Pool upload">Pool upload</span><strong id="aggregateUpload">0 B</strong><small id="aggregateUploadRate">—</small></div><div class="traffic-tile"><span data-label="Active TCP connections">Active TCP connections</span><strong id="aggregateActive">0</strong><small id="aggregateState">—</small></div></div>
  <div class="settings"><fieldset><legend data-label="Distribution policy">Distribution policy</legend><div class="preferences-row"><label><span data-label="Local pool SOCKS5 port">Local pool SOCKS5 port</span><input id="aggregatePort" type="number" min="1" max="65535" value="1088"></label><label><span data-label="Policy">Policy</span><select id="aggregatePolicy"><option value="leastConnections" data-label="Weighted least connections">Weighted least connections</option><option value="roundRobin" data-label="Weighted round robin">Weighted round robin</option><option value="failover" data-label="Primary with backups">Primary with backups</option></select></label></div><p data-label="Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.">Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.</p></fieldset></div>
  <div id="aggregatePaths"></div>
- <div class="settings-actions aggregate-actions"><button class="refresh-btn" id="aggregateAdd" data-label="Add tunnel">Add tunnel</button><button class="refresh-btn" id="aggregateSave" data-label="Save pool settings">Save pool settings</button><button id="aggregateToggle" data-label="Start local pool">Start local pool</button></div>
+ <div class="settings-actions aggregate-actions"><button id="addClientAccount" data-label="Add client account">Add client account</button><button class="refresh-btn" id="connectClientAccounts" data-label="Connect signed-in accounts">Connect signed-in accounts</button><button class="refresh-btn" id="aggregateAdd" data-label="Add tunnel">Add tunnel</button><button class="refresh-btn" id="aggregateSave" data-label="Save pool settings">Save pool settings</button><button id="aggregateToggle" data-label="Start local pool">Start local pool</button></div>
  <div id="aggregateFeedback" class="traffic-caption" role="status" aria-live="polite"></div>
- <div class="aggregate-notice"><h3 data-label="Four-account setup">Four-account setup</h3><p data-label="For two independent pairs, use two client accounts and two server accounts. The servers may share one VPS. Start a profile, open its local account panel, sign in, exchange the correct public pairing codes, then connect each tunnel. Starting the pool does not place Bale calls.">For two independent pairs, use two client accounts and two server accounts. The servers may share one VPS. Start a profile, open its local account panel, sign in, exchange the correct public pairing codes, then connect each tunnel. Starting the pool does not place Bale calls.</p><p data-label="Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.">Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.</p></div>
+ <div class="aggregate-notice"><h3 data-label="Four-account setup">Four-account setup</h3><p data-label="Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.">Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.</p><p data-label="Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.">Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.</p></div>
 </section>
 <section class="workspace-panel" id="panel-clients" role="tabpanel" aria-labelledby="tab-clients" tabindex="0" hidden><div class="workspace-empty" id="clientsEmpty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M17 4a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87"/></svg><h2 data-label="A place for your clients">A place for your clients</h2><p data-label="Client management becomes available when this device is signed in as a server.">Client management becomes available when this device is signed in as a server.</p><button class="refresh-btn" data-open-tab="connection" data-label="Go to connection">Go to connection</button></div>  <!-- Max simultaneous clients (server mode) -->
   <div id="maxClientsSection" style="display:none; margin-top:1rem">
@@ -612,7 +626,23 @@
  </main>
 </div>
 
+<div id="profileModal" class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle" hidden><div class="profile-dialog"><header><div><strong id="profileModalTitle"></strong><p data-label="Each account has its own sign-in, server selection and secure pairing.">Each account has its own sign-in, server selection and secure pairing.</p></div><button id="profileModalClose" class="refresh-btn" data-label="Close account panel">Close account panel</button></header><div id="profileFrames"></div></div></div>
 <script>
+
+// An embedded account keeps its own API scope, OTP transaction and peer choice.
+const embeddedMatch=location.pathname.match(/^\/aggregate\/profiles\/([1-8])\//);
+const embeddedProfile=embeddedMatch?Number(embeddedMatch[1]):null;
+const configStorageKey=embeddedProfile?'bale_cfg_profile_'+embeddedProfile:'bale_cfg';
+let embeddedActive=true;
+if(embeddedProfile){
+ document.documentElement.dataset.embedded='true';
+ const nativeFetch=window.fetch.bind(window),prefix='/aggregate/profiles/'+embeddedProfile;
+ window.fetch=(input,init)=>nativeFetch(typeof input==='string'&&input.startsWith('/')?prefix+input:input,init);
+ document.getElementById('tab-aggregate').hidden=true;
+ document.addEventListener('keydown',event=>{if(event.key==='Escape')window.parent.postMessage({type:'bale-profile-close'},location.origin);});
+ window.addEventListener('message',event=>{if(event.origin===location.origin&&event.source===window.parent&&event.data?.type==='bale-profile-active'){embeddedActive=!!event.data.active;if(embeddedActive)pollState();}});
+}
+
 
 // ── Workspace navigation (presentation only; switching tabs never dials) ───────
 let _workspaceTab = 'connection';
@@ -657,7 +687,7 @@ function syncWorkspace(s) {
  setWorkspaceTab(_workspaceTab);
 }
 function initializeWorkspace() {
- const tabs=[...document.querySelectorAll('[data-tab]')];
+ const tabs=[...document.querySelectorAll('[data-tab]')].filter(button=>!button.hidden);
  for(const button of tabs){
   button.addEventListener('click',()=>setWorkspaceTab(button.dataset.tab));
   button.addEventListener('keydown',event=>{
@@ -826,7 +856,7 @@ document.getElementById('signupBtn').addEventListener('click', async (e) => {
 // the server (persisted to .bale-token, mode 0600) — never in the browser,
 // so XSS can't exfiltrate it via localStorage.
 function saveConfig() {
-  try { localStorage.setItem('bale_cfg', JSON.stringify({
+  try { localStorage.setItem(configStorageKey, JSON.stringify({
     peer:      document.getElementById('tunnelPeer').value,
     port:      document.getElementById('socks5Port').value,
   })); } catch {}
@@ -834,7 +864,7 @@ function saveConfig() {
 
 function loadConfig() {
   let cfg;
-  try { cfg = JSON.parse(localStorage.getItem('bale_cfg') || '{}'); } catch { cfg = {}; }
+  try { cfg = JSON.parse(localStorage.getItem(configStorageKey) || '{}'); } catch { cfg = {}; }
   if (cfg.port) document.getElementById('socks5Port').value = cfg.port;
   return cfg;
 }
@@ -845,7 +875,7 @@ async function loadPeers() {
     const { peers } = await r.json();
     const sel = document.getElementById('tunnelPeer');
     let cfg;
-    try { cfg = JSON.parse(localStorage.getItem('bale_cfg') || '{}'); } catch { cfg = {}; }
+    try { cfg = JSON.parse(localStorage.getItem(configStorageKey) || '{}'); } catch { cfg = {}; }
     populatePeerSelect(sel, peers, cfg.peer || sel.value);
   } catch {}
 }
@@ -870,7 +900,7 @@ const isAlive   = () => _tunnelMode === 'client' ? !!_state?.clientActivated : !
 const roomReady = () => !!_state?.clientRoomReady;
 
 async function pollState() {
-  if (_pollInFlight || document.hidden) return;
+  if (_pollInFlight || (_state && (document.hidden || !embeddedActive))) return;
   _pollInFlight=true;
   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),5000);
   try {
@@ -887,6 +917,7 @@ function applyState() {
   const s = _state;
   if (typeof syncWorkspace === 'function') syncWorkspace(s);
   if (typeof renderAggregate === 'function') renderAggregate(s.aggregate,s.aggregateWorkers);
+  if(embeddedProfile){const port=document.getElementById('socks5Port');port.value=String(_state.socks5Port);port.disabled=true;publishProfileState();}
 
   // Mode: drives mode-picker vs mode-specific fields. Re-call
   // unconditionally so the picker hides as soon as a mode lands
@@ -1102,7 +1133,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     modal.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.4); ' +
                           'display:flex; align-items:center; justify-content:center; z-index:9999';
     modal.innerHTML = `
-      <div style="background:white; padding:1.5rem; border-radius:10px; max-width:24rem; box-shadow:0 8px 24px rgba(0,0,0,0.2)">
+      <div style="background:var(--surface); color:var(--text); padding:1.5rem; border-radius:10px; max-width:24rem; box-shadow:0 8px 24px rgba(0,0,0,0.2)">
         <div style="font-size:1.05rem; margin-bottom:.85rem">Log out?</div>
         <div style="font-size:.85rem; opacity:.7; margin-bottom:1.2rem">Clears the saved token and stops the tunnel.</div>
         <div style="display:flex; gap:.5rem; justify-content:flex-end">
@@ -1142,7 +1173,7 @@ function showSearchResult(msg, isError) {
   box.style.display = '';
   const empty = document.createElement('div');
   empty.style.cssText = 'padding:.45rem .7rem; color:' + (isError ? '#c62828' : '#aaa');
-  empty.textContent = msg;
+  empty.textContent = uiMessage(msg);
   box.appendChild(empty);
 }
 
@@ -1675,6 +1706,44 @@ function renderTrafficDashboard(s) {
 }
 
 
+
+// ── In-app account controller ────────────────────────────────────────────────
+const accountFrames=new Map(),accountStates=new Map();let visibleAccount=null,accountBusy=false,lastAccountFocus=null;
+function publishProfileState(){if(embeddedProfile)window.parent.postMessage({type:'bale-profile-state',slot:embeddedProfile,state:{mode:_state?.mode,tokenSet:!!_state?.tokenSet,ready:!!_state?.clientRoomReady,authenticated:!!_state?.peerAuthenticated,name:_state?.self?.name||'',error:_state?.clientError||null}},location.origin);}
+window.baleProfileUI={
+ ready:()=>!!_state,
+ refresh:async()=>{const was=embeddedActive;embeddedActive=true;try{await pollState();}finally{embeddedActive=was;}},
+ connect:async()=>{await window.baleProfileUI.refresh();if(!_state?.tokenSet)throw new Error('Sign in to this account first');if(_state.mode!=='client')throw new Error('Choose Client mode in this account');if(_state.clientRoomReady)return;if(!document.getElementById('tunnelPeer').value)throw new Error('Select a server for this account');const response=await fetch('/settings');const data=await response.json();if(!data.preferences.secureMode||!data.preferences.serverCode)throw new Error('Save verified server pairing for this account first');await activateTunnel();if(_activationError||_state?.clientError)throw new Error(_activationError||_state.clientError);publishProfileState();},
+ tab:key=>setWorkspaceTab(key)
+};
+function signalAccountFrames(){for(const [slot,frame]of accountFrames)frame.contentWindow?.postMessage({type:'bale-profile-active',active:slot===visibleAccount&&!document.getElementById('profileModal').hidden},location.origin);}
+function removeAccountFrame(slot){accountFrames.get(slot)?.remove();accountFrames.delete(slot);accountStates.delete(slot);if(visibleAccount===slot)closeAccount();}
+function closeAccount(){document.getElementById('profileModal').hidden=true;visibleAccount=null;signalAccountFrames();lastAccountFocus?.focus();}
+async function openAccount(slot,show=true){
+ const row=[...document.querySelectorAll('.aggregate-path')].find(r=>Number(r.dataset.profileId)===slot);if(!row)return null;
+ let frame=accountFrames.get(slot);
+ if(!frame){frame=document.createElement('iframe');frame.dataset.profileId=String(slot);frame.title=translated('Account panel ','پنل حساب ')+slot;frame.src='/aggregate/profiles/'+slot+'/';frame.hidden=true;document.getElementById('profileFrames').append(frame);accountFrames.set(slot,frame);frame.addEventListener('load',signalAccountFrames);}
+ if(show){lastAccountFocus=document.activeElement;visibleAccount=slot;document.getElementById('profileModalTitle').textContent=row.querySelector('[data-field=name]').value;document.getElementById('profileModal').hidden=false;for(const [id,f]of accountFrames)f.hidden=id!==slot;signalAccountFrames();document.getElementById('profileModalClose').focus();}
+ const start=performance.now();while(performance.now()-start<15000){try{if(frame.contentWindow.baleProfileUI?.ready())return frame.contentWindow.baleProfileUI;}catch{}await new Promise(resolve=>setTimeout(resolve,80));}
+ removeAccountFrame(slot);throw new Error('Could not open the account panel');
+}
+async function connectAccount(slot){try{const ui=await openAccount(slot,false);if(ui)await ui.connect();aggregateMessage(translated('Connection requested. Check each account before starting the pool.','درخواست اتصال ثبت شد؛ آمادگی هر حساب را پیش از اجرای تجمیع بررسی کنید.'));return true;}catch(error){aggregateMessage(uiMessage(error.message),true);await openAccount(slot,true).catch(()=>{});return false;}}
+document.getElementById('profileModalClose').onclick=closeAccount;
+document.getElementById('profileModal').addEventListener('click',event=>{if(event.target===event.currentTarget)closeAccount();});
+document.addEventListener('keydown',event=>{const modal=document.getElementById('profileModal');if(!modal.hidden&&event.key==='Escape')closeAccount();if(!modal.hidden&&event.key==='Tab'&&document.activeElement===document.getElementById('profileModalClose')&&event.shiftKey){event.preventDefault();accountFrames.get(visibleAccount)?.focus();}});
+window.addEventListener('message',event=>{if(event.origin!==location.origin)return;if(event.data?.type==='bale-profile-close'&&[...accountFrames.values()].some(f=>f.contentWindow===event.source)){closeAccount();return;}if(event.data?.type!=='bale-profile-state')return;const slot=event.data.slot,frame=accountFrames.get(slot);if(!frame||event.source!==frame.contentWindow)return;accountStates.set(slot,{...event.data.state,at:Date.now()});renderAccountStates();});
+function renderAccountStates(){for(const row of document.querySelectorAll('.aggregate-path')){const slot=Number(row.dataset.profileId),state=accountStates.get(slot);let element=row.querySelector('.account-state');if(!element){element=document.createElement('div');element.className='account-state';row.querySelector('.aggregate-path-heading').after(element);}element.textContent=state?(state.name?state.name+' · ':'')+(state.ready&&state.authenticated?translated('Tunnel authenticated','تونل با هویت تأییدشده متصل است'):state.tokenSet?translated('Signed in · choose server and pair devices','وارد حساب شده‌اید؛ سرور و جفت‌سازی را بررسی کنید'):translated('Sign-in required','نیاز به ورود به حساب'))+(Date.now()-state.at>8000?translated(' · last observed status',' · آخرین وضعیت مشاهده‌شده'):''):translated('Start the profile, then sign in here.','حساب را اجرا کنید و از همین‌جا وارد شوید.');}}
+document.getElementById('addClientAccount').onclick=async()=>{
+ if(accountBusy)return;accountBusy=true;try{
+  if(_aggregateSnapshot?.running)throw new Error('Stop the pool before adding an account');
+  let row=[...document.querySelectorAll('.aggregate-path')].find(r=>r.dataset.worker!=='true'&&!accountStates.has(Number(r.dataset.profileId)));
+  if(!row){const rows=[...document.querySelectorAll('.aggregate-path')],used=new Set(rows.map(r=>Number(r.dataset.profileId))),id=[1,2,3,4,5,6,7,8].find(id=>!used.has(id));if(!id)throw new Error('Maximum eight accounts');row=aggregateRow({profileId:id,name:translated('Client account ','حساب کلاینت ')+id,port:1080+id,managementPort:37200+id,weight:1});}
+  const slot=Number(row.dataset.profileId);if(!await aggregateSave())return;if(!await aggregateAction('/aggregate/worker',{slot,start:true}))return;
+  const response=await fetch('/aggregate/profiles/'+slot+'/state');const state=await response.json();if(!state.mode&&!state.tokenSet)await fetch('/aggregate/profiles/'+slot+'/tunnel/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'client'})});await openAccount(slot,true);
+ }catch(error){aggregateMessage(uiMessage(error.message),true);}finally{accountBusy=false;renderAggregate(_aggregateSnapshot,_state?.aggregateWorkers||[]);}
+};
+document.getElementById('connectClientAccounts').onclick=async()=>{if(accountBusy)return;accountBusy=true;try{const workers=(_state?.aggregateWorkers||[]).filter(w=>w.running);if(!workers.length)throw new Error('Start and sign in to at least one client account');const results=await Promise.all(workers.map(w=>connectAccount(w.slot)));aggregateMessage(translated('Accounts with connection requested: ','حساب‌هایی که درخواست اتصال ثبت کردند: ')+results.filter(Boolean).length+' / '+results.length+translated('. Verify tunnels before starting the pool.','؛ پیش از اجرای تجمیع، اتصال تونل‌ها را بررسی کنید.'),results.some(ok=>!ok));}catch(error){aggregateMessage(uiMessage(error.message),true);}finally{accountBusy=false;renderAggregate(_aggregateSnapshot,_state?.aggregateWorkers||[]);}};
+
 // ── Optional multi-tunnel pool. Config edits never auto-start a worker or call. ──
 let _aggregateSavedConfig=null;
 let _aggregateLoaded=false,_aggregateBusy=false,_aggregateSnapshot=null,_aggregatePrevious=null;
@@ -1686,9 +1755,9 @@ function aggregateRow(path) {
  root.innerHTML='<div class="aggregate-path-heading"><strong class="aggregate-path-title"></strong><span class="aggregate-worker-state"></span></div><div class="preferences-row"></div><div class="settings-actions"></div><div class="aggregate-path-stats"></div><a class="aggregate-profile-link" target="_blank" rel="noopener noreferrer"></a>';
  const fields=[['name','Tunnel name','نام تونل','text',48],['port','SOCKS port','پورت SOCKS','number',65535],['managementPort','Account UI port','پورت پنل حساب','number',65535],['weight','Weight','وزن','number',16]];
  for(const [key,en,fa,type,limit]of fields){const label=document.createElement('label'),span=document.createElement('span'),input=document.createElement('input');span.textContent=translated(en,fa);span.dataset.label=en;input.type=type;input.dataset.field=key;if(type==='number'){input.min='1';input.max=String(limit);}else input.maxLength=limit;input.value=String(path[key]);label.append(span,input);root.querySelector('.preferences-row').append(label);}
- const actions=[['start','Start profile','اجرای حساب'],['stop','Stop profile','توقف حساب'],['copy','Copy account panel URL','کپی آدرس پنل حساب'],['remove','Remove path','حذف مسیر']];
- for(const [action,en,fa]of actions){const button=document.createElement('button');button.type='button';button.className='refresh-btn';button.dataset.action=action;button.dataset.label=en;button.textContent=translated(en,fa);button.onclick=async()=>{const rows=[...document.querySelectorAll('.aggregate-path')],slot=Number(root.dataset.profileId);if(action==='remove'){if(!_aggregateBusy&&!_aggregateSnapshot?.running&&!rows.some(r=>r.dataset.worker==='true')){root.remove();renderAggregate(_aggregateSnapshot,[]);}else aggregateMessage(translated('Stop the pool and profiles before editing paths.','پیش از ویرایش مسیرها، پروکسی تجمیع و حساب‌ها را متوقف کنید.'),true);return;}if(action==='copy'){const port=Number(root.querySelector('[data-field="managementPort"]').value);if(!Number.isInteger(port)||port<1||port>65535)return;try{await navigator.clipboard.writeText('http://127.0.0.1:'+port);aggregateMessage(translated('Open the copied URL in your browser. Remote profiles need SSH forwarding.','آدرس کپی‌شده را در مرورگر باز کنید؛ پنل سرور به فوروارد SSH نیاز دارد.'));}catch{aggregateMessage('http://127.0.0.1:'+port);}return;}if(action==='start'&&!await aggregateSave())return;await aggregateAction('/aggregate/worker',{slot,start:action==='start'});};root.querySelector('.settings-actions').append(button);}
- document.getElementById('aggregatePaths').append(root);return root;
+ const actions=[['start','Start profile','اجرای حساب'],['stop','Stop profile','توقف حساب'],['manage','Sign in / manage account','ورود / مدیریت حساب'],['connect','Connect account','اتصال حساب'],['copy','Copy account panel URL','کپی آدرس پنل حساب'],['remove','Remove path','حذف مسیر']];
+ for(const [action,en,fa]of actions){const button=document.createElement('button');button.type='button';button.className='refresh-btn';button.dataset.action=action;button.dataset.label=en;button.textContent=translated(en,fa);button.onclick=async()=>{const rows=[...document.querySelectorAll('.aggregate-path')],slot=Number(root.dataset.profileId);if(action==='remove'){if(!_aggregateBusy&&!_aggregateSnapshot?.running&&!rows.some(r=>r.dataset.worker==='true')){root.remove();renderAggregate(_aggregateSnapshot,[]);}else aggregateMessage(translated('Stop the pool and profiles before editing paths.','پیش از ویرایش مسیرها، پروکسی تجمیع و حساب‌ها را متوقف کنید.'),true);return;}if(action==='manage'){try{await openAccount(slot,true);}catch(error){aggregateMessage(uiMessage(error.message),true);}return;}if(action==='connect'){await connectAccount(slot);return;}if(action==='copy'){const port=Number(root.querySelector('[data-field="managementPort"]').value);if(!Number.isInteger(port)||port<1||port>65535)return;try{await navigator.clipboard.writeText('http://127.0.0.1:'+port);aggregateMessage(translated('Open the copied URL in your browser. Remote profiles need SSH forwarding.','آدرس کپی‌شده را در مرورگر باز کنید؛ پنل سرور به فوروارد SSH نیاز دارد.'));}catch{aggregateMessage('http://127.0.0.1:'+port);}return;}if(action==='start'&&!await aggregateSave())return;const ok=await aggregateAction('/aggregate/worker',{slot,start:action==='start'});if(ok&&action==='stop')removeAccountFrame(slot);};root.querySelector('.settings-actions').append(button);}
+ root.querySelector('.aggregate-path-title').textContent=path.name;document.getElementById('aggregatePaths').append(root);return root;
 }
 function readAggregateConfig(){return {listenPort:Number(document.getElementById('aggregatePort').value),policy:document.getElementById('aggregatePolicy').value,paths:[...document.querySelectorAll('.aggregate-path')].map(root=>{const field=key=>root.querySelector('[data-field="'+key+'"]').value;return {profileId:Number(root.dataset.profileId),name:field('name').trim(),port:Number(field('port')),managementPort:Number(field('managementPort')),weight:Number(field('weight'))};})};}
 async function loadAggregate(){try{const response=await fetch('/aggregate');if(!response.ok)throw new Error('Cannot load multi-tunnel settings');const data=await response.json();document.getElementById('aggregatePort').value=String(data.config.listenPort);document.getElementById('aggregatePolicy').value=data.config.policy;document.getElementById('aggregatePaths').replaceChildren();for(const path of data.config.paths)aggregateRow(path);_aggregateSavedConfig=readAggregateConfig();_aggregateLoaded=true;renderAggregate(data.status,data.workers);}catch(error){aggregateMessage(error.message,true);}}
@@ -1704,8 +1773,8 @@ function renderAggregate(snapshot,workers){
  const toggle=document.getElementById('aggregateToggle');toggle.textContent=snapshot.running?translated('Stop local pool','توقف پروکسی تجمیع'):translated('Start local pool','اجرای پروکسی تجمیع');toggle.classList.toggle('disconnect',snapshot.running);
  const rows=[...document.querySelectorAll('.aggregate-path')],workerList=workers||[];const anyWorker=workerList.some(w=>w.running);
  for(const id of ['aggregateSave','aggregateAdd','aggregatePort','aggregatePolicy'])document.getElementById(id).disabled=_aggregateBusy||snapshot.running||anyWorker;
- toggle.disabled=_aggregateBusy||!_aggregateLoaded;
- rows.forEach((root,index)=>{const profileId=Number(root.dataset.profileId),status=paths.find(p=>p.profileId===profileId),worker=workerList.find(w=>w.slot===profileId),running=!!worker?.running;root.dataset.worker=String(running);const name=root.querySelector('[data-field="name"]').value;root.querySelector('.aggregate-path-title').textContent=name;root.querySelector('.aggregate-worker-state').textContent=running?translated('Profile running','حساب در حال اجرا'):translated('Profile stopped / external path','حساب متوقف / مسیر خارجی');for(const input of root.querySelectorAll('input'))input.disabled=_aggregateBusy||snapshot.running||anyWorker;for(const button of root.querySelectorAll('[data-action]'))button.disabled=_aggregateBusy||(button.dataset.action==='start'&&running)||(button.dataset.action==='stop'&&!running)||(button.dataset.action==='remove'&&(snapshot.running||anyWorker));const link=root.querySelector('a');const port=Number(root.querySelector('[data-field="managementPort"]').value);link.textContent='http://127.0.0.1:'+port;link.href='http://127.0.0.1:'+port;link.hidden=!running;root.querySelector('.aggregate-path-stats').textContent=status?translated('Active: ','فعال: ')+status.active+' · ↓ '+trafficVolume(status.receivedBytes)+' · ↑ '+trafficVolume(status.sentBytes)+(status.error?' · '+translated('Local tunnel unavailable; connect its profile.','تونل محلی در دسترس نیست؛ حساب آن را متصل کنید.'):''):'';});
+ toggle.disabled=_aggregateBusy||!_aggregateLoaded;document.getElementById('addClientAccount').disabled=_aggregateBusy||accountBusy||snapshot.running;document.getElementById('connectClientAccounts').disabled=_aggregateBusy||accountBusy;
+ rows.forEach((root,index)=>{const profileId=Number(root.dataset.profileId),status=paths.find(p=>p.profileId===profileId),worker=workerList.find(w=>w.slot===profileId),running=!!worker?.running;root.dataset.worker=String(running);const name=root.querySelector('[data-field="name"]').value;root.querySelector('.aggregate-path-title').textContent=name;root.querySelector('.aggregate-worker-state').textContent=running?translated('Profile running','حساب در حال اجرا'):translated('Profile stopped / external path','حساب متوقف / مسیر خارجی');for(const input of root.querySelectorAll('input'))input.disabled=_aggregateBusy||snapshot.running||anyWorker;for(const button of root.querySelectorAll('[data-action]'))button.disabled=_aggregateBusy||(button.dataset.action==='start'&&running)||(button.dataset.action==='stop'&&!running)||(['manage','connect'].includes(button.dataset.action)&&!running)||(button.dataset.action==='remove'&&(snapshot.running||anyWorker));const link=root.querySelector('a');const port=Number(root.querySelector('[data-field="managementPort"]').value);link.textContent='http://127.0.0.1:'+port;link.href='http://127.0.0.1:'+port;link.hidden=!running;root.querySelector('.aggregate-path-stats').textContent=status?translated('Active: ','فعال: ')+status.active+' · ↓ '+trafficVolume(status.receivedBytes)+' · ↑ '+trafficVolume(status.sentBytes)+(status.error?' · '+translated('Local tunnel unavailable; connect its profile.','تونل محلی در دسترس نیست؛ حساب آن را متصل کنید.'):''):'';});renderAccountStates();
 }
 document.getElementById('aggregateAdd').onclick=()=>{const rows=document.querySelectorAll('.aggregate-path');if(rows.length>=8)return;const used=new Set([...rows].map(r=>Number(r.dataset.profileId)));const id=[1,2,3,4,5,6,7,8].find(i=>!used.has(i));aggregateRow({profileId:id,name:'Tunnel '+id,port:1080+id,managementPort:37200+id,weight:1});};
 document.getElementById('aggregateSave').onclick=aggregateSave;
@@ -1735,7 +1804,40 @@ const translations={
  'These are local safeguards, not Bale quotas or a guarantee against account restrictions. Call metadata remains visible to Bale.':'این‌ها محدودیت‌های محافظتی همین برنامه‌اند؛ سهمیهٔ بله یا تضمین ضدبن نیستند. فرادادهٔ تماس برای بله قابل مشاهده است.'
 };
 Object.assign(translations,{"YOUR PRIVATE WORKSPACE": "فضای اختصاصی اتصال شما", "WORKSPACE": "فضای کار", "A clearer view. A better connection.": "نمایی روشن‌تر، اتصالی بهتر.", "Welcome": "خوش آمدید", "BALEVPN / WORKSPACE": "بله‌وی‌پی‌ان / فضای کار", "Traffic & insights": "ترافیک و آمار", "Client management": "مدیریت کلاینت‌ها", "Security & pairing": "امنیت و جفت‌سازی", "Connection settings": "تنظیمات اتصال", "Personalization": "شخصی‌سازی", "YOUR NEXT DESTINATION": "مقصد بعدی شما", "One connection. More possibilities.": "یک اتصال، فرصت‌های بیشتر.", "Choose your role, pair your devices and connect at your own pace.": "نقش خود را انتخاب کنید، دستگاه‌ها را جفت کنید و متصل شوید.", "Your connection, in detail": "اتصال شما، با تمام جزئیات", "Traffic charts appear after signing in as a client. Server connections are managed in Client management.": "نمودار ترافیک پس از ورود در نقش کلاینت نمایش داده می‌شود. اتصال‌های سرور در بخش مدیریت کلاینت‌ها قرار دارند.", "Go to connection": "رفتن به اتصال", "A place for your clients": "همهٔ کلاینت‌ها در یک جا", "Client management becomes available when this device is signed in as a server.": "مدیریت کلاینت‌ها پس از ورود این دستگاه در نقش سرور در دسترس قرار می‌گیرد.", "Built for a connection you control.": "کنترل اتصال، در دست شما."});
-Object.assign(translations,{"Multi-tunnel": "تجمیع تونل‌ها", "Independent tunnels. One local proxy.": "چند تونل مستقل، یک پروکسی محلی.", "Distributes separate TCP connections, not packets of one stream. Multi-part downloads can use several tunnels. A single-stream download does not get bonded. No direct-internet fallback.": "اتصال‌های TCP مستقل بین تونل‌ها تقسیم می‌شوند. دانلود چندبخشی می‌تواند از چند تونل استفاده کند؛ یک جریان تک‌اتصالی تجمیع نمی‌شود. مسیر جایگزینِ اینترنت مستقیم وجود ندارد.", "Pool download": "دریافت تجمیع", "Pool upload": "ارسال تجمیع", "Active TCP connections": "اتصال‌های TCP فعال", "Distribution policy": "روش تقسیم ترافیک", "Local pool SOCKS5 port": "پورت SOCKS5 تجمیع", "Policy": "حالت تقسیم", "Weighted least connections": "کمترین بار فعال با وزن", "Weighted round robin": "نوبتی با وزن", "Primary with backups": "مسیر اصلی و پشتیبان", "Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.": "وزن روی تقسیم اتصال‌های جدید اثر دارد. هر جریان تا پایان روی تونل خودش باقی می‌ماند. مسیر جایگزین پیش از ارسال دادهٔ برنامه امتحان می‌شود؛ جریان قطع‌شده نیاز به تلاش مجدد دارد.", "Add tunnel": "افزودن تونل", "Save pool settings": "ذخیرهٔ تنظیمات تجمیع", "Start local pool": "اجرای پروکسی تجمیع", "Four-account setup": "راه‌اندازی با چهار حساب", "For two independent pairs, use two client accounts and two server accounts. The servers may share one VPS. Start a profile, open its local account panel, sign in, exchange the correct public pairing codes, then connect each tunnel. Starting the pool does not place Bale calls.": "برای دو جفت مستقل، از دو حساب کلاینت و دو حساب سرور استفاده کنید. هر دو سرور می‌توانند روی یک VPS باشند. هر حساب را اجرا کنید، آدرس پنل محلی آن را در مرورگر باز کنید، وارد شوید، کدهای عمومی جفت درست را مبادله کنید و هر تونل را متصل کنید. اجرای پروکسی تجمیع تماس بله برقرار نمی‌کند.", "Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.": "فقط پورت‌های SOCKS محلیِ مورد اعتماد BaleVPN را اضافه کنید. رمزگذاری را در پنل هر حساب بررسی کنید. پورت‌های مدیریت را عمومی نکنید؛ برای سرور از فوروارد SSH استفاده کنید. تماس‌های بیشتر تضمین افزایش سرعت یا جلوگیری از محدودیت حساب نیستند.", "Tunnel name": "نام تونل", "SOCKS port": "پورت SOCKS", "Account UI port": "پورت پنل حساب", "Weight": "وزن", "Start profile": "اجرای حساب", "Stop profile": "توقف حساب", "Copy account panel URL": "کپی آدرس پنل حساب", "Remove path": "حذف مسیر"});
+Object.assign(translations,{"Multi-tunnel": "تجمیع تونل‌ها", "Independent tunnels. One local proxy.": "چند تونل مستقل، یک پروکسی محلی.", "Distributes separate TCP connections, not packets of one stream. Multi-part downloads can use several tunnels. A single-stream download does not get bonded. No direct-internet fallback.": "اتصال‌های TCP مستقل بین تونل‌ها تقسیم می‌شوند. دانلود چندبخشی می‌تواند از چند تونل استفاده کند؛ یک جریان تک‌اتصالی تجمیع نمی‌شود. مسیر جایگزینِ اینترنت مستقیم وجود ندارد.", "Pool download": "دریافت تجمیع", "Pool upload": "ارسال تجمیع", "Active TCP connections": "اتصال‌های TCP فعال", "Distribution policy": "روش تقسیم ترافیک", "Local pool SOCKS5 port": "پورت SOCKS5 تجمیع", "Policy": "حالت تقسیم", "Weighted least connections": "کمترین بار فعال با وزن", "Weighted round robin": "نوبتی با وزن", "Primary with backups": "مسیر اصلی و پشتیبان", "Weights affect distribution of new connections. Existing streams remain on their original tunnel. Backups are tried before application data is forwarded; interrupted streams need retry.": "وزن روی تقسیم اتصال‌های جدید اثر دارد. هر جریان تا پایان روی تونل خودش باقی می‌ماند. مسیر جایگزین پیش از ارسال دادهٔ برنامه امتحان می‌شود؛ جریان قطع‌شده نیاز به تلاش مجدد دارد.", "Add tunnel": "افزودن تونل", "Save pool settings": "ذخیرهٔ تنظیمات تجمیع", "Start local pool": "اجرای پروکسی تجمیع", "Four-account setup": "راه‌اندازی با چهار حساب", "Add each client account here, sign in inside its account panel, select its server and save secure pairing. Then connect the accounts and start the local pool. Two independent pairs use four accounts; both servers may share one VPS. Starting the pool does not place calls.": "هر حساب کلاینت را از همین‌جا اضافه کنید، داخل پنل آن وارد شوید، سرور را انتخاب و جفت‌سازی امن را ذخیره کنید. سپس حساب‌ها را متصل و پروکسی تجمیع را اجرا کنید. دو جفت مستقل به چهار حساب نیاز دارند؛ هر دو سرور می‌توانند روی یک VPS باشند. اجرای پروکسی، تماس برقرار نمی‌کند.", "Only add trusted local BaleVPN SOCKS ports. Verify encryption in each profile. Keep management ports private; use SSH forwarding on a remote server. More calls do not guarantee higher speed or prevent account restrictions.": "فقط پورت‌های SOCKS محلیِ مورد اعتماد BaleVPN را اضافه کنید. رمزگذاری را در پنل هر حساب بررسی کنید. پورت‌های مدیریت را عمومی نکنید؛ برای سرور از فوروارد SSH استفاده کنید. تماس‌های بیشتر تضمین افزایش سرعت یا جلوگیری از محدودیت حساب نیستند.", "Tunnel name": "نام تونل", "SOCKS port": "پورت SOCKS", "Account UI port": "پورت پنل حساب", "Weight": "وزن", "Start profile": "اجرای حساب", "Stop profile": "توقف حساب", "Copy account panel URL": "کپی آدرس پنل حساب", "Remove path": "حذف مسیر"});
+Object.assign(translations,{"Add client account": "افزودن حساب کلاینت", "Connect signed-in accounts": "اتصال حساب‌های واردشده", "Sign in / manage account": "ورود / مدیریت حساب", "Connect account": "اتصال حساب", "Close account panel": "بستن پنل حساب", "Account panel": "پنل حساب", "Sign in to this account first": "ابتدا وارد این حساب شوید", "Choose Client mode in this account": "نقش کلاینت را برای این حساب انتخاب کنید", "Select a server for this account": "سرور این حساب را انتخاب کنید", "Save verified server pairing for this account first": "ابتدا کد جفت‌سازی سرور را در تنظیمات امنیت این حساب ذخیره کنید", "Could not open the account panel": "پنل حساب باز نشد", "Stop the pool before adding an account": "پیش از افزودن حساب، پروکسی تجمیع را متوقف کنید", "Maximum eight accounts": "حداکثر هشت حساب قابل افزودن است", "Start and sign in to at least one client account": "ابتدا حداقل یک حساب کلاینت را اجرا کنید و وارد آن شوید", "connected": "متصل", "disconnected": "قطع‌شده", "connecting…": "در حال اتصال…", "paused (in call)": "متوقف هنگام تماس", "Connecting…": "در حال اتصال…", "Disconnecting…": "در حال قطع اتصال…", "Connect": "اتصال", "Disconnect": "قطع اتصال", "Tunnel proxy": "پروکسی تونلی", "(client)": "(کلاینت)", "(server)": "(سرور)", "— select peer —": "— حساب سرور را انتخاب کنید —", "Checking Bale incoming-call privacy…": "در حال بررسی حریم خصوصی تماس بله…", "Bale incoming calls: Everyone (verified).": "تماس ورودی بله: همه؛ تأیید شده.", "Bale incoming-call privacy has not been verified yet.": "حریم خصوصی تماس ورودی بله هنوز بررسی نشده است.", "Server — waiting for clients…": "سرور — در انتظار کلاینت‌ها…", "Server rejected the connection. Press Activate to try again.": "سرور اتصال را رد کرد؛ برای تلاش مجدد، اتصال را بزنید.", "Waiting for server to pick up…": "در انتظار پاسخ سرور…", "Connecting to server…": "در حال اتصال به سرور…", "Pick a server peer first.": "ابتدا حساب سرور را انتخاب کنید.", "No clients connected": "هیچ کلاینتی متصل نیست", "No pending requests": "درخواست منتظری وجود ندارد", "No callers on the allow-list": "فهرست حساب‌های مجاز خالی است", "No blocked callers": "حساب مسدودی وجود ندارد", "Accept once": "پذیرش یک‌باره", "Allow always": "همیشه مجاز", "Reject": "رد درخواست", "Remove": "حذف", "Unblock": "رفع مسدودی", "Log out?": "از حساب خارج می‌شوید؟", "Clears saved token and stops the tunnel.": "توکن ذخیره‌شده پاک و تونل متوقف می‌شود.", "Cancel": "انصراف", "Log out": "خروج از حساب", "Code": "کد تأیید", "Your name": "نام شما", "access_token cookie value…": "مقدار کوکی access_token…", "Enter a phone number or name to search.": "شماره تلفن یا نام را برای جست‌وجو وارد کنید.", "Searching…": "در حال جست‌وجو…", "No results found.": "نتیجه‌ای پیدا نشد.", "No results.": "نتیجه‌ای پیدا نشد.", "No users found.": "حسابی پیدا نشد.", "Failed to save mode": "نقش دستگاه ذخیره نشد", "Could not allow Bale calls": "اجازهٔ تماس بله تنظیم نشد", "Could not save settings": "تنظیمات ذخیره نشد", "Could not load settings. Check the application version.": "تنظیمات بارگیری نشد؛ نسخهٔ برنامه را بررسی کنید.", "Could not load diagnostic report": "گزارش عیب‌یابی بارگیری نشد", "Error": "خطا", "Windows DPAPI (current OS user)": "محافظت ویندوز با DPAPI برای کاربر فعلی سیستم", "AES-256-GCM; private master key or BALEVPN_MASTER_KEY_FILE": "رمزگذاری AES-256-GCM با کلید اصلی خصوصی یا BALEVPN_MASTER_KEY_FILE", "Start this account profile first": "ابتدا این حساب را اجرا کنید", "Account profile has stopped": "اجرای حساب متوقف شده است", "Worker already running": "حساب از قبل در حال اجرا است", "Pool already running": "پروکسی تجمیع از قبل فعال است", "Stop the pool and managed workers before changing paths or ports": "پیش از تغییر پورت یا حذف حساب فعال، پروکسی تجمیع و حساب مربوط را متوقف کنید", "Live": "زنده", "Idle": "غیرفعال", "Ready": "آماده", "Client": "کلاینت", "Server": "سرور", "Security": "امنیت", "Performance": "کارایی", "Settings": "تنظیمات", "Name": "نام", "English": "English", "Balanced": "متعادل", "Throughput": "توان بیشتر"});
+
+Object.assign(translations,{"DESKTOP": "دسکتاپ", "Each account has its own sign-in, server selection and secure pairing.": "هر حساب ورود، انتخاب سرور و جفت‌سازی امن مستقل دارد.", "Clears the saved token and stops the tunnel.": "توکن ذخیره‌شده پاک و تونل متوقف می‌شود.", "No results": "نتیجه‌ای پیدا نشد", "Traffic analytics": "آمار ترافیک", "Download and upload speed history": "تاریخچهٔ سرعت دریافت و ارسال", "Traffic CSV without account details": "CSV ترافیک بدون اطلاعات حساب", "Redacted diagnostic report": "گزارش عیب‌یابی بدون اطلاعات حساس", "Bale accepted the request. Check Bale, Telegram or SMS for your code.": "بله درخواست را پذیرفت؛ کد را در بله، تلگرام یا پیامک بررسی کنید.", "Bale did not confirm a code request. Please retry.": "بله درخواست کد را تأیید نکرد؛ دوباره تلاش کنید.", "Sign-in failed. Please retry.": "ورود ناموفق بود؛ دوباره تلاش کنید.", "Invalid code": "کد نامعتبر است", "Registration failed": "ثبت‌نام ناموفق بود", "Connection closed. Press Connect to start another call.": "تماس پایان یافت؛ برای تماس تازه اتصال را بزنید.", "Failed to configure tunnel": "پیکربندی تونل انجام نشد", "Failed to fetch": "ارتباط با برنامه قطع شد", "NetworkError when attempting to fetch resource.": "ارتباط شبکه با برنامه برقرار نشد", "Account profile is unavailable": "حساب در دسترس نیست؛ وضعیت اجرای آن را بررسی کنید", "Account process identity check failed": "هویت پردازش حساب تأیید نشد", "Account request was rejected": "درخواست حساب رد شد", "Account request is too large": "اندازهٔ درخواست حساب بیش از حد مجاز است", "Account profile response was interrupted": "دریافت پاسخ حساب قطع شد", "Account profile response is too large": "پاسخ حساب بیش از حد بزرگ است", "Bale refused the call (CallNotApproved). On the server account, verify that incoming calls are allowed for Everyone, using the server privacy check or the official Bale app. The tunnel request has not reached the server approval list.": "بله تماس را رد کرد (CallNotApproved). در حساب سرور، مجوز تماس را با بررسی حریم خصوصی برنامه یا در پیام‌رسان رسمی بله روی «همه» قرار دهید. درخواست تونل هنوز به فهرست تأیید سرور نرسیده است."});
+Object.assign(translations,{'Session expired — please log in again.':'نشست حساب منقضی شده است؛ دوباره وارد شوید.','App version is incompatible with Bale. Please update.':'نسخهٔ برنامه با بله سازگار نیست؛ برنامه را به‌روز کنید.'});
+// Translate presentation updates only. No timers or traffic-path hooks.
+const localizedNodes=new WeakMap(),localizedAttributes=new WeakMap();
+function uiMessage(value){
+ const text=String(value??'');if(document.documentElement.lang!=='fa')return text;
+ const trimmed=text.trim(),exact=translations[trimmed];if(exact)return text.replace(trimmed,exact);
+ const patterns=[
+ [/^Server — (\d+) clients? connected$/,m=>'سرور — '+m[1]+' کلاینت متصل'],
+ [/^\(max (\d+)\)$/,m=>'(حداکثر '+m[1]+')'],
+ [/^up (.*)$/,m=>'مدت اتصال: '+m[1]],
+ [/^waiting (.*)$/,m=>'مدت انتظار: '+m[1]],
+ [/^total (.*)$/,m=>'مجموع '+m[1]],
+ [/^Retry in (\d+)s$/,m=>'تلاش مجدد پس از '+m[1]+' ثانیه'],
+ [/^Tunnel (\d+)$/,m=>'تونل '+m[1]],
+ [/^Could not verify Bale call privacy: (.*)$/,m=>'بررسی حریم خصوصی تماس بله ناموفق بود: '+uiMessage(m[1])],
+ [/^(?:Error|Failed|Connection failed): (.*)$/,m=>'خطای اتصال: '+uiMessage(m[1])],
+ [/^SOCKS5 on (.*?) → peer (.*?) \[🔗 WebRTC\] \| sessions: (.*)$/,m=>'SOCKS5 روی '+m[1]+' ← حساب '+m[2]+' [WebRTC] | نشست‌ها: '+m[3]],
+ [/^Bale accepted the request\. Check (.*?) for your code\.$/,m=>'بله درخواست را پذیرفت؛ کد را در '+({'a phone call':'تماس تلفنی','a missed call':'تماس ازدست‌رفته',email:'ایمیل',Bale:'بله',Telegram:'تلگرام',WhatsApp:'واتس‌اپ',SMS:'پیامک'}[m[1]]||m[1])+' بررسی کنید.'],
+ ];
+ for(const [pattern,replace]of patterns){const match=trimmed.match(pattern);if(match)return text.replace(trimmed,replace(match));}
+ return text;
+}
+function localizeInterface(root){
+ if(!root)return;
+ const skip='script,style,textarea,input,#selfName,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
+ const translate=node=>{if(!node.parentElement||node.parentElement.closest(skip))return;const before=node.nodeValue,record=localizedNodes.get(node);const original=record&&before===record.output?record.original:before;const output=uiMessage(original);localizedNodes.set(node,{original,output});if(output!==before)node.nodeValue=output;};
+ if(root.nodeType===3)translate(root);else{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())translate(node);}
+}
+function localizeAttributes(){for(const element of document.querySelectorAll('[placeholder],[aria-label],[title]')){let record=localizedAttributes.get(element);if(!record){record={};localizedAttributes.set(element,record);}for(const key of ['placeholder','aria-label','title']){if(!element.hasAttribute(key))continue;const value=element.getAttribute(key),previous=record[key];const original=previous&&value===previous.output?previous.original:value;const output=uiMessage(original);record[key]={original,output};if(value!==output)element.setAttribute(key,output);}}}
+
 const appearanceDefaults={language:'en',theme:'system',palette:'ocean',accent:'#1263d7',font:'modern',size:'100',width:'standard',density:'comfortable',corners:'20',gradient:true,metrics:true,motion:false};
 const appearanceChoices={language:['en','fa','auto'],theme:['light','dark','system'],palette:['ocean','teal','violet','rose','amber','custom'],font:['modern','system'],size:['90','100','110','120'],width:['compact','standard','wide'],density:['comfortable','compact'],corners:['0','10','20']};
 const appearanceFields={language:'languageSelect',theme:'themeSelect',palette:'paletteSelect',accent:'accentColor',font:'fontSelect',size:'textSize',width:'panelWidth',density:'densitySelect',corners:'cornerSelect',gradient:'gradientHeader',metrics:'showMetrics',motion:'reduceMotion'};
@@ -1774,6 +1876,7 @@ function applyAppearance() {
  try {localStorage.setItem('bale_appearance',JSON.stringify(p));}catch{}
  if (_state) applyState();
  else setWorkspaceTab(_workspaceTab);
+ localizeInterface(document.body);localizeAttributes();
 }
 async function loadSettings() {
  try {
@@ -1811,7 +1914,10 @@ for(const id of Object.values(appearanceFields))document.getElementById(id).addE
 document.getElementById('accentColor').addEventListener('input',()=>{document.getElementById('paletteSelect').value='custom';applyAppearance();});
 document.getElementById('resetAppearance').onclick=()=>{fillAppearance(appearanceDefaults);applyAppearance();};
 if(systemTheme.addEventListener)systemTheme.addEventListener('change',()=>{if(document.getElementById('themeSelect').value==='system')applyAppearance();});
-initializeWorkspace();applyAppearance();loadSettings();loadAggregate();
+initializeWorkspace();applyAppearance();
+new MutationObserver(records=>{for(const record of records){if(record.type==='characterData')localizeInterface(record.target);else for(const node of record.addedNodes)localizeInterface(node);}}).observe(document.body,{childList:true,subtree:true,characterData:true});
+window.addEventListener('storage',event=>{if(event.key==='bale_appearance'){try{fillAppearance(JSON.parse(event.newValue||'{}'));applyAppearance();}catch{}}});
+loadSettings();if(!embeddedProfile)loadAggregate();
 
 
 try {const p=JSON.parse(localStorage.getItem('bale_telemetry')||'{}');if(['bytes','bits'].includes(p.units))_trafficUnits=p.units;if([60,300,900].includes(p.range))_chartSeconds=p.range;}catch{}

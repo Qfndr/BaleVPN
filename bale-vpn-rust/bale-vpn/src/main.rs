@@ -17,6 +17,7 @@ use std::path::PathBuf;
 mod client;
 mod aggregate;
 mod workers;
+mod profiles;
 mod config;
 mod vault;
 mod settings;

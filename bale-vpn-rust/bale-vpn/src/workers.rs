@@ -20,8 +20,8 @@ pub struct Workers {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
-    slot: usize,
-    running: bool,
+    pub slot: usize,
+    pub running: bool,
     management_port: u16,
 }
 impl Workers {
@@ -42,8 +42,15 @@ impl Workers {
             })
             .collect()
     }
-    pub fn any_running(&self) -> bool {
-        self.snapshots().iter().any(|w| w.running)
+    pub fn endpoint(&self, slot: usize) -> io::Result<(u16, u32)> {
+        let mut children = self.children.lock();
+        let worker = children
+            .get_mut(&slot)
+            .ok_or_else(|| io::Error::other("Start this account profile first"))?;
+        if worker.child.try_wait()?.is_some() {
+            return Err(io::Error::other("Account profile has stopped"));
+        }
+        Ok((worker.port, worker.child.id()))
     }
     pub fn start(&self, slot: usize, path: crate::aggregate::PathConfig) -> io::Result<()> {
         let mut children = self.children.lock();
