@@ -25,6 +25,7 @@ const server=http.createServer(async(req,res)=>{
   else if(req.url==='/aggregate/stop')poolRunning=false;
   else if(req.url==='/aggregate/worker')workers.set(data.slot,{slot:data.slot,running:data.start,managementPort:poolConfig.paths.find(p=>p.profileId===data.slot).managementPort});
   else if(req.url==='/settings'){if(data)preferences=data;result={ok:true,preferences,publicCode:'bvp1:fixture-public-code',fingerprint:'fixture',credentialStorage:'Fixture only'};}
+  else if(req.url==='/client/auto-reconnect'){preferences.autoReconnect=data.enabled;state.autoReconnect=data.enabled;}
   else if(req.url==='/backup/accounts')result=[];
   else if(req.url==='/peers')result={peers:[{id:'42',type:'0',name:'Test server'}]};
   else if(req.url==='/server/max-clients')result={maxClients:5,maxSupported:253};
@@ -66,7 +67,10 @@ const server=http.createServer(async(req,res)=>{
   await page.waitForFunction(()=>document.getElementById('tunnelStatus').textContent==='Fixture connection failure');
   assert.equal(await page.locator('#tunnelApply').isEnabled(),true);await refresh();
   assert.match(await page.locator('#tunnelStatus').innerText(),/Fixture connection failure/);
-  state={...state,clientActivated:true,clientRoomReady:true,peerAuthenticated:true,socks5Port:1080,serverPeer:{id:'42'},metrics:{rttMs:160,sentPackets:1000,lostPackets:2,congestionWindow:81600,sendWindowBytes:81600,profile:'balanced'},traffic:{...traffic,sessionId:1,active:true,receivedBytes:24000000,sentBytes:3000000,sessionElapsedMs:60000,processReceivedBytes:24000000,processSentBytes:3000000}};await refresh();
+  await page.locator('#autoReconnect').check();await page.waitForFunction(()=>!_autoReconnectBusy);assert.equal(preferences.autoReconnect,true);await page.locator('#autoReconnect').uncheck();await page.waitForFunction(()=>!_autoReconnectBusy);assert.equal(preferences.autoReconnect,false);
+  state={...state,clientActivated:true,clientReconnecting:true,clientError:'transport: connection reset',retryAfterSeconds:17};await refresh();
+  assert.match(await page.locator('#tunnelStatus').innerText(),/reconnecting in 17s/);assert.equal(await page.locator('#tunnelStatus').getAttribute('class'),'entry info');assert.equal(await page.locator('#tunnelApply').isEnabled(),true);assert.equal(await page.locator('#tunnelApply').innerText(),'Disconnect');
+  state={...state,clientReconnecting:false,clientError:null,retryAfterSeconds:0,clientActivated:true,clientRoomReady:true,peerAuthenticated:true,socks5Port:1080,serverPeer:{id:'42'},metrics:{rttMs:160,sentPackets:1000,lostPackets:2,congestionWindow:81600,sendWindowBytes:81600,profile:'balanced'},traffic:{...traffic,sessionId:1,active:true,receivedBytes:24000000,sentBytes:3000000,sessionElapsedMs:60000,processReceivedBytes:24000000,processSentBytes:3000000}};await refresh();
   const afterConnect=writes.length;
   await page.evaluate(()=>{_activationError=null;applyState();});
   await tab('appearance');await page.selectOption('#languageSelect','fa');await page.selectOption('#themeSelect','dark');

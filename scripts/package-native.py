@@ -3,7 +3,7 @@ import argparse,plistlib,shutil,tempfile,zipfile
 from pathlib import Path
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--platform',choices=['Windows','Linux','macOS'],required=True);parser.add_argument('--binary',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--version',default='2.6.0');args=parser.parse_args();args.output.parent.mkdir(parents=True,exist_ok=True)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--platform',choices=['Windows','Linux','macOS'],required=True);parser.add_argument('--binary',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--version',default='2.6.1');args=parser.parse_args();args.output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='bale native bundle ') as tmp:
         root=Path(tmp)
         if args.platform=='macOS':

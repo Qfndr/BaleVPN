@@ -38,6 +38,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/fonts/:name", get(font))
         .route("/config",        get(get_config).post(set_config))
         .route("/settings",      get(get_settings).post(set_settings))
+        .route("/client/auto-reconnect", post(set_auto_reconnect))
         .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
         .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
@@ -245,6 +246,22 @@ async fn set_settings(State(s): State<Arc<AppState>>, Json(preferences): Json<cr
     Ok(Json(OkBody {ok:true}))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AutoReconnectBody { enabled: bool }
+async fn set_auto_reconnect(State(s): State<Arc<AppState>>, Json(body): Json<AutoReconnectBody>) -> Result<Json<OkBody>,ApiError> {
+    let mut cfg=s.cfg.write().await;
+    s.config_file.update(|c|c.preferences.auto_reconnect=body.enabled).map_err(|_|ApiError::Internal("Could not save settings".into()))?;
+    cfg.preferences.auto_reconnect=body.enabled;
+    // Turning the option off stops a scheduled/in-progress recovery, but
+    // leaves an established connection alone.
+    if !body.enabled && s.client.reconnect_status().0 {
+        cfg.peer_id=None;s.client.clear_error();
+        let _=s.mode_tx.send(cfg.mode.clone());
+    }
+    Ok(Json(OkBody {ok:true}))
+}
+
 async fn diagnostics(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let cfg=s.cfg.read().await;
     let snap=s.client.snapshot().await;
@@ -410,6 +427,8 @@ struct StateBody {
     /// `--mode client` with a configured peer, so this just
     /// mirrors "the LK tunnel is up".
     client_activated:   bool,
+    client_reconnecting: bool,
+    auto_reconnect: bool,
     /// Client mode: LK room established AND peer joined.
     client_room_ready:  bool,
     /// Client mode: last place_call attempt got
@@ -505,7 +524,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
         aggregate_workers: s.aggregate.workers.snapshots(),
         secure_mode: cfg.preferences.secure_mode,
         peer_authenticated: s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,
-        retry_after_seconds: s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()),
+        retry_after_seconds: s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()).max(s.client.reconnect_status().1),
         metrics: s.client.tunnel().and_then(|t|t.connection_metrics()),
         traffic: s.client.traffic_snapshot(),
         server_call_privacy: if cfg.mode.as_deref() == Some("server") { Some(s.server.call_privacy()) } else { None },
@@ -516,6 +535,8 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
         ws_connecting,
         ws_paused,
         client_activated:  is_client && cfg.peer_id.is_some() && token_set,
+        client_reconnecting: is_client && cfg.peer_id.is_some() && s.client.reconnect_status().0,
+        auto_reconnect: cfg.preferences.auto_reconnect,
         client_error:      if is_client { s.client.last_error() } else { None },
         client_room_ready,
         lk_rooms,
@@ -997,28 +1018,35 @@ async fn reject_pending(
     Json(OkBody { ok: true })
 }
 
-/// Client-mode: end the current call. Clears the configured
-/// peer in cfg + persists to disk + republishes `mode_tx` so
-/// `run_mode` tears the in-flight `run_client` task down. With
-/// `peer_id = None`, the next iteration of `run_mode` parks
-/// `run_client` until a peer is configured again — equivalent
-/// to the user pressing "Disconnect" in the UI. Idempotent.
+/// End the current call. With auto-reconnect enabled, keep the
+/// selected peer and schedule a replacement call after the call budget permits.
+/// Otherwise clear the live peer and stay offline. The saved peer remains on
+/// disk for future selection. Publish mode_tx to tear down the old session.
 ///
 /// Does NOT touch the WS — the WS lifecycle is owned entirely
 /// by the rule engine; the call going away will flip
 /// `call_active=false` via the global LK observer and the WS
 /// will resume on its own.
-async fn tunnel_disconnect(State(s): State<Arc<AppState>>) -> Result<Json<OkBody>, ApiError> {
+#[derive(Deserialize,Default)]
+#[serde(default,rename_all="camelCase",deny_unknown_fields)]
+struct DisconnectBody { pause_auto_reconnect: bool }
+async fn tunnel_disconnect(State(s): State<Arc<AppState>>, body: Option<Json<DisconnectBody>>) -> Result<Json<OkBody>, ApiError> {
+    // Account-transfer maintenance must keep the source stopped without
+    // changing its saved auto-reconnect preference. Normal Disconnect honors it.
+    let pause=body.is_some_and(|Json(b)|b.pause_auto_reconnect);
     // Keep the last peer on disk for restored UI selection. Startup always
     // clears the live peer before running a mode; this cannot auto-dial.
     // Ending a call must also work when the config filesystem is read-only.
     let restart_mode = {
         let mut cfg = s.cfg.write().await;
-        cfg.peer_id = None;
+        s.client.clear_error();
+        if cfg.preferences.auto_reconnect && cfg.peer_id.is_some() && !pause {
+            let delay=cfg.preferences.retry_delay_secs.max(s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now()));
+            s.client.reconnect_after(std::time::Duration::from_secs(delay));
+        } else { cfg.peer_id = None; }
         cfg.mode.clone()
     };
     let _ = s.mode_tx.send(restart_mode);
-    s.client.clear_error();
     Ok(Json(OkBody { ok: true }))
 }
 

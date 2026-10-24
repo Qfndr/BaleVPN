@@ -17,6 +17,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod client;
+mod reconnect;
 mod aggregate;
 mod workers;
 mod profiles;

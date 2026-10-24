@@ -49,6 +49,7 @@ fn allowed(method: &Method, path: &str) -> bool {
                     | "config"
                     | "tunnel/config"
                     | "tunnel/disconnect"
+                    | "client/auto-reconnect"
                     | "peers/refresh"
                     | "contacts/search"
                     | "server/call-privacy"

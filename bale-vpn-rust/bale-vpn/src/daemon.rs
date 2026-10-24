@@ -228,7 +228,12 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
     // (the outer select wakes, the mode is unset, we fall through
     // to auth-recheck).
     let mut mode_rx = state.mode_tx.subscribe();
+    let mut recovery = crate::reconnect::Recovery::default();
     'outer: loop {
+        mode_rx.borrow_and_update();
+        if let Some(delay)=state.client.reconnect_delay().filter(|d|!d.is_zero()) {
+            if !crate::reconnect::wait(delay,&mut mode_rx).await {continue 'outer;}
+        }
         // 1. Wait for auth. The auth handler writes through
         //    `TokenStore::save`; we poll once a second so the
         //    pickup is prompt without any explicit signal.
@@ -274,10 +279,11 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
             }
         };
         log::info!("entering mode={mode}");
-
+        let attempted_peer=state.cfg.read().await.peer_id.clone();
+        let previous_session=state.client.traffic_snapshot().session_id;
         let mut mode_changed=false;
         let outcome: Result<(), Box<dyn Error + Send + Sync>> = tokio::select! {
-            r = run_one_mode(&state, &mode) => r,
+            biased;
             r = mode_rx.changed()           => {
                 mode_changed=true;
                 if r.is_err() {
@@ -287,30 +293,34 @@ async fn run_mode(state: Arc<AppState>) -> Result<(), Box<dyn Error + Send + Syn
                 }
                 log::info!("mode change → tearing down {mode}");
                 Ok(())
-            }
+            },
+            r = run_one_mode(&state, &mode) => r,
         };
-        let completed_normally=outcome.is_ok();
-        if let Err(e) = outcome {
+        let error=outcome.err().map(|e|e.to_string());
+        if let Some(e) = &error {
             log::warn!("mode {mode} ended with error: {e}");
-            // On client error, clear the configured peer so the
-            // next iteration parks instead of immediately
-            // re-dialing the same bad peer (and tight-looping on
-            // a deterministic Bale error like InvalidPeer). The
-            // user has to press Connect again from the UI, which
-            // re-POSTs /tunnel/config and gives them a chance to
-            // pick a different peer.
             if mode != "client" { tokio::time::sleep(Duration::from_secs(5)).await; }
-            if mode == "client" {
-                state.attempts.lock().failed(&e.to_string(),std::time::Instant::now());
-                state.client.set_error(e.to_string());
-                state.cfg.write().await.peer_id = None;
-            }
         }
-        if mode=="client" && completed_normally && !mode_changed && !mode_rx.has_changed().unwrap_or(false) {
-            state.cfg.write().await.peer_id=None;
-            state.client.set_error("Connection closed. Press Connect to start another call.".into());
+        let mut retry=None;
+        if mode=="client" && !mode_changed && !mode_rx.has_changed().unwrap_or(true) {
+            let mut cfg=state.cfg.write().await;
+            if cfg.mode.as_deref()==Some("client") && cfg.peer_id==attempted_peer {
+                if let Some(peer)=attempted_peer.as_deref() {
+                    let now=std::time::Instant::now();
+                    let budget={let mut a=state.attempts.lock();if let Some(e)=&error{a.failed(e,now);}a.remaining(&cfg.preferences,now)};
+                    let current=state.client.traffic_snapshot().session_id;
+                    let established=current.is_some()&&current!=previous_session;
+                    if cfg.preferences.auto_reconnect {retry=recovery.delay(peer,established,error.as_deref(),cfg.preferences.retry_delay_secs,budget);}
+                    state.client.set_error(error.clone().unwrap_or_else(||if cfg.preferences.auto_reconnect {"Connection interrupted".into()} else {"Connection closed. Press Connect to start another call.".into()}));
+                    if let Some(delay)=retry {state.client.reconnect_after(delay);}
+                    else {state.client.stop_reconnect();cfg.peer_id=None;}
+                }
+            }
         }
         teardown_mode(&state).await;
+        if let Some(delay)=retry {
+            log::info!("client: automatic reconnect in {}s",delay.as_secs());
+        }
     }
 }
 

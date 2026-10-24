@@ -34,3 +34,7 @@ test('workspace status uses real client/server readiness, detects stale state an
  h.context._trafficStatusStale=true;h.context.syncWorkspace({mode:'server',tokenSet:true,wsReady:true});assert.equal(h.get('workspaceStatus').textContent,'Status unavailable');assert.equal(h.get('wsStateText').textContent,'Status unavailable');
  h.context._trafficStatusStale=false;h.context.syncWorkspace({mode:null,tokenSet:false,wsReady:false});assert.equal(h.get('workspaceStatus').textContent,'Not signed in');assert.equal(h.get('clientsEmpty').hidden,false);assert.equal(h.get('trafficEmpty').hidden,false);
 });
+
+test('automatic reconnect shows a countdown and retry progress in both languages',()=>{
+ for(const fa of [false,true]){const h=harness(fa);h.context.syncWorkspace({mode:'client',tokenSet:true,wsReady:true,clientReconnecting:true,retryAfterSeconds:17});assert.ok(h.get('workspaceStatus').textContent.includes('17'));assert.match(h.get('workspaceStatus').textContent,fa?/اتصال مجدد/:/reconnecting/);h.context.syncWorkspace({mode:'client',tokenSet:true,clientReconnecting:true,retryAfterSeconds:0});assert.match(h.get('workspaceStatus').textContent,fa?/اتصال مجدد/:/Reconnecting/);h.context.syncWorkspace({mode:'client',tokenSet:true,clientRoomReady:true,clientReconnecting:false});assert.equal(h.get('workspaceStatus').textContent,fa?'تونل آماده است':'Tunnel ready');}
+});

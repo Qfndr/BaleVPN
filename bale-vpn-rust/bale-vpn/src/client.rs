@@ -13,6 +13,7 @@ pub struct ClientState {
     inner: Mutex<Option<Inner>>,
     last_error: Mutex<Option<String>>,
     completed: Mutex<CompletedTraffic>,
+    reconnect_at: Mutex<Option<Instant>>,
 }
 
 #[derive(Default)]
@@ -48,6 +49,7 @@ impl ClientState {
     pub fn set_tunnel(&self, tunnel: Arc<LkTunnel>, socks5_port: u16) {
         if self.inner.lock().as_ref().is_some_and(|i| Arc::ptr_eq(&i.tunnel, &tunnel)) { return; }
         self.clear();
+        self.clear_error();
         *self.inner.lock() = Some(Inner { tunnel, socks5_port, started: Instant::now() });
     }
 
@@ -87,8 +89,15 @@ impl ClientState {
     // Session teardown must not erase the failure before the next UI poll.
     // Only an explicit new attempt, disconnect, role change, or logout clears it.
     pub fn set_error(&self, error: String) { *self.last_error.lock() = Some(error); }
-    pub fn clear_error(&self) { *self.last_error.lock() = None; }
+    pub fn clear_error(&self) { *self.last_error.lock() = None; *self.reconnect_at.lock() = None; }
     pub fn last_error(&self) -> Option<String> { self.last_error.lock().clone() }
+    pub fn reconnect_after(&self, delay: Duration) { *self.reconnect_at.lock() = Some(Instant::now()+delay); }
+    pub fn stop_reconnect(&self) { *self.reconnect_at.lock() = None; }
+    pub fn reconnect_delay(&self) -> Option<Duration> { self.reconnect_at.lock().map(|at|at.saturating_duration_since(Instant::now())) }
+    pub fn reconnect_status(&self) -> (bool,u64) {
+        let at=*self.reconnect_at.lock();
+        (at.is_some(),at.map(|at| {let d=at.saturating_duration_since(Instant::now());d.as_secs()+u64::from(d.subsec_nanos()>0)}).unwrap_or(0))
+    }
 
     pub async fn socks5_bound_port(&self) -> Option<u16> {
         self.inner.lock().as_ref().map(|i| i.socks5_port)
@@ -177,5 +186,22 @@ mod tests {
         assert_eq!(client.last_error().as_deref(), Some("StartCall: CallNotApproved"));
         client.clear_error();
         assert_eq!(client.last_error(), None);
+    }
+
+    #[tokio::test]
+    async fn reconnect_status_survives_teardown_but_success_or_manual_disconnect_clears_it() {
+        let client=ClientState::new();
+        client.set_error("Connection interrupted".into());
+        client.reconnect_after(Duration::from_secs(10));
+        client.clear();
+        assert!(client.reconnect_status().0 && client.reconnect_status().1>0);
+        client.clear_error();
+        assert_eq!(client.reconnect_status(),(false,0));
+        client.reconnect_after(Duration::from_secs(10));
+        let(a,b)=lktunnel::connect_loopback();
+        client.set_tunnel(a,1080);
+        assert_eq!(client.reconnect_status(),(false,0));
+        assert!(client.last_error().is_none());
+        client.clear();b.disconnect();
     }
 }

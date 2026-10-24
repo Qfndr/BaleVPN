@@ -11,6 +11,7 @@ use std::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
+    pub auto_reconnect: bool,
     pub secure_mode: bool,
     pub server_code: String,
     pub client_codes: Vec<String>,
@@ -21,6 +22,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            auto_reconnect: false,
             secure_mode: true,
             server_code: String::new(),
             client_codes: vec![],
