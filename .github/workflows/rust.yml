@@ -101,6 +101,7 @@ jobs:
       # on a broken unit test.
       - name: Verify fixed crypto dependency graph and DTLS interoperability
         run: |
+          python scripts/test-release-publisher.py
           python scripts/check-crypto-dependencies.py
           cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib
 

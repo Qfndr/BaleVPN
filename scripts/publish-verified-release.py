@@ -25,7 +25,7 @@ def digest(data):
 
 
 def gh(*args, json_result=False):
-    result = subprocess.check_output(['gh', *map(str, args)], cwd=ROOT, text=True)
+    result = subprocess.check_output(['gh', *map(str, args)], cwd=ROOT, text=True, encoding='utf-8')
     return json.loads(result) if json_result else result.strip()
 
 
@@ -67,6 +67,43 @@ def verify_bundle(path, version, commit, target, headless):
         if not target.startswith('windows'):
             assert (archive.getinfo(info['binary']).external_attr >> 16) & 0o111
         return info
+
+
+def find_release(repo, tag):
+    # The tag endpoint returns published releases. Authenticated list/get-by-ID
+    # endpoints also expose drafts, including drafts with no Git tag yet.
+    pages = gh('api', f'repos/{repo}/releases', '--paginate', '--slurp', json_result=True)
+    matches = [release for page in pages for release in page if release['tag_name'] == tag]
+    assert len(matches) <= 1, 'Ambiguous release tag'
+    return matches[0] if matches else None
+
+
+def publish_assets(repo, tag, commit, assets, notes):
+    release = find_release(repo, tag)
+    if release is None:
+        gh('release', 'create', tag, '-R', repo, '--target', commit, '--draft',
+           '--title', 'BaleVPN '+tag.removeprefix('v'), '--notes-file', notes)
+        release = find_release(repo, tag)
+    assert release and release['draft'], 'Refusing to modify an already published release'
+    assert release['target_commitish'] == commit, 'Existing draft targets different source'
+    endpoint = f'repos/{repo}/releases/{release["id"]}'
+    expected = {f.name: 'sha256:'+digest(f.read_bytes()) for f in assets.iterdir() if f.is_file()}
+    current = {a['name']: a for a in release['assets']}
+    assert not set(current) - set(expected), 'Draft contains unreviewed assets'
+    pending = [assets/name for name, sha in expected.items()
+               if current.get(name, {}).get('digest') != sha
+               or current.get(name, {}).get('state') != 'uploaded']
+    if pending:
+        gh('release', 'upload', tag, '-R', repo, *sorted(pending), '--clobber')
+    release = gh('api', endpoint, json_result=True)
+    assert release['draft'] and release['target_commitish'] == commit
+    assert all(a['state'] == 'uploaded' for a in release['assets'])
+    assert {a['name']: a.get('digest') for a in release['assets']} == expected, 'Remote asset set or SHA256 differs'
+    gh('release', 'edit', tag, '-R', repo, '--draft=false', '--latest')
+    final = gh('api', endpoint, json_result=True)
+    assert not final['draft'] and final['target_commitish'] == commit
+    assert {a['name']: a.get('digest') for a in final['assets']} == expected
+    print('Published:', final['html_url'])
 
 
 def main():
@@ -175,22 +212,7 @@ def main():
     if not args.publish:
         print('Prepared for review:', assets)
         return
-    existing = subprocess.run(['gh', 'api', f'repos/{args.repo}/releases/tags/{tag}'], capture_output=True, text=True)
-    if existing.returncode == 0:
-        release = json.loads(existing.stdout)
-        assert release['draft'], 'Refusing to modify an already published release'
-        assert release['target_commitish'] == commit, 'Existing draft targets different source'
-    else:
-        gh('release', 'create', tag, '-R', args.repo, '--target', commit, '--draft', '--title', 'BaleVPN '+version,
-           '--notes-file', ROOT/'release'/f'{tag}.md')
-    gh('release', 'upload', tag, '-R', args.repo, *sorted(assets.iterdir()), '--clobber')
-    release = gh('api', f'repos/{args.repo}/releases/tags/{tag}', json_result=True)
-    expected = {f.name: 'sha256:'+digest(f.read_bytes()) for f in assets.iterdir() if f.is_file()}
-    assert {a['name']: a.get('digest') for a in release['assets']} == expected, 'Remote asset set or SHA256 differs'
-    gh('release', 'edit', tag, '-R', args.repo, '--draft=false', '--latest')
-    final = gh('api', f'repos/{args.repo}/releases/tags/{tag}', json_result=True)
-    assert not final['draft'] and len(final['assets']) == len(expected)
-    print('Published:', final['html_url'])
+    publish_assets(args.repo, tag, commit, assets, ROOT/'release'/f'{tag}.md')
 
 
 if __name__ == '__main__':
