@@ -15,7 +15,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Finish main's security/test matrix (and save its compilation cache) before
+  # checking a newer main commit. Superseded PR checks can still be cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-test:

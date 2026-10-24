@@ -4,6 +4,7 @@ Publication additionally requires explicit user authorization under AGENTS.md.
 This script never reads account data or signing private keys.
 """
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import re
@@ -109,9 +110,19 @@ def main():
 
     assets = args.output/'release-assets'
     assets.mkdir(exist_ok=True)
+    # Artifacts have disjoint destinations. Fetch independently so a slow
+    # platform download does not serialize every other platform behind it.
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        pending = {name: pool.submit(download, run, name) for run, name in
+                   [(args.desktop_run, 'bale-vpn-'+target) for target in TARGETS]+
+                   [(args.android_run, 'BaleVpn-release-apk'), (args.checks_run, 'security-evidence')]}
+        downloaded = {}
+        for name, future in pending.items():
+            downloaded[name] = future.result()
+            print('Downloaded:', name, flush=True)
     verified = []
     for target in TARGETS:
-        source = download(args.desktop_run, 'bale-vpn-'+target)
+        source = downloaded['bale-vpn-'+target]
         for headless in [False, True]:
             variant = 'headless' if headless else 'desktop'
             bundle = source/f'BaleVPN-{variant}-{target}.zip'
@@ -133,7 +144,7 @@ def main():
                 for item in archive.infolist():
                     (destination/item.filename).chmod((item.external_attr >> 16) & 0o777)
 
-    android = download(args.android_run, 'BaleVpn-release-apk')
+    android = downloaded['BaleVpn-release-apk']
     manifest = json.loads((android/'signing-manifest.json').read_text())
     assert manifest['version'] == version and manifest['source_commit'] == commit
     assert manifest['signature_verified'] and manifest['release_signing_configured']
@@ -148,7 +159,7 @@ def main():
     for name in [f'BaleVpn-{version}-release.apk', 'BaleVpn-release.apk']:
         shutil.copy2(apk, assets/name)
     shutil.copy2(android/'signing-manifest.json', assets/'android-signing-manifest.json')
-    audit = download(args.checks_run, 'security-evidence')
+    audit = downloaded['security-evidence']
     for workspace in WORKSPACES:
         report = json.loads((audit/(workspace+'.json')).read_text())
         assert report['vulnerabilities']['count'] == 0 and not report['vulnerabilities']['found']

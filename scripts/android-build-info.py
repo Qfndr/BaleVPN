@@ -7,7 +7,11 @@ root=Path(__file__).resolve().parent.parent
 sdk=Path(os.environ['ANDROID_SDK_ROOT'])
 tools=max((sdk/'build-tools').iterdir(),key=lambda p:tuple(int(x)for x in re.findall(r'\d+',p.name)))
 signature=subprocess.check_output([str(tools/'apksigner'),'verify','--verbose','--print-certs',str(args.apk)],text=True)
-cert=re.search(r'Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]+)',signature).group(1).lower()
+# New build-tools include SDK-range qualifiers in signer labels. Match the
+# certificate field rather than a tool-version-specific "Signer #1" prefix.
+certs={value.lower()for value in re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})',signature,re.IGNORECASE)}
+assert len(certs)==1,'Expected one signing certificate; apksigner output: '+signature
+cert=certs.pop()
 badging=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(args.apk)],text=True)
 package=re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'",badging)
 version=(root/'VERSION').read_text().strip()
