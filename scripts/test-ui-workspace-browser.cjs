@@ -113,7 +113,9 @@ const server=http.createServer(async(req,res)=>{
   assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),true);
   assert.equal(await page.locator('#aggregatePaths img').count(),0,'Configured names must remain text');
   for(let i=0;i<2;i++){await page.locator('.aggregate-path').nth(i).locator('[data-action=stop]').click();await page.waitForFunction(()=>_aggregateBusy===false);}
-  await tab('aggregate');await page.locator('#aggregateAdvanced>summary').click();await page.selectOption('#aggregatePolicy','roundRobin');await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,'roundRobin');
+  await tab('aggregate');assert.equal(await page.locator('#aggregatePolicy').isVisible(),true);
+  for(const policy of ['adaptive','latency','roundRobin']){await page.selectOption('#aggregatePolicy',policy);await page.locator('#aggregateSave').click();await page.waitForFunction(()=>_aggregateBusy===false);assert.equal(poolConfig.policy,policy);}
+  await page.locator('#aggregateAdvanced>summary').click();
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>_state.aggregate.running);assert.equal(await page.locator('#aggregatePort').isEnabled(),false);
   await page.locator('#aggregateToggle').click();await page.waitForFunction(()=>!_state.aggregate.running);
   // Removing a row does not change the stable ID of another account/profile.

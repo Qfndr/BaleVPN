@@ -152,6 +152,17 @@ def main():
                 assert request(base, '/aggregate/start', {})['ok']
                 assert request(base, '/state')['aggregate']['instance'] != status['instance']
                 request(base, '/aggregate/stop', {})
+                for policy in ['adaptive','latency']:
+                    config['policy']=policy
+                    assert request(base,'/aggregate',config)['ok']
+                    assert request(base,'/aggregate/start',{})['ok']
+                    for _ in range(3):
+                        with connect(pool_port) as stream:
+                            stream.sendall(payload);assert exact(stream,len(payload))==payload
+                    observed=request(base,'/state')['aggregate']
+                    assert observed['policy']==policy
+                    assert any(p['setupLatencyMs'] is not None for p in observed['paths'])
+                    assert request(base,'/aggregate/stop',{})['ok']
             # No Bale tokens are set. Two actual subprocesses must have distinct identities.
             sockets, admin1, admin2, socks1, socks2 = free_ports(5)
             config = {'listenPort': sockets, 'policy': 'leastConnections', 'paths': [
@@ -288,6 +299,7 @@ def main():
               'account_port_edit_preserves_sibling_pid_and_persistent_identity':True,
               'occupied_duplicate_running_account_ports_rejected':True,
               'account_info_whitelist_and_managed_port_guard_verified':True,
+              'adaptive_and_latency_real_socket_forwarding_verified':True,
               'live_bale_calls_tested': False}
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

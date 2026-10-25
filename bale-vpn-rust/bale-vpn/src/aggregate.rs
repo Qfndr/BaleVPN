@@ -28,6 +28,8 @@ pub enum Policy {
     LeastConnections,
     RoundRobin,
     Failover,
+    Adaptive,
+    Latency,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -114,6 +116,39 @@ struct Health {
     retry_at: Option<Instant>,
     error: Option<&'static str>,
 }
+// Passive observations, updated only at connection boundaries, never per packet.
+// These are SOCKS setup latency and delivered bulk rate, not ICMP RTT/capacity.
+#[derive(Default)]
+struct Quality {
+    setup_ms: Option<f64>,
+    bulk_bps: Option<f64>,
+    observed: Option<Instant>,
+    bulk_observed: Option<Instant>,
+}
+impl Quality {
+    fn setup(&mut self, elapsed: Duration) {
+        let sample=elapsed.as_secs_f64().mul_add(1000.0,0.0).max(1.0);
+        self.setup_ms=Some(self.setup_ms.map_or(sample,|old|sample.max(old*0.8+sample*0.2)));
+        self.observed=Some(Instant::now());
+    }
+    fn bulk(&mut self, bytes:u64, elapsed:Duration) {
+        // Short/app-limited exchanges cannot estimate useful transfer rate.
+        if bytes<256*1024||elapsed<Duration::from_millis(200){return;}
+        let sample=bytes as f64/elapsed.as_secs_f64();
+        self.bulk_bps=Some(self.bulk_bps.map_or(sample,|old|old*0.75+sample*0.25));
+        self.bulk_observed=Some(Instant::now());
+    }
+    fn cost(&self, active:usize,weight:u8,latency_only:bool,now:Instant)->f64 {
+        let fresh=self.observed.is_some_and(|at|now.duration_since(at)<Duration::from_secs(60));
+        let setup=if fresh{self.setup_ms.unwrap_or(200.0)}else{200.0};
+        let bulk=if !latency_only&&self.bulk_observed.is_some_and(|at|now.duration_since(at)<Duration::from_secs(30)){
+            // Time to deliver a reference block. Bound it: observations are not
+            // link capacity and must not overwhelm the load/latency signals.
+            (256.0*1024.0*1000.0/self.bulk_bps.unwrap_or(1.0)).clamp(1.0,2000.0)
+        }else{250.0};
+        (setup+if latency_only{0.0}else{bulk})*(active as f64+1.0)/f64::from(weight)
+    }
+}
 pub struct PathState {
     config: PathConfig,
     active: AtomicUsize,
@@ -121,6 +156,7 @@ pub struct PathState {
     sent: AtomicU64,
     completed: AtomicU64,
     health: Mutex<Health>,
+    quality: Mutex<Quality>,
 }
 impl PathState {
     fn new(config: PathConfig) -> Self {
@@ -130,6 +166,7 @@ impl PathState {
             received: AtomicU64::new(0),
             sent: AtomicU64::new(0),
             completed: AtomicU64::new(0),
+            quality: Mutex::new(Quality::default()),
             health: Mutex::new(Health {
                 failures: 0,
                 retry_at: None,
@@ -144,6 +181,7 @@ impl PathState {
             Instant::now() + Duration::from_secs((2u64.saturating_pow(h.failures.min(4))) * 2),
         );
         h.error = Some("Local tunnel unavailable or SOCKS handshake failed");
+        *self.quality.lock()=Quality::default();
     }
     fn healthy(&self) {
         let mut h = self.health.lock();
@@ -205,6 +243,16 @@ impl Runtime {
         }
         let turn = self.cursor.fetch_add(1, Ordering::Relaxed);
         let index = match self.config.policy {
+            Policy::Adaptive|Policy::Latency => {
+                let len=available.len();available.rotate_left(turn%len);
+                // Learn every unused path on actual traffic once. No synthetic
+                // probe, login, call or destination data is generated.
+                available.iter().copied().find(|i|self.paths[*i].active.load(Ordering::Relaxed)==0&&self.paths[*i].quality.lock().observed.is_none())
+                    .unwrap_or_else(||*available.iter().min_by(|a,b|{
+                        let cost=|i:usize|{let p=&self.paths[i];p.quality.lock().cost(p.active.load(Ordering::Relaxed),p.config.weight,self.config.policy==Policy::Latency,now)};
+                        cost(**a).total_cmp(&cost(**b))
+                    }).unwrap())
+            }
             Policy::Failover => available[0],
             Policy::RoundRobin => {
                 let total: usize = available
@@ -254,6 +302,7 @@ impl Runtime {
                 .iter()
                 .map(|p| {
                     let h = p.health.lock();
+                    let q=p.quality.lock();
                     PathSnapshot {
                         profile_id: p.config.profile_id,
                         name: p.config.name.clone(),
@@ -273,6 +322,10 @@ impl Runtime {
                             })
                             .unwrap_or(0),
                         error: h.error,
+                        setup_latency_ms:q.setup_ms,
+                        observed_bulk_bytes_per_second:q.bulk_bps,
+                        setup_observation_age_ms:q.observed.map(|at|at.elapsed().as_millis() as u64),
+                        bulk_observation_age_ms:q.bulk_observed.map(|at|at.elapsed().as_millis() as u64),
                     }
                 })
                 .collect(),
@@ -302,6 +355,10 @@ pub struct PathSnapshot {
     completed: u64,
     retry_after_seconds: u64,
     error: Option<&'static str>,
+    setup_latency_ms: Option<f64>,
+    observed_bulk_bytes_per_second: Option<f64>,
+    setup_observation_age_ms: Option<u64>,
+    bulk_observation_age_ms: Option<u64>,
 }
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -601,37 +658,71 @@ async fn handle(mut client: TcpStream, runtime: Arc<Runtime>) -> io::Result<()> 
     let target = timeout(Duration::from_secs(10), request(&mut client))
         .await
         .map_err(io::Error::other)??;
-    let mut tried = Vec::new();
+    let connected=if matches!(runtime.config.policy,Policy::Adaptive|Policy::Latency){
+        timeout(Duration::from_secs(6),connect(&runtime,&target)).await.unwrap_or(Err(1))
+    }else{connect(&runtime,&target).await};
+    let (lease,stream)=match connected {
+        Ok(value)=>value,
+        Err(code)=>return reply(&mut client,code).await,
+    };
+    reply(&mut client, 0).await?;
+    let mut upstream=Counted{stream,path:lease.path.clone()};
+    let started=Instant::now();
+    // Pin established byte streams to their winner. Never replay TLS, uploads
+    // or non-idempotent application requests on another path after a failure.
+    let result=tokio::io::copy_bidirectional_with_sizes(&mut client,&mut upstream,64*1024,64*1024).await;
+    if let Ok((sent,received))=&result {lease.path.quality.lock().bulk((*sent).max(*received),started.elapsed());}
+    lease.path.completed.fetch_add(1,Ordering::Relaxed);
+    result.map(|_|())
+}
+async fn attempt(lease:Lease,target:Vec<u8>)->(Lease,Result<TcpStream,DialError>){
+    let started=Instant::now();
+    let result=dial(lease.path.config.port,&target).await;
+    match &result {
+        Ok(_)|Err(DialError::Target(_))=>{lease.path.healthy();lease.path.quality.lock().setup(started.elapsed());},
+        Err(DialError::Unavailable)=>lease.path.failed(),
+    }
+    (lease,result)
+}
+async fn connect(runtime:&Arc<Runtime>,target:&[u8])->Result<(Lease,TcpStream),u8>{
+    let mut tried=Vec::new();
     let mut error_code = 1;
+    if runtime.config.policy==Policy::Latency {
+        // Explicit opt-in hedging: race at most two SOCKS CONNECT handshakes,
+        // only after 250ms without success. No application bytes are duplicated.
+        let mut pending=JoinSet::new();
+        if let Some(lease)=runtime.reserve(&tried){tried.push(lease.index);pending.spawn(attempt(lease,target.to_vec()));}
+        let delay=tokio::time::sleep(Duration::from_millis(250));tokio::pin!(delay);
+        let mut hedged=false;
+        loop {
+            if pending.is_empty(){break;}
+            tokio::select! {
+                result=pending.join_next(),if !pending.is_empty()=>{
+                    if let Some(Ok((lease,result)))=result {
+                        match result{Ok(stream)=>return Ok((lease,stream)),Err(DialError::Target(code))=>error_code=code,Err(DialError::Unavailable)=>{}}
+                    }
+                    if pending.is_empty(){break;}
+                },
+                _=&mut delay,if !hedged=>{
+                    hedged=true;
+                    if let Some(lease)=runtime.reserve(&tried){tried.push(lease.index);pending.spawn(attempt(lease,target.to_vec()));}
+                }
+            }
+        }
+        // Dropping JoinSet cancels the losing attempt and releases its lease.
+    }
     while let Some(lease) = runtime.reserve(&tried) {
         tried.push(lease.index);
-        match dial(lease.path.config.port, &target).await {
-            Ok(stream) => {
-                lease.path.healthy();
-                reply(&mut client, 0).await?;
-                let mut upstream = Counted {
-                    stream,
-                    path: lease.path.clone(),
-                };
-                // Stream pinned to one tunnel for its entire lifetime; no packet reorder.
-                let result = tokio::io::copy_bidirectional_with_sizes(
-                    &mut client,
-                    &mut upstream,
-                    64 * 1024,
-                    64 * 1024,
-                )
-                .await;
-                lease.path.completed.fetch_add(1, Ordering::Relaxed);
-                return result.map(|_| ());
-            }
-            Err(DialError::Unavailable) => lease.path.failed(),
+        let (lease,result)=attempt(lease,target.to_vec()).await;
+        match result {
+            Ok(stream) =>return Ok((lease,stream)),
+            Err(DialError::Unavailable) => {},
             Err(DialError::Target(code)) => {
-                lease.path.healthy();
                 error_code = if (1..=8).contains(&code) { code } else { 1 };
             }
         }
     }
-    reply(&mut client, error_code).await
+    Err(if (1..=8).contains(&error_code){error_code}else{1})
 }
 struct Counted {
     stream: TcpStream,
@@ -794,7 +885,57 @@ mod tests {
         r.paths[0].healthy();
         assert_eq!(r.reserve(&[]).unwrap().index, 0);
     }
+    #[test]
+    fn adaptive_uses_observed_latency_bulk_rate_load_and_weights_without_rewriting_old_policy(){
+        let r=Runtime::new(config(Policy::Adaptive));
+        for (i,millis,rate) in [(0,20,2_000_000),(1,200,250_000)] {
+            let mut q=r.paths[i].quality.lock();q.setup(Duration::from_millis(millis));q.bulk(rate,Duration::from_secs(1));
+        }
+        assert_eq!(r.reserve(&[]).unwrap().index,0);
+        r.paths[0].active.store(32,Ordering::Relaxed);
+        assert_eq!(r.reserve(&[]).unwrap().index,1);
+        r.paths[0].active.store(0,Ordering::Relaxed);
+        let mut q=r.paths[0].quality.lock();let before=q.bulk_bps;q.bulk(1024,Duration::from_secs(5));assert_eq!(q.bulk_bps,before);drop(q);
+        assert_eq!(Config::default().policy,Policy::LeastConnections);
+    }
+    #[tokio::test]
+    async fn latency_races_only_handshakes_and_cancels_loser_without_replaying_payload(){
+        let(slow,st,sh)=fake_proxy_delay(0,Duration::from_secs(2)).await;
+        let(fast,ft,fh)=fake_proxy(0).await;
+        let mut c=config(Policy::Latency);c.paths[0].port=slow;c.paths[1].port=fast;
+        let(port,task,r)=pool(c).await;let started=Instant::now();
+        let(mut stream,code)=open(port).await;assert_eq!(code,0);assert!(started.elapsed()<Duration::from_millis(1500));
+        stream.write_all(b"one-upload-only").await.unwrap();let mut bytes=[0;15];stream.read_exact(&mut bytes).await.unwrap();assert_eq!(&bytes,b"one-upload-only");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert_eq!(r.paths.iter().map(|p|p.active.load(Ordering::Relaxed)).sum::<usize>(),1);
+        assert_eq!(r.paths[0].sent.load(Ordering::Relaxed),0);assert_eq!(r.paths[1].sent.load(Ordering::Relaxed),15);
+        assert_eq!(sh.load(Ordering::Relaxed),1);assert_eq!(fh.load(Ordering::Relaxed),1);
+        drop(stream);task.abort();st.abort();ft.abort();
+    }
+    #[tokio::test]
+    async fn adaptive_learns_on_real_connections_and_skips_slow_path_for_later_requests(){
+        let(a,ta,ha)=fake_proxy_delay(0,Duration::from_millis(120)).await;let(b,tb,hb)=fake_proxy(0).await;
+        let mut c=config(Policy::Adaptive);c.paths[0].port=a;c.paths[1].port=b;
+        let(port,task,_)=pool(c).await;
+        for _ in 0..8{let(mut s,code)=open(port).await;assert_eq!(code,0);s.write_all(b"x").await.unwrap();assert_eq!(s.read_u8().await.unwrap(),b'x');s.shutdown().await.unwrap();assert!(s.read_u8().await.is_err());}
+        assert_eq!(ha.load(Ordering::Relaxed),1);assert_eq!(hb.load(Ordering::Relaxed),7);task.abort();ta.abort();tb.abort();
+    }
+    #[tokio::test]
+    async fn latency_fast_success_does_not_open_an_extra_destination_and_rejections_fail_closed(){
+        let(a,ta,ha)=fake_proxy(0).await;let(b,tb,hb)=fake_proxy(0).await;
+        let mut c=config(Policy::Latency);c.paths[0].port=a;c.paths[1].port=b;
+        let(port,task,_)=pool(c).await;let(s,code)=open(port).await;assert_eq!(code,0);
+        assert_eq!(ha.load(Ordering::Relaxed),1);assert_eq!(hb.load(Ordering::Relaxed),0);drop(s);task.abort();ta.abort();tb.abort();
+        let(a,ta,_)=fake_proxy(2).await;let(b,tb,_)=fake_proxy(2).await;
+        let mut c=config(Policy::Latency);c.paths[0].port=a;c.paths[1].port=b;
+        let(port,task,r)=pool(c).await;assert_eq!(open(port).await.1,2);
+        assert!(r.paths.iter().all(|p|p.active.load(Ordering::Relaxed)==0));
+        task.abort();ta.abort();tb.abort();
+    }
     async fn fake_proxy(code: u8) -> (u16, JoinHandle<()>, Arc<AtomicUsize>) {
+        fake_proxy_delay(code,Duration::ZERO).await
+    }
+    async fn fake_proxy_delay(code:u8,delay:Duration)->(u16,JoinHandle<()>,Arc<AtomicUsize>){
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let count = Arc::new(AtomicUsize::new(0));
@@ -802,7 +943,7 @@ mod tests {
         let task = tokio::spawn(async move {
             let mut clients = JoinSet::new();
             loop {
-                tokio::select! {accepted=listener.accept()=>{let(mut s,_)=accepted.unwrap();let hits=hits.clone();clients.spawn(async move{let mut head=[0;3];s.read_exact(&mut head).await.unwrap();assert_eq!(head,[5,1,0]);s.write_all(&[5,0]).await.unwrap();let mut head=[0;4];s.read_exact(&mut head).await.unwrap();let n=match head[3]{1=>4,4=>16,3=>s.read_u8().await.unwrap()as usize,_=>panic!("invalid type")};let mut target=vec![0;n+2];s.read_exact(&mut target).await.unwrap();hits.fetch_add(1,Ordering::Relaxed);reply(&mut s,code).await.unwrap();if code==0{let (mut read,mut write)=s.split();let _=tokio::io::copy(&mut read,&mut write).await;}});},_=clients.join_next(),if !clients.is_empty()=>{}}
+                tokio::select! {accepted=listener.accept()=>{let(mut s,_)=accepted.unwrap();let hits=hits.clone();clients.spawn(async move{let mut head=[0;3];s.read_exact(&mut head).await.unwrap();assert_eq!(head,[5,1,0]);s.write_all(&[5,0]).await.unwrap();let mut head=[0;4];s.read_exact(&mut head).await.unwrap();let n=match head[3]{1=>4,4=>16,3=>s.read_u8().await.unwrap()as usize,_=>panic!("invalid type")};let mut target=vec![0;n+2];s.read_exact(&mut target).await.unwrap();hits.fetch_add(1,Ordering::Relaxed);tokio::time::sleep(delay).await;reply(&mut s,code).await.unwrap();if code==0{let (mut read,mut write)=s.split();let _=tokio::io::copy(&mut read,&mut write).await;}});},_=clients.join_next(),if !clients.is_empty()=>{}}
             }
         });
         (port, task, count)
