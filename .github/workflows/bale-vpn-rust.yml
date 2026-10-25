@@ -107,6 +107,17 @@ jobs:
         with:
           python-version: '3.x'
 
+      # Development bundles are supported on Windows and Linux. Keep building
+      # and testing raw macOS binaries without passing a dev version to plist packaging.
+      - name: Select native packaging
+        id: native_package
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]] && grep -q -- '-dev\.' ../VERSION; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Cache cargo + target
         uses: actions/cache@v4
         with:
@@ -140,6 +151,7 @@ jobs:
              ../release-staging/bale-vpn-gui-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
 
       - name: Package desktop launchers without terminals
+        if: steps.native_package.outputs.enabled == 'true'
         run: |
           python ../scripts/package-native.py --platform "${{ runner.os }}" \
             --binary target/release/bale-vpn${{ matrix.bin_ext }} \
@@ -159,6 +171,7 @@ jobs:
              ../release-staging/bale-vpn-headless-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
 
       - name: Package headless server and client launchers
+        if: steps.native_package.outputs.enabled == 'true'
         run: |
           python ../scripts/package-native.py --platform "${{ runner.os }}" --headless \
             --target "${{ matrix.artifact_os }}" \
