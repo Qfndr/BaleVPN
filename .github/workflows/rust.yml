@@ -130,7 +130,7 @@ jobs:
       # the headless binary here keeps the compile-time coverage (axum /
       # signaling / NAT wiring) without dragging webkit into the test job.
       - name: UI injection regression tests
-        run: node --test scripts/test-ui-security.cjs scripts/test-ui-traffic.cjs scripts/test-ui-workspace.cjs scripts/test-ui-aggregate.cjs scripts/test-ui-localization.cjs scripts/test-ui-polling.cjs
+        run: node --test scripts/test-ui-security.cjs scripts/test-ui-traffic.cjs scripts/test-ui-workspace.cjs scripts/test-ui-aggregate.cjs scripts/test-ui-localization.cjs scripts/test-ui-polling.cjs scripts/test-ui-pool-telemetry.cjs
 
       - name: cargo test (bale-vpn-rust, headless)
         working-directory: bale-vpn-rust

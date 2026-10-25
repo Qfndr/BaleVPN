@@ -43,6 +43,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
         .route("/account", get(get_account))
+        .route("/pool-telemetry.js", get(|| async { ([(header::CONTENT_TYPE,"text/javascript; charset=utf-8")],include_str!("../assets/pool-telemetry.js")) }))
         .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
         .route("/shutdown", post(shutdown))
         .route("/desktop/show",post(desktop_show))

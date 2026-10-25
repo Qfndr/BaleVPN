@@ -9,6 +9,7 @@ const traffic={active:false,receivedBytes:0,sentBytes:0,sessionElapsedMs:0,proce
 const snapshot=()=>({running:false,listenPort:1088,paths:config.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0}))});
 const server=http.createServer(async(req,res)=>{try{
  let url=req.url;const match=url.match(/^\/aggregate\/profiles\/([1-8])\/(.*)$/),id=match?Number(match[1]):0;if(match)url='/'+match[2];
+ if(url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(fs.readFileSync(path.join(assets,'index.html')));}
  if(url.startsWith('/fonts/'))return res.end(fs.readFileSync(path.join(assets,url)));
  let raw='';for await(const b of req)raw+=b;const body=raw?JSON.parse(raw):null;(body?writes:reads).push({id,url,body});

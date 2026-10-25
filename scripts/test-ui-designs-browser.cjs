@@ -5,6 +5,7 @@ const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');
 let appearance=null,failSave=false,started=Date.now(),serverView=false,demoWorkers=false;const writes=[];
 const poolConfig={listenPort:1088,policy:'leastConnections',paths:[{profileId:1,name:'مسیر یک',port:1081,managementPort:37201,weight:1},{profileId:2,name:'مسیر دو',port:1082,managementPort:37202,weight:1}]};
 const server=http.createServer(async(req,res)=>{try{
+ if(req.url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(fs.readFileSync(path.join(assets,'index.html')));}
  if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(req.url))return res.end(fs.readFileSync(path.join(assets,req.url)));
  let raw='';for await(const b of req)raw+=b;const body=raw?JSON.parse(raw):null;if(req.method==='POST')writes.push({url:req.url,body});

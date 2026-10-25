@@ -107,6 +107,10 @@ def main():
         work = Path(temporary)
         directory = work / 'independent data'
         with running(binary, directory, work) as base:
+            with urllib.request.urlopen(base+'/pool-telemetry.js') as asset:
+                assert 'javascript' in asset.headers['Content-Type']
+                assert asset.headers['Cache-Control']=='no-store'
+                assert 'balePoolTelemetry' in asset.read().decode()
             assert request(base, '/aggregate')['status']['running'] is False
             pool_port, admin1, admin2 = free_ports(3)
             with proxy() as first, proxy() as second:

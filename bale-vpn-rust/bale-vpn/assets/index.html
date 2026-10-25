@@ -408,7 +408,7 @@ html[data-desktop=true][data-design=orbit]:not([data-embedded]) .workspace-sideb
 <button type="button" class="workspace-tab" id="tab-appearance" role="tab" aria-controls="panel-appearance" aria-selected="false" tabindex="-1" data-tab="appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h4a5 5 0 0 0 0-10h-4zM7 8h.01M6 12h.01M11 6h.01"/></svg><span data-label="Personalization">Personalization</span><i aria-hidden="true"></i></button>
 
   </nav>
-  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">TEST BUILD <b>v2.6.3-dev.4</b></span></div>
+  <div class="sidebar-footer"><span class="sidebar-status"><i id="workspaceDot"></i><span id="workspaceStatus">—</span></span><span class="sidebar-version">TEST BUILD <b>v2.6.3-dev.5</b></span></div>
  </aside>
  <main class="workspace-main">
   <header class="workspace-topbar"><span class="workspace-context" data-label="A clearer view. A better connection.">A clearer view. A better connection.</span><div class="workspace-account"><div class="dot" id="dot"></div><span id="selfName"></span><span class="account-placeholder" id="accountPlaceholder" data-label="Welcome">Welcome</span></div></header>
@@ -637,6 +637,7 @@ html[data-desktop=true][data-design=orbit]:not([data-embedded]) .workspace-sideb
 </div>
 
 <div id="profileModal" class="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle" hidden><div class="profile-dialog"><header><div><strong id="profileModalTitle"></strong><p data-label="Each account has its own sign-in, server selection and secure pairing.">Each account has its own sign-in, server selection and secure pairing.</p></div><button id="profileModalClose" class="refresh-btn" data-label="Close account panel">Close account panel</button></header><div id="profileFrames"></div></div></div>
+<script defer src="/pool-telemetry.js"></script>
 <script>
 
 // An embedded account keeps its own API scope, OTP transaction and peer choice.
@@ -932,8 +933,9 @@ async function pollState(force=false) {
     sampleTraffic(_telemetry,_state.traffic,performance.now(),_state.metrics);
     sampleAggregate(_state.aggregate,performance.now());
     applyState();
+    if(typeof window!=='undefined'&&window.balePoolTelemetry)window.balePoolTelemetry.update(_state,performance.now());
     if(typeof renderAccountHub==='function'){renderAccountHub();refreshAccountSummaries();renderPoolChoices();}
-  } catch {_trafficStatusStale=true;if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);renderAggregate(_state.aggregate,_state.aggregateWorkers);}} finally {clearTimeout(timeout);_pollInFlight=false;const waiters=_pollWaiters.splice(0);for(const resolve of waiters)resolve();}
+  } catch {_trafficStatusStale=true;if(typeof window!=='undefined'&&window.balePoolTelemetry)window.balePoolTelemetry.stale();if(_state){renderTrafficDashboard(_state);syncWorkspace(_state);renderAggregate(_state.aggregate,_state.aggregateWorkers);}} finally {clearTimeout(timeout);_pollInFlight=false;const waiters=_pollWaiters.splice(0);for(const resolve of waiters)resolve();}
 }
 
 function applyState() {
@@ -1872,7 +1874,7 @@ function uiMessage(value){
 }
 function localizeInterface(root){
  if(!root)return;
- const skip='script,style,textarea,input,#backupAccounts,#backupImportAccounts,#selfName,#accountInfoList,[data-account-name],.pool-choice label span,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
+ const skip='script,style,textarea,input,#backupAccounts,#backupImportAccounts,#selfName,#accountInfoList,#poolLiveRows,#poolChartPath,[data-account-name],.pool-choice label span,.client-id,.pending-name,.admission-info,.aggregate-path-title,.account-state,#profileModalTitle,#keyFingerprint,#diagnosticReport,#peerResults,#tunnelPeer option:not([value=""]),.aggregate-profile-link';
  const translate=node=>{if(!node.parentElement||node.parentElement.closest(skip))return;const before=node.nodeValue,record=localizedNodes.get(node);const original=record&&before===record.output?record.original:before;const output=uiMessage(original);localizedNodes.set(node,{original,output});if(output!==before)node.nodeValue=output;};
  if(root.nodeType===3)translate(root);else{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())translate(node);}
 }
@@ -2212,7 +2214,7 @@ function syncAccountPane(){
 }
 function accountSummary(s){return {mode:s.mode,tokenSet:!!s.tokenSet,ready:!!s.clientRoomReady,authenticated:!!s.peerAuthenticated,wsReady:!!s.wsReady&&!s.wsPaused,activated:!!s.clientActivated,reconnecting:!!s.clientReconnecting,name:s.self?.name||'',selfId:s.self?.id||'',peerValue:s.serverPeer?.id?String(s.serverPeer.id)+':0':'',error:s.clientError||null,at:Date.now()};}
 async function refreshAccountSummaries(){
- if(!_hubReady||_accountSummaryBusy||performance.now()-_accountSummaryAt<4000||document.hidden||_desktopHidden)return;
+ if((_workspaceTab==='aggregate'&&window.balePoolTelemetry)||!_hubReady||_accountSummaryBusy||performance.now()-_accountSummaryAt<4000||document.hidden||_desktopHidden)return;
  _accountSummaryAt=performance.now();_accountSummaryBusy=true;if(_state?.tokenSet&&_state.mode==='client'&&!routePeerLists.has(0))loadRoutePeers(0);
  try{await Promise.allSettled((_state?.aggregateWorkers||[]).filter(w=>w.running&&w.slot!==visibleAccount).map(async w=>{const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),2000);try{const r=await fetch('/aggregate/profiles/'+w.slot+'/state',{signal:controller.signal});if(!r.ok)throw new Error('state');const s=await r.json();if(s.error||!Object.hasOwn(s,'tokenSet'))return;accountStates.set(w.slot,accountSummary(s));if(s.tokenSet&&s.mode==='client'&&!routePeerLists.has(w.slot))await loadRoutePeers(w.slot);}finally{clearTimeout(timer);}}));renderAccountHub();renderPoolChoices();}finally{_accountSummaryBusy=false;}
 }
