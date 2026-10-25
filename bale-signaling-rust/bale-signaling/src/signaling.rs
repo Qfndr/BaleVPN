@@ -155,6 +155,9 @@ impl BaleSignaling {
     /// intentionally hasn't spawned the loop.
     pub fn ws_is_attempting_connect(&self) -> bool { self.ws.is_attempting_connect() }
 
+    /// Cached own-account identity; does not issue a network request.
+    pub fn account_identity(&self) -> Option<crate::ws::SelfInfo> { self.ws.cached_self() }
+
     pub async fn wait_until_connected(&self, timeout: std::time::Duration) -> bool {
         self.ws.wait_until_ready(timeout).await
     }

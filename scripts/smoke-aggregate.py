@@ -182,7 +182,7 @@ def main():
                     assert panel.headers['X-Frame-Options'] == 'SAMEORIGIN'
                     assert "frame-ancestors 'self'" in panel.headers['Content-Security-Policy']
                     assert 'baleProfileUI' in panel.read().decode()
-                for path in ['/shutdown', '/aggregate/worker', '/instance']:
+                for path in ['/shutdown', '/aggregate/worker', '/aggregate/account-ports', '/instance']:
                     try:
                         request(base, prefix + path, {})
                     except urllib.error.HTTPError as error:
@@ -204,7 +204,39 @@ def main():
             assert request(base, '/aggregate/profiles/2/settings')['publicCode'] == codes[1]
             worker(base, 3, False)
             worker(base, 1, False)
-            assert request(f'http://127.0.0.1:{admin2}', '/instance')['pid'] > 0
+            sibling_pid = request(f'http://127.0.0.1:{admin2}', '/instance')['pid']
+            next_socks, next_admin = free_ports(2)
+            ports = {'slot': 1, 'socks5Port': next_socks, 'managementPort': next_admin}
+            with socket.socket() as occupied:
+                occupied.bind(('127.0.0.1', next_socks))
+                occupied.listen()
+                assert request(base, '/aggregate/account-ports', ports)['ok'] is False
+            assert request(base, '/aggregate')['config'] == config
+            for invalid in [dict(ports, socks5Port=socks2), dict(ports, slot=99),
+                            dict(ports, socks5Port=request(base, '/state')['socks5Port'])]:
+                assert request(base, '/aggregate/account-ports', invalid)['ok'] is False
+            try:
+                request(base, '/aggregate/account-ports', ports, origin='https://attacker.invalid')
+            except urllib.error.HTTPError as error:
+                assert error.code == 403
+            else:
+                raise AssertionError('Hostile account-port Origin accepted')
+            assert request(base, '/aggregate/account-ports', ports)['ok']
+            config['paths'][0].update(port=next_socks, managementPort=next_admin)
+            assert request(base, '/aggregate')['config'] == config
+            admin1, socks1 = next_admin, next_socks
+            worker(base, 1, True)
+            account = request(base, '/aggregate/profiles/1/account')
+            assert account['socks5Port'] == socks1 and account['managementPort'] == admin1
+            assert account['signedIn'] is False and account['loginPhone'] is None
+            assert not any(key in account for key in ['token', 'accessToken', 'loginTokenHash', 'privateKey'])
+            assert request(base, '/aggregate/profiles/1/settings')['publicCode'] == codes[0]
+            assert request(f'http://127.0.0.1:{admin2}', '/instance')['pid'] == sibling_pid
+            assert request(base, '/aggregate/account-ports', dict(ports, socks5Port=free_ports(1)[0]))['ok'] is False
+            assert request(base, '/aggregate/profiles/1/tunnel/config', {'socks5Port':free_ports(1)[0]})['ok'] is False
+            # Submitting the unchanged port must remain valid for normal child controls.
+            assert request(base, '/aggregate/profiles/1/tunnel/config', {'socks5Port':socks1})['ok']
+            worker(base, 1, False)
             worker(base, 2, False)
             worker(base, 1, True)
             assert request(f'http://127.0.0.1:{admin1}', '/settings')['publicCode'] == codes[0]
@@ -253,6 +285,9 @@ def main():
               'forced_parent_termination_stops_child_via_pipe_eof':True,
               'in_app_account_panels_identity_scoped_and_origin_guarded':True,
               'third_account_added_while_two_workers_running':True,
+              'account_port_edit_preserves_sibling_pid_and_persistent_identity':True,
+              'occupied_duplicate_running_account_ports_rejected':True,
+              'account_info_whitelist_and_managed_port_guard_verified':True,
               'live_bale_calls_tested': False}
     if args.report:
         args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

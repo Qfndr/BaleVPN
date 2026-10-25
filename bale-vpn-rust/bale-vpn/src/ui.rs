@@ -42,6 +42,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/client/auto-reconnect", post(set_auto_reconnect))
         .route("/diagnostics",   get(diagnostics))
         .route("/state",         get(get_state))
+        .route("/account", get(get_account))
         .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
         .route("/shutdown", post(shutdown))
         .route("/desktop/show",post(desktop_show))
@@ -53,6 +54,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/aggregate/start", post(start_aggregate))
         .route("/aggregate/stop", post(stop_aggregate))
         .route("/aggregate/worker", post(aggregate_worker))
+        .route("/aggregate/account-ports",post(configure_account_ports))
         .route("/aggregate/profiles/:slot/",get(crate::profiles::view))
         .route("/aggregate/profiles/:slot/*path",get(crate::profiles::forward).post(crate::profiles::forward).delete(crate::profiles::forward))
         .route("/connect",       post(connect))
@@ -175,7 +177,19 @@ async fn desktop_show()->Json<OkBody>{
     Json(OkBody{ok})
 }
 async fn get_aggregate(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(serde_json::json!({"config":s.aggregate.config(),"status":s.aggregate.snapshot(),"workers":s.aggregate.workers.snapshots()}))}
-async fn configure_aggregate(State(s):State<Arc<AppState>>,Json(config):Json<crate::aggregate::Config>)->Result<Json<OkBody>,ApiError>{s.aggregate.configure(config,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
+async fn configure_aggregate(State(s):State<Arc<AppState>>,Json(config):Json<crate::aggregate::Config>)->Result<Json<OkBody>,ApiError>{
+    let primary=s.cfg.read().await.socks5_port;
+    if config.listen_port==primary||config.paths.iter().any(|p|p.port==primary||p.management_port==primary){return Err(ApiError::Internal("Account ports must not overlap the main SOCKS port".into()));}
+    s.aggregate.configure(config,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))
+}
+#[derive(Deserialize)]
+#[serde(rename_all="camelCase",deny_unknown_fields)]
+struct AccountPorts { slot:u8,socks5_port:u16,management_port:u16 }
+async fn configure_account_ports(State(s):State<Arc<AppState>>,Json(body):Json<AccountPorts>)->Result<Json<OkBody>,ApiError>{
+    let primary=s.cfg.read().await.socks5_port;
+    s.aggregate.configure_account_ports(body.slot,body.socks5_port,body.management_port,primary,&s.config_file).await.map_err(|e|ApiError::Internal(e.to_string()))?;
+    Ok(Json(OkBody{ok:true}))
+}
 async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,ApiError>{
     if let Some(port)=s.aggregate.config().primary_port {
         let cfg=s.cfg.read().await;
@@ -251,6 +265,19 @@ async fn get_settings(State(s): State<Arc<AppState>>) -> Json<serde_json::Value>
         "credentialStorage":if cfg!(windows) {"Windows DPAPI (current OS user)"} else {"AES-256-GCM; private master key or BALEVPN_MASTER_KEY_FILE"}}))
 }
 
+async fn get_account(State(s): State<Arc<AppState>>) -> Result<Json<serde_json::Value>,ApiError> {
+    let device=crate::device::identity(s.config_file.dir()).map_err(|_|ApiError::Internal("Could not read account device information".into()))?;
+    let token=s.token_store.load();
+    let own=if token.is_some(){s.signaling.account_identity()}else{None};
+    let phone=token.as_ref().and_then(|t|crate::device::phone_for_session(&device,t));
+    let cfg=s.cfg.read().await;
+    Ok(Json(serde_json::json!({"ok":true,"signedIn":token.is_some(),
+        "id":own.as_ref().map(|u|u.uid.to_string()),"name":own.as_ref().and_then(|u|u.name.clone()),
+        "username":own.as_ref().and_then(|u|u.nick.clone()),"loginPhone":phone,
+        "deviceLabel":device.label,"mode":cfg.mode,"socks5Port":cfg.socks5_port,"managementPort":cfg.port,
+        "secureMode":cfg.preferences.secure_mode,"version":env!("CARGO_PKG_VERSION")})))
+}
+
 async fn set_settings(State(s): State<Arc<AppState>>, Json(preferences): Json<crate::settings::Preferences>) -> Result<Json<OkBody>,ApiError> {
     preferences.validate(&s.identity).map_err(ApiError::Internal)?;
     // Applying settings must not silently terminate a working session.
@@ -322,6 +349,16 @@ async fn set_config(
     State(s):   State<Arc<AppState>>,
     Json(body): Json<SetConfigBody>,
 ) -> Result<Json<OkBody>, ApiError> {
+    if let Some(port)=body.socks5_port {
+        let cfg=s.cfg.read().await;
+        if port!=cfg.socks5_port {
+            if cfg.managed_profile {return Err(ApiError::Internal("Change managed account ports in the main account list".into()));}
+            let aggregate=s.aggregate.config();
+            if port==cfg.port||port==aggregate.listen_port||aggregate.paths.iter().any(|p|port==p.port||port==p.management_port){return Err(ApiError::Internal("Account ports must not overlap other account or management ports".into()));}
+            if body.server_peer_id.is_none()&&cfg.peer_id.is_some(){return Err(ApiError::Internal("Disconnect this account before changing its port".into()));}
+            if port!=0 {let _socket=std::net::TcpListener::bind(("127.0.0.1",port)).map_err(|_|ApiError::Internal("The requested account port is already in use".into()))?;}
+        }
+    }
     if body.server_peer_id.is_some() {
         let cfg = s.cfg.read().await;
         if cfg.mode.as_deref()!=Some("client") { return Err(ApiError::Internal("Select Client mode before dialing".into())); }
@@ -501,7 +538,7 @@ async fn get_state(State(s): State<Arc<AppState>>) -> Json<StateBody> {
         s.signaling.whoami().await.map(|p| SelfInfo {
             id:   p.id_str().to_string(),
             name: s.signaling.peer_display_name(&p).unwrap_or_default(),
-            nick: None,
+            nick: s.signaling.account_identity().and_then(|u|u.nick),
         })
     } else {
         None
@@ -728,7 +765,7 @@ async fn auth_verify(
             error: Some("Incorrect or expired code".into()),
             ..Default::default()
         }),
-        Ok(outcome) => Json(persist_outcome(&s, outcome).await),
+        Ok(outcome) => {let phone=s.auth.verified_login_phone(&body.transaction_hash).await;Json(persist_outcome(&s, outcome,phone).await)},
         Err(e)      => Json(AuthReply { ok: false, error: Some(e.to_string()), ..Default::default() }),
     }
 }
@@ -746,7 +783,7 @@ async fn auth_signup(
 ) -> Json<AuthReply> {
     let _flow=s.auth_flow.lock().await;
     match s.auth.submit_signup_name(&body.transaction_hash, &body.name).await {
-        Ok(outcome) => Json(persist_outcome(&s, outcome).await),
+        Ok(outcome) => {let phone=s.auth.verified_login_phone(&body.transaction_hash).await;Json(persist_outcome(&s, outcome,phone).await)},
         Err(e)      => Json(AuthReply { ok: false, error: Some(e.to_string()), ..Default::default() }),
     }
 }
@@ -754,10 +791,10 @@ async fn auth_signup(
 /// Common tail for both verify + signup. On Authenticated,
 /// persist the access_token through the same TokenStore the
 /// signaling layer reads. Caller then `/connect`s explicitly.
-async fn persist_outcome(s: &AppState, outcome: AuthOutcome) -> AuthReply {
+async fn persist_outcome(s: &AppState, outcome: AuthOutcome,phone:Option<String>) -> AuthReply {
     match outcome {
         AuthOutcome::Authenticated { access_token } => {
-            if crate::device::mark_used(s.config_file.dir()).is_err(){return AuthReply{ok:false,error:Some("Could not save account device identity".into()),..Default::default()};}
+            if crate::device::mark_authenticated(s.config_file.dir(),phone,access_token.as_bytes()).is_err(){return AuthReply{ok:false,error:Some("Could not save account device identity".into()),..Default::default()};}
             s.token_store.save(access_token.as_bytes());
             if s.token_store.load().as_deref()!=Some(access_token.as_bytes()){return AuthReply{ok:false,error:Some("Could not save account session".into()),..Default::default()};}
             // Kick the signaling layer to bring the WS up so /state

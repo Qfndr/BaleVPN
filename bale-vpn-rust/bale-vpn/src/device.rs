@@ -11,6 +11,10 @@ pub struct DeviceIdentity {
     pub label: String,
     #[serde(default)]
     pub used: bool,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub login_phone: Option<String>,
+    #[serde(default, skip_serializing_if="Option::is_none")]
+    pub login_token_hash: Option<String>,
 }
 impl DeviceIdentity {
     pub fn validate(&self) -> io::Result<()> {
@@ -25,6 +29,9 @@ impl DeviceIdentity {
             || self.label.is_empty()
             || self.label.len() > 64
             || self.label.chars().any(char::is_control)
+            || self.login_phone.as_ref().is_some_and(|p|p.len()<8||p.len()>16||!p.starts_with('+')||!p[1..].bytes().all(|b|b.is_ascii_digit()))
+            || self.login_token_hash.as_ref().is_some_and(|h|h.len()!=64||!h.bytes().all(|b|b.is_ascii_hexdigit()))
+            || self.login_phone.is_some()!=self.login_token_hash.is_some()
         {
             return Err(io::Error::other("Invalid account device identity"));
         }
@@ -54,6 +61,8 @@ fn generate(directory: &Path, used: bool) -> io::Result<DeviceIdentity> {
     ];
     let value = DeviceIdentity {
         used,
+        login_phone: None,
+        login_token_hash: None,
         hash: format!(
             "{}-{}-{}-{}-{}",
             &hex[..8],
@@ -85,9 +94,34 @@ pub fn mark_used(directory: &Path) -> io::Result<()> {
     value.used = true;
     Vault::new(directory).write("device.bin", &serde_json::to_vec(&value)?)
 }
+pub fn mark_authenticated(directory: &Path, phone: Option<String>, token: &[u8]) -> io::Result<()> {
+    let mut value=identity(directory)?;
+    value.used=true;
+    value.login_phone=phone;
+    value.login_token_hash=value.login_phone.as_ref().map(|_|crate::settings::hex(ring::digest::digest(&ring::digest::SHA256,token).as_ref()));
+    value.validate()?;
+    Vault::new(directory).write("device.bin", &serde_json::to_vec(&value)?)
+}
+pub fn phone_for_session(value: &DeviceIdentity, token: &[u8]) -> Option<String> {
+    let hash=crate::settings::hex(ring::digest::digest(&ring::digest::SHA256,token).as_ref());
+    if value.login_token_hash.as_deref()==Some(hash.as_str()){value.login_phone.clone()}else{None}
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn login_phone_is_encrypted_and_bound_to_the_original_session() {
+        let dir=tempfile::tempdir().unwrap();
+        mark_authenticated(dir.path(),Some("+10000000001".into()),b"fixture-session").unwrap();
+        let saved=identity(dir.path()).unwrap();
+        assert_eq!(phone_for_session(&saved,b"fixture-session").as_deref(),Some("+10000000001"));
+        assert!(phone_for_session(&saved,b"different-session").is_none());
+        assert!(!std::fs::read(dir.path().join("device.bin")).unwrap().windows(12).any(|b|b==b"+10000000001"));
+        let next=prepare_login(dir.path()).unwrap();assert!(next.login_phone.is_none());
+        // Old device records without metadata remain readable.
+        let mut old=serde_json::to_value(&saved).unwrap();old.as_object_mut().unwrap().remove("login_phone");old.as_object_mut().unwrap().remove("login_token_hash");
+        let old:DeviceIdentity=serde_json::from_value(old).unwrap();old.validate().unwrap();assert!(old.login_phone.is_none());
+    }
     #[test]
     fn devices_are_independent_and_survive_restart() {
         let a = tempfile::tempdir().unwrap();

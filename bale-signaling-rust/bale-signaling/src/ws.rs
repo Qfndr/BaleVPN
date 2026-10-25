@@ -63,6 +63,7 @@ pub struct CallEntity {
 pub struct SelfInfo {
     pub uid:  i32,
     pub name: Option<String>,
+    pub nick: Option<String>,
 }
 
 /// Multi-subscriber callback aliases. `CallEndedCb`'s second arg
@@ -1043,12 +1044,10 @@ impl WsClient {
 
         let peer    = ProtoWriter::new().int32(1, uid).int64(2, 0).build();
         let payload = ProtoWriter::new().bytes(1, &peer).build();
-        let name = match self.rpc_call("bale.users.v1.Users", "LoadUsers", &payload).await {
-            Ok(bytes) => parse_load_users_first_name(&bytes),
-            Err(e)    => { log::debug!("loadSelf: {e}"); None }
+        let info = match self.rpc_call("bale.users.v1.Users", "LoadUsers", &payload).await {
+            Ok(bytes) => parse_self_info(uid,&bytes),
+            Err(e)    => { log::debug!("loadSelf: {e}"); SelfInfo{uid,..Default::default()} }
         };
-
-        let info = SelfInfo { uid, name };
         *self.self_info.lock() = Some(info.clone());
         Some(info)
     }
@@ -1073,6 +1072,13 @@ impl WsClient {
 }
 
 // ─── User-entity parsing (for LoadUsers / load_self / load_user_name) ──
+
+fn parse_self_info(uid:i32,bytes:&[u8])->SelfInfo{
+    let user=crate::contacts::decode_users_response(bytes).into_iter().find(|user|user.id==uid);
+    let name=user.as_ref().map(|u|u.display_name());
+    let nick=user.and_then(|u|if u.nick.is_empty(){None}else{Some(u.nick)});
+    SelfInfo{uid,name,nick}
+}
 
 /// Pull the first `UserEntity`'s display name out of a LoadUsers
 /// response. Bale returns `{ 1 = repeated UserEntity }`. We
@@ -1656,6 +1662,15 @@ fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn self_profile_uses_only_the_matching_account_and_keeps_username(){
+        let other=ProtoWriter::new().int32(1,7).string(3,"Other account").build();
+        let nick=ProtoWriter::new().string(1,"own-user").build();
+        let own=ProtoWriter::new().int32(1,42).string(3,"Own account").bytes(9,&nick).build();
+        let bytes=ProtoWriter::new().bytes(1,&other).bytes(1,&own).build();
+        let info=parse_self_info(42,&bytes);assert_eq!(info.name.as_deref(),Some("Own account"));assert_eq!(info.nick.as_deref(),Some("own-user"));
+        let missing=parse_self_info(99,&bytes);assert!(missing.name.is_none()&&missing.nick.is_none());
+    }
 
     #[test]
     fn reconnect_recovers_promptly_after_a_healthy_session() {

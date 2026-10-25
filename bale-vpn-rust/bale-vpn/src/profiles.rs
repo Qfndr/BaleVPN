@@ -25,6 +25,7 @@ fn allowed(method: &Method, path: &str) -> bool {
         "GET" => matches!(
             path,
             "state"
+                | "account"
                 | "config"
                 | "settings"
                 | "diagnostics"

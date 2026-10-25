@@ -362,6 +362,25 @@ impl Aggregate {
         file: &crate::config::ConfigFile,
     ) -> io::Result<()> {
         let _op = self.operation.lock().await;
+        self.configure_locked(config,file)
+    }
+    pub async fn configure_account_ports(&self,slot:u8,port:u16,management:u16,primary:u16,file:&crate::config::ConfigFile)->io::Result<()>{
+        let _op=self.operation.lock().await;
+        let mut config=self.config();
+        let path=config.paths.iter_mut().find(|p|p.profile_id==slot).ok_or_else(||io::Error::other("Account profile is unavailable"))?;
+        let old=(path.port,path.management_port);path.port=port;path.management_port=management;
+        config.validate(self.management_port)?;
+        if config.listen_port==primary||config.paths.iter().any(|p|p.port==primary||p.management_port==primary){return Err(io::Error::other("Account ports must not overlap the main SOCKS port"));}
+        if self.workers.snapshots().iter().any(|w|w.slot==usize::from(slot)&&w.running)||self.running.lock().is_some(){return Err(io::Error::other("Stop this account and the local pool before editing ports"));}
+        // Only this managed-account endpoint reserves new ports. Generic
+        // aggregation also accepts external SOCKS servers that already listen.
+        let mut reservations=Vec::new();
+        for (new,old) in [(port,old.0),(management,old.1)]{
+            if new!=old {reservations.push(std::net::TcpListener::bind((Ipv4Addr::LOCALHOST,new)).map_err(|_|io::Error::other("The requested account port is already in use"))?);}
+        }
+        self.configure_locked(config,file)
+    }
+    fn configure_locked(&self,config:Config,file:&crate::config::ConfigFile)->io::Result<()>{
         self.ensure_running_app()?;
         config.validate(self.management_port)?;
         let previous = self.config();
@@ -700,6 +719,20 @@ mod tests {
             r#"{"listenPort":1088,"policy":"striping","paths":[]}"#
         )
         .is_err());
+    }
+    #[tokio::test]
+    async fn account_port_updates_are_independent_and_occupied_ports_leave_saved_config_intact(){
+        let dir=tempfile::tempdir().unwrap();let file=crate::config::ConfigFile::new(dir.path().to_owned());
+        let aggregate=Aggregate::new(Config::default(),dir.path().to_owned(),37126);
+        let occupied=std::net::TcpListener::bind((Ipv4Addr::LOCALHOST,0)).unwrap();let busy=occupied.local_addr().unwrap().port();
+        let old=aggregate.config();
+        assert!(aggregate.configure_account_ports(1,busy,37201,1080,&file).await.is_err());
+        assert_eq!(serde_json::to_value(aggregate.config()).unwrap(),serde_json::to_value(&old).unwrap());assert_eq!(serde_json::to_value(file.load().aggregate).unwrap(),serde_json::to_value(&old).unwrap());
+        assert!(aggregate.configure_account_ports(1,1080,37201,1080,&file).await.is_err());
+        assert!(aggregate.configure_account_ports(1,1082,37201,1080,&file).await.is_err());
+        let a=std::net::TcpListener::bind((Ipv4Addr::LOCALHOST,0)).unwrap();let b=std::net::TcpListener::bind((Ipv4Addr::LOCALHOST,0)).unwrap();let pa=a.local_addr().unwrap().port();let pb=b.local_addr().unwrap().port();drop(a);drop(b);
+        let (one,two)=tokio::join!(aggregate.configure_account_ports(1,pa,37201,1080,&file),aggregate.configure_account_ports(2,pb,37202,1080,&file));one.unwrap();two.unwrap();
+        let saved=file.load().aggregate;assert_eq!(saved.paths[0].port,pa);assert_eq!(saved.paths[1].port,pb);assert_eq!(serde_json::to_value(aggregate.config()).unwrap(),serde_json::to_value(saved).unwrap());
     }
     #[test]
     fn weighted_round_robin_and_least_connections_reserve_fairly() {

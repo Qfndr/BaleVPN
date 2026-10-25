@@ -101,6 +101,7 @@ pub struct BaleAuth {
     // Serialize auth attempts and retain one successful result briefly so a
     // repeated Verify click cannot consume the same one-time code twice.
     completed: tokio::sync::Mutex<Option<(String, String, Instant)>>,
+    login_phone: std::sync::Mutex<Option<(String, String)>>,
 }
 
 impl BaleAuth {
@@ -121,7 +122,7 @@ impl BaleAuth {
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let uuid = format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..]);
-        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), device_label: CLIENT_LABEL.into(), device_override:std::sync::Mutex::new(None), completed: tokio::sync::Mutex::new(None) }
+        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), device_label: CLIENT_LABEL.into(), device_override:std::sync::Mutex::new(None), completed: tokio::sync::Mutex::new(None), login_phone: std::sync::Mutex::new(None) }
     }
     /// Reuse the account installation identity on restart and session import.
     /// This does not create or refresh a server session.
@@ -141,13 +142,25 @@ impl BaleAuth {
     /// whether the phone is already registered.
     pub async fn start_phone_auth(&self, phone: &str) -> Result<StartResult, AuthError> {
         let mut completed = self.completed.lock().await;
+        *self.login_phone.lock().unwrap_or_else(|e|e.into_inner())=None;
+        let normalized=normalize_phone(phone)?;
         let device=self.device_override.lock().unwrap_or_else(|e|e.into_inner()).clone();
         let(hash,label)=device.as_ref().map(|(h,l)|(h.as_slice(),l.as_str())).unwrap_or((&self.device_hash,&self.device_label));
-        let payload = encode_start_phone_auth_named(normalize_phone(phone)?, hash, label);
+        let payload = encode_start_phone_auth_named(normalized, hash, label);
         let resp = self.rpc("StartPhoneAuth", &payload).await?;
         let result = decode_start_phone_auth(&resp)?;
         *completed = None;
+        *self.login_phone.lock().unwrap_or_else(|e|e.into_inner())=Some((result.transaction_hash.clone(),format!("+{normalized}")));
         Ok(result)
+    }
+
+    /// Only return the phone whose transaction actually authenticated. Never
+    /// expose a pending phone or associate one account's number with another token.
+    pub async fn verified_login_phone(&self, transaction: &str) -> Option<String> {
+        let completed=self.completed.lock().await;
+        if !completed.as_ref().is_some_and(|(hash,_,_)|hash==transaction) { return None; }
+        self.login_phone.lock().unwrap_or_else(|e|e.into_inner()).as_ref()
+            .filter(|(hash,_)|hash==transaction).map(|(_,phone)|phone.clone())
     }
 
     async fn rpc(&self, method: &str, payload: &[u8]) -> Result<Vec<u8>, GrpcError> {
@@ -238,6 +251,7 @@ impl BaleAuth {
     /// replaces credentials, so an old transaction cannot restore that login.
     pub async fn clear_completed_auth(&self) {
         *self.completed.lock().await = None;
+        *self.login_phone.lock().unwrap_or_else(|e|e.into_inner())=None;
     }
 
     // Authentication completes in the RPC itself. Never require an extra
@@ -457,6 +471,19 @@ mod tests {
         // without submitting the already-consumed OTP or making a GET request.
         assert_authenticated(auth.submit_otp("fixture-tx", "123456").await.unwrap(), "fixture.jwt.token");
         assert!(auth.submit_otp("different-tx", "123456").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn login_phone_requires_the_matching_successful_transaction_and_clears_on_logout() {
+        let (auth,server)=mock_auth_method("ValidateCode","",jwt_response("fixture.jwt.token"));
+        *auth.login_phone.lock().unwrap()=Some(("fixture-tx".into(),"+10000000001".into()));
+        assert!(auth.verified_login_phone("fixture-tx").await.is_none());
+        auth.submit_otp("fixture-tx","123456").await.unwrap();server.join().unwrap();
+        assert_eq!(auth.verified_login_phone("fixture-tx").await.as_deref(),Some("+10000000001"));
+        assert!(auth.verified_login_phone("other-tx").await.is_none());
+        auth.clear_completed_auth().await;
+        assert!(auth.verified_login_phone("fixture-tx").await.is_none());
+        assert!(auth.login_phone.lock().unwrap().is_none());
     }
 
     #[tokio::test]

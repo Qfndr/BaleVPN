@@ -574,10 +574,12 @@ mod tests {
         Vault::new(source.path())
             .write("token.bin", b"fixture-existing-session-not-a-real-token")
             .unwrap();
+        crate::device::mark_authenticated(source.path(),Some("+10000000001".into()),b"fixture-existing-session-not-a-real-token").unwrap();
         let payload = collect(source.path(), &[0], &Default::default()).unwrap();
         let envelope = seal(&payload, "fixture-passphrase-123").unwrap();
         let raw = serde_json::to_string(&envelope).unwrap();
         assert!(!raw.contains("fixture-existing-session"));
+        assert!(!raw.contains("+10000000001"));
         let decoded = open(envelope, "fixture-passphrase-123").unwrap();
         let file = crate::config::ConfigFile::new(target.path().to_owned());
         let (_, mapping) = restore(
@@ -591,6 +593,7 @@ mod tests {
         .unwrap();
         assert_eq!(mapping.len(), 1);
         let destination = target.path().join("aggregate-profiles/path-1");
+        assert_eq!(crate::device::phone_for_session(&crate::device::identity(&destination).unwrap(),b"fixture-existing-session-not-a-real-token").as_deref(),Some("+10000000001"));
         assert_eq!(
             Vault::new(&destination).read("token.bin").unwrap().unwrap(),
             b"fixture-existing-session-not-a-real-token"

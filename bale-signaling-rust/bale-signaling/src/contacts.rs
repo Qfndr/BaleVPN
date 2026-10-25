@@ -201,7 +201,7 @@ fn decode_get_contacts_response(buf: &[u8]) -> ContactPeers {
     ContactPeers { peers, inline_users: users }
 }
 
-fn decode_users_response(buf: &[u8]) -> Vec<UserEntity> {
+pub(crate) fn decode_users_response(buf: &[u8]) -> Vec<UserEntity> {
     let mut out = Vec::new();
     let mut r = ProtoReader::new(buf);
     while r.has_more() {
