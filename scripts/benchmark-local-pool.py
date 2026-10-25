@@ -1,4 +1,8 @@
-"""Compare local SOCKS forwarding; this is not a Bale/Internet throughput test."""
+"""Compare local SOCKS forwarding; this is not a Bale/Internet throughput test.
+
+Use --trials 9 --mib 128 after builds finish for longer alternating trials.
+The report contains every sample; it does not assert Internet speed or a threshold.
+"""
 import argparse, hashlib, json, socket, socketserver, statistics, subprocess, tempfile, threading, time, urllib.request
 from pathlib import Path
 
@@ -23,12 +27,15 @@ class Proxy(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     daemon_threads=True;allow_reuse_address=True
 def main():
-    ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('baseline',type=Path);ap.add_argument('candidate',type=Path);ap.add_argument('--report',type=Path);args=ap.parse_args()
-    payload=bytes(range(256))*131072;digest=hashlib.sha256(payload).digest();samples={'baseline':[],'candidate':[]}
+    ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('baseline',type=Path);ap.add_argument('candidate',type=Path);ap.add_argument('--report',type=Path);ap.add_argument('--trials',type=int,default=3);ap.add_argument('--mib',type=int,default=32);args=ap.parse_args();
+    if not 1<=args.trials<=21 or not 1<=args.mib<=512:ap.error('Use 1..21 trials and 1..512 MiB')
+    payload=bytes(range(256))*(args.mib*4096);digest=hashlib.sha256(payload).digest();samples={'baseline':[],'candidate':[]}
     proxy=Server(('127.0.0.1',0),Proxy);threading.Thread(target=proxy.serve_forever,daemon=True).start()
     try:
-        for iteration in range(3):
-            for name,binary in [('baseline',args.baseline),('candidate',args.candidate)]:
+        for iteration in range(args.trials):
+            order=[('baseline',args.baseline),('candidate',args.candidate)]
+            if iteration%2:order.reverse()
+            for name,binary in order:
                 with tempfile.TemporaryDirectory(prefix='bale-local-benchmark-') as folder:
                     work=Path(folder);management,pool,unused=port(),port(),port();base=f'http://127.0.0.1:{management}'
                     def api(path,body=None):
@@ -54,7 +61,7 @@ def main():
                             try:api('/shutdown',{});p.wait(timeout=10)
                             except Exception:p.terminate();p.wait(timeout=10)
     finally:proxy.shutdown();proxy.server_close()
-    result={'localFixtureOnly':True,'payloadBytesPerTrial':len(payload),'trialsPerBinary':3,'allPayloadHashesMatched':True,'MBps':samples,'medianMBps':{k:statistics.median(v) for k,v in samples.items()}}
+    result={'localFixtureOnly':True,'payloadBytesPerTrial':len(payload),'trialsPerBinary':args.trials,'alternatingOrder':True,'allPayloadHashesMatched':True,'MBps':samples,'medianMBps':{k:statistics.median(v) for k,v in samples.items()}}
     result['candidateToBaselineRatio']=result['medianMBps']['candidate']/result['medianMBps']['baseline']
     if args.report:args.report.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(result))
