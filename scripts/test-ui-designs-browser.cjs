@@ -2,15 +2,17 @@
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
 const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');
 const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');
-let appearance=null,failSave=false,started=Date.now();const writes=[];
+let appearance=null,failSave=false,started=Date.now(),serverView=false,demoWorkers=false;const writes=[];
 const poolConfig={listenPort:1088,policy:'leastConnections',paths:[{profileId:1,name:'مسیر یک',port:1081,managementPort:37201,weight:1},{profileId:2,name:'مسیر دو',port:1082,managementPort:37202,weight:1}]};
 const server=http.createServer(async(req,res)=>{try{
  if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');return res.end(fs.readFileSync(path.join(assets,'index.html')));}
  if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(req.url))return res.end(fs.readFileSync(path.join(assets,req.url)));
  let raw='';for await(const b of req)raw+=b;const body=raw?JSON.parse(raw):null;if(req.method==='POST')writes.push({url:req.url,body});
  let result={ok:true};
- if(req.url==='/appearance'){if(body&&!failSave)appearance=body;result=failSave&&body?{ok:false,error:'Fixture disk error'}:{ok:true,appearance};}
- else if(req.url==='/state'){const elapsed=Date.now()-started;result={mode:'client',tokenSet:true,self:{name:'حساب نمایشی',id:'fixture'},wsReady:true,secureMode:true,peerAuthenticated:true,clientRoomReady:true,clientActivated:true,socks5Port:1080,sessions:2,metrics:{rttMs:84,sendWindowBytes:131072,congestionWindow:65536,profile:'balanced'},traffic:{sessionId:1,active:true,receivedBytes:10000000+elapsed*300,sentBytes:1000000+elapsed*30,sessionElapsedMs:elapsed+60000,processReceivedBytes:10000000+elapsed*300,processSentBytes:1000000+elapsed*30},aggregate:{running:false,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0})),listenPort:1088,elapsedMs:0,instance:1},aggregateWorkers:[]};}
+ const profile=req.url.match(/^\/aggregate\/profiles\/([12])\/state$/);
+ if(profile){const id=Number(profile[1]);result={mode:serverView?'server':'client',tokenSet:true,self:{name:serverView?'سرور '+id:'کلاینت '+id,id:String(200+id)},wsReady:true,secureMode:true,peerAuthenticated:!serverView,clientRoomReady:!serverView,serverPeer:serverView?null:{id:String(40+id),name:'سرور '+id},socks5Port:1080+id};}
+ else if(req.url==='/appearance'){if(body&&!failSave)appearance=body;result=failSave&&body?{ok:false,error:'Fixture disk error'}:{ok:true,appearance};}
+ else if(req.url==='/state'){const elapsed=Date.now()-started;result={mode:serverView?'server':'client',tokenSet:true,self:{name:'حساب نمایشی',id:'200'},wsReady:true,secureMode:true,peerAuthenticated:!serverView,clientRoomReady:!serverView,clientActivated:!serverView,socks5Port:1080,sessions:2,metrics:{rttMs:84,sendWindowBytes:131072,congestionWindow:65536,profile:'balanced'},traffic:{sessionId:1,active:true,receivedBytes:10000000+elapsed*300,sentBytes:1000000+elapsed*30,sessionElapsedMs:elapsed+60000,processReceivedBytes:10000000+elapsed*300,processSentBytes:1000000+elapsed*30},aggregate:{running:false,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0})),listenPort:1088,elapsedMs:0,instance:1},aggregateWorkers:demoWorkers?[1,2].map(slot=>({slot,running:true})):[],serverPeer:{id:'42',name:'سرور اصلی'}};}
  else if(req.url==='/aggregate')result={ok:true,config:poolConfig,status:{running:false,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0})),listenPort:1088},workers:[]};
  else if(req.url==='/settings')result={ok:true,preferences:{secureMode:true,serverCode:'bvp1:fixture',clientCodes:[],profile:'balanced',retryDelaySecs:10,maxCallsPerMinute:3},savedPeerId:'42',publicCode:'bvp1:fixture',fingerprint:'fixture',credentialStorage:'Fixture only'};
  else if(req.url==='/peers')result={peers:[{id:'42',type:'0',name:'سرور نمایشی'}]};
@@ -36,6 +38,15 @@ const server=http.createServer(async(req,res)=>{try{
   await tab('appearance');await page.selectOption('#designSelect',design);await page.selectOption('#languageSelect',language);await page.selectOption('#themeSelect',theme);await saved();
   for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:1000});for(const key of ['connection','traffic','aggregate','clients','security','performance','backup','appearance']){await tab(key);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`${design}/${language}/${theme}/${key}/${width}`);}}
   if(process.env.BALEVPN_SCREENSHOTS&&language==='fa'&&theme==='dark'){fs.mkdirSync(process.env.BALEVPN_SCREENSHOTS,{recursive:true});await page.setViewportSize({width:1440,height:1050});await tab('connection');await seed(true);await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,design+'-connection-fa.png'),fullPage:true});await tab('traffic');await seed(true);const box=await page.locator('#speedChart').boundingBox();await page.mouse.move(box.x+box.width*.85,box.y+60);await page.waitForFunction(()=>!document.getElementById('chartTooltip').hidden);await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,design+'-chart-hover-fa.png'),fullPage:true});}
+ }
+
+ if(process.env.BALEVPN_SCREENSHOTS){
+  await page.setViewportSize({width:1440,height:1050});
+  for(const design of ['nova','orbit'])for(const mode of ['client','server']){
+   serverView=mode==='server';demoWorkers=true;await page.evaluate(async({design,mode})=>{fillAppearance({...currentAppearance(),layout:design,language:'fa',theme:'dark'});applyAppearance();_state={..._state,mode,serverPeer:{id:'42'},aggregateWorkers:[1,2].map(slot=>({slot,running:true}))};_accountSummaryAt=0;await refreshAccountSummaries();for(const id of [0,1,2])routePeerLists.set(id,[{id:'41',type:'0',name:'سرور اول'},{id:'42',type:'0',name:'سرور دوم'}]);applyState();renderAccountHub();setWorkspaceTab('connection');}, {design,mode});
+   await seed(true);await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,design+'-multi-'+mode+'-fa.png'),fullPage:true});
+  }
+  serverView=false;demoWorkers=false;
  }
  await page.setViewportSize({width:1280,height:960});await page.evaluate(()=>{document.documentElement.dataset.desktop='true';});
  for(const design of ['classic','nova','orbit']){await tab('appearance');await page.selectOption('#designSelect',design);for(const width of [1280,390]){await page.setViewportSize({width,height:960});await tab('connection');assert.equal(await page.evaluate(()=>document.querySelector('.workspace-topbar').getBoundingClientRect().top<innerHeight*.65),true,design+' native content below viewport');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);}}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.3-dev.2 — local test build, 2026-10-25
+
+- Replace Nova and Orbit with flat account/route lists, independent destination selectors and per-account connection actions. Keep Classic available.
+- Select client or server when adding an account; default to the main workspace role without changing existing accounts.
+- Show receiving server accounts and public pairing-code copy actions; exclude server receivers from the client pool picker.
+- Keep account-row and detail-form destination drafts synchronized without placing calls. Treat unavailable account management and stale status explicitly.
+- Document the two-VPS, four-account setup, per-route pairing, SSH access and pooled SOCKS output. No public release.
+
 ## 2.1.5 — 2026-10-23
 
 - Keep the 2.1.4 login delivery fixes and direct launcher downloads, installation commands and Android update links to this repository, so upgrades cannot reinstall the unfixed upstream build.
