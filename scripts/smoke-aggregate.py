@@ -197,7 +197,7 @@ def main():
                     assert panel.headers['X-Frame-Options'] == 'SAMEORIGIN'
                     assert "frame-ancestors 'self'" in panel.headers['Content-Security-Policy']
                     assert 'baleProfileUI' in panel.read().decode()
-                for path in ['/shutdown', '/aggregate/worker', '/aggregate/account-ports', '/instance']:
+                for path in ['/shutdown', '/aggregate/worker', '/aggregate/account-ports', '/bond/server', '/instance']:
                     try:
                         request(base, prefix + path, {})
                     except urllib.error.HTTPError as error:

@@ -11,6 +11,7 @@ const snapshot=()=>({running:false,listenPort:1088,paths:config.paths.map(p=>({.
 const server=http.createServer(async(req,res)=>{try{
  let url=req.url;const match=url.match(/^\/aggregate\/profiles\/([1-8])\/(.*)$/),id=match?Number(match[1]):0;
  if(match)url='/'+match[2];
+ if(url==='/bond-ui.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'bond-ui.js')));}
  if(url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(assets,'index.html')));return;}
  if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(url)){res.end(fs.readFileSync(path.join(assets,url)));return;}

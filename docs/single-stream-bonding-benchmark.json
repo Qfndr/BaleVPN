@@ -1,0 +1,426 @@
+{
+  "exactBytesVerified": true,
+  "localFixturesOnly": true,
+  "samples": [
+    {
+      "asymmetric": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1039620.243394292,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 131072,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 819200,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263,
+          131224
+        ],
+        "seconds": 4.0344578,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 131072,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "independent": {
+        "bytes": 4194304,
+        "bytesPerSecond": 2000526.2805695487,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 196608,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2165272,
+          2033991
+        ],
+        "seconds": 2.0966003,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "shared": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1037367.0929555513,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 294912,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2102013,
+          2146478
+        ],
+        "seconds": 4.0432206,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 1,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 360448,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singleLaneBond": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1039117.4078174068,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 32768,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263
+        ],
+        "seconds": 4.0364101,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singlePlain": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1042328.5432936337,
+        "seconds": 4.023975
+      },
+      "trial": 0
+    },
+    {
+      "asymmetric": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1039487.835813074,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 131072,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 851968,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263,
+          131224
+        ],
+        "seconds": 4.0349717,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 131072,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "independent": {
+        "bytes": 4194304,
+        "bytesPerSecond": 2000986.6811404075,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 196608,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2165272,
+          2033991
+        ],
+        "seconds": 2.0961179,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "shared": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1033992.4668483246,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 311296,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2132466,
+          2066797
+        ],
+        "seconds": 4.0564164,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singleLaneBond": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1039662.0931625383,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 16384,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263
+        ],
+        "seconds": 4.0342954,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singlePlain": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1042089.7727320724,
+        "seconds": 4.024897
+      },
+      "trial": 1
+    },
+    {
+      "asymmetric": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1039497.5739255603,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 131072,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 835584,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263,
+          131224
+        ],
+        "seconds": 4.0349339,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 131072,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "independent": {
+        "bytes": 4194304,
+        "bytesPerSecond": 2002520.3955574387,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 180224,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2165291,
+          2034010
+        ],
+        "seconds": 2.0945125,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "shared": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1036847.8254286421,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 376832,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          2148888,
+          2099565
+        ],
+        "seconds": 4.0452455,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 81920,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singleLaneBond": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1038893.4352663103,
+        "client": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 4194304,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 16384,
+          "sentBytes": 1,
+          "windowBytes": 2097152
+        },
+        "laneDownloadBytes": [
+          4199263
+        ],
+        "seconds": 4.0372803,
+        "server": {
+          "activeStreams": 0,
+          "duplicateBytesDiscarded": 0,
+          "failedLanes": 0,
+          "maximumStreams": 16,
+          "openedStreams": 0,
+          "receivedBytes": 1,
+          "reinjectedBytes": 0,
+          "reorderPeakBytes": 1,
+          "sentBytes": 4194304,
+          "windowBytes": 2097152
+        }
+      },
+      "singlePlain": {
+        "bytes": 4194304,
+        "bytesPerSecond": 1042681.7720765399,
+        "seconds": 4.0226118
+      },
+      "trial": 2
+    }
+  ],
+  "bondedCasesUseSingleDestinationTcp": true,
+  "baselineIsControlledRawCarrier": true,
+  "includesBaleCallSetup": false
+}

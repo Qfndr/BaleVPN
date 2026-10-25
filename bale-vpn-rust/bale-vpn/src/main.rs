@@ -19,6 +19,7 @@ use std::path::PathBuf;
 mod client;
 mod reconnect;
 mod aggregate;
+mod bond;
 mod workers;
 mod profiles;
 mod backup;

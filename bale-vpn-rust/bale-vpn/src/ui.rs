@@ -44,6 +44,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/state",         get(get_state))
         .route("/account", get(get_account))
         .route("/pool-telemetry.js", get(|| async { ([(header::CONTENT_TYPE,"text/javascript; charset=utf-8")],include_str!("../assets/pool-telemetry.js")) }))
+        .route("/bond/server",get(bond_server_status).post(bond_server_config))
+        .route("/bond-ui.js",get(||async{([(header::CONTENT_TYPE,"text/javascript; charset=utf-8")],include_str!("../assets/bond-ui.js"))}))
         .route("/instance", get(|| async {Json(serde_json::json!({"pid":std::process::id()}))}))
         .route("/shutdown", post(shutdown))
         .route("/desktop/show",post(desktop_show))
@@ -201,6 +203,15 @@ async fn start_aggregate(State(s):State<Arc<AppState>>)->Result<Json<OkBody>,Api
     s.aggregate.start().await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))
 }
 async fn stop_aggregate(State(s):State<Arc<AppState>>)->Json<OkBody>{s.aggregate.stop().await;Json(OkBody{ok:true})}
+async fn bond_server_status(State(s):State<Arc<AppState>>)->Json<serde_json::Value>{Json(s.bond_server.as_ref().map(|server|server.snapshot()).unwrap_or_else(||serde_json::json!({"enabled":false,"managedProfile":true}))) }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BondServerBody{enabled:bool}
+async fn bond_server_config(State(s):State<Arc<AppState>>,Json(body):Json<BondServerBody>)->Result<Json<OkBody>,ApiError>{
+    let server=s.bond_server.as_ref().ok_or_else(||ApiError::Internal("Configure bonding on the main server controller".into()))?;
+    s.config_file.update(|c|c.bond_server_enabled=body.enabled).map_err(|_|ApiError::Internal("Could not save bonding relay settings".into()))?;
+    server.set_enabled(body.enabled);Ok(Json(OkBody{ok:true}))
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WorkerRequest {slot:usize,start:bool}

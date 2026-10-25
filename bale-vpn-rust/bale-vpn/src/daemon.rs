@@ -18,6 +18,7 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    pub bond_server: Option<Arc<crate::bond::Server>>,
     pub auth_flow: tokio::sync::Mutex<()>,
     pub backup_job: tokio::sync::Mutex<()>,
     pub profile_http: reqwest::Client,
@@ -121,9 +122,13 @@ pub async fn run_with_startup(
     // because run_client immediately re-dials on next iteration.
     let mut cfg = cfg;
     let managed_profile=cfg.managed_profile;
+    let bond_server=if managed_profile{None}else{Some(crate::bond::Server::start(persisted.bond_server_enabled).await?)};
+    let gateway=if let Some(server)=&bond_server{server.gateway()}else{crate::bond::gateway_from_environment()?};
+    lktunnel::socks5_quic::set_bond_gateway(Some(gateway));
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        bond_server,
         auth_flow: tokio::sync::Mutex::new(()),
         backup_job: tokio::sync::Mutex::new(()),
         profile_http: crate::profiles::client()?,
@@ -146,6 +151,7 @@ pub async fn run_with_startup(
                      ),
         activation,
     });
+    state.aggregate.workers.set_gateway(gateway);
 
     // A supervisor holds this pipe open without sending data. OS EOF also
     // handles a crashed/killed parent; no timer, network heartbeat or Bale RPC.
@@ -201,6 +207,8 @@ pub async fn run_with_startup(
     // any panic/cancel error.
     mode_task.abort();
     state.aggregate.shutdown().await;
+    if let Some(server)=&state.bond_server{server.shutdown();}
+    lktunnel::socks5_quic::set_bond_gateway(None);
 
     // Drain order: drop active per-mode sessions first so their
     // LK rooms send participant-leave / close, then disconnect

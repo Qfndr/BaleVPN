@@ -4,7 +4,7 @@ const assets=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets');let rootCal
 const paths=[1,2].map(profileId=>({profileId,name:'مسیر '+profileId,port:1080+profileId,managementPort:37200+profileId,weight:1}));
 const snapshot=()=>({instance:1,running:true,listenPort:1088,elapsedMs:rootCalls*1000,paths:paths.map(p=>({...p,active:2,receivedBytes:rootCalls*10000*p.profileId,sentBytes:rootCalls*1000,setupLatencyMs:15,setupObservationAgeMs:1}))});
 const server=http.createServer(async(req,res)=>{try{
- if(req.url==='/'||req.url==='/pool-telemetry.js'){res.setHeader('Content-Type',req.url==='/'?'text/html; charset=utf-8':'text/javascript');return res.end(fs.readFileSync(path.join(assets,req.url==='/'?'index.html':'pool-telemetry.js')));}
+ if(req.url==='/'||req.url==='/pool-telemetry.js'||req.url==='/bond-ui.js'){res.setHeader('Content-Type',req.url==='/'?'text/html; charset=utf-8':'text/javascript');return res.end(fs.readFileSync(path.join(assets,req.url==='/'?'index.html':req.url.slice(1))));}
  if(req.url.startsWith('/fonts/'))return res.end(fs.readFileSync(path.join(assets,req.url)));
  let raw='';for await(const b of req)raw+=b;if(raw)writes.push(req.url);
  let value={ok:true};const match=req.url.match(/^\/aggregate\/profiles\/([12])\/state$/);

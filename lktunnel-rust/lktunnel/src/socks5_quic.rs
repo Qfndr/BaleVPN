@@ -71,6 +71,12 @@ const ADDRESS_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const DESTINATION_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 const ADDRESS_FALLBACK_DELAY: Duration = Duration::from_millis(250);
 const MAX_PARALLEL_DIALS: usize = 4;
+/// A protocol endpoint, never DNS-resolved or routed to arbitrary loopback ports.
+pub const BOND_HOST: &str = "bond.balevpn.invalid";
+static BOND_GATEWAY: Mutex<Option<(SocketAddr,[u8;32])>> = Mutex::new(None);
+/// Installed only by the owning application. Credentials never cross the tunnel.
+pub fn set_bond_gateway(value:Option<(SocketAddr,[u8;32])>) { *BOND_GATEWAY.lock()=value.filter(|(addr,_)|addr.ip().is_loopback()); }
+fn bond_target(target:&Target)->bool { matches!(target,Target::Domain(host,443) if host==BOND_HOST) }
 
 /// Process-global SSRF filter toggle. Defaults to `true` in
 /// production. Integration tests that need to connect to a loopback
@@ -277,7 +283,8 @@ pub(crate) async fn enable_listener(
                             drop(tcp);
                             return;
                         };
-                        if let Err(e) = pump_conn(tcp, conn).await {
+                        let authenticated=weak.upgrade().is_some_and(|inner|inner.options.authenticated);
+                        if let Err(e) = pump_conn(tcp, conn, authenticated).await {
                             log::debug!("socks5: per-conn ended: {e}");
                         }
                     });
@@ -315,7 +322,7 @@ pub(crate) async fn enable_listener(
 /// Server-side: spawn the QUIC stream-acceptor that bridges each
 /// incoming stream to a real host TCP socket. Caller is responsible
 /// for keeping the returned handle alive.
-pub(crate) fn spawn_server_acceptor(server: QuicServer) -> QuicServerHandle {
+pub(crate) fn spawn_server_acceptor(server: QuicServer, authenticated:bool) -> QuicServerHandle {
     let endpoint = server.endpoint.clone();
     let sessions = server.authenticated_sessions.clone();
     let task = crate::runtime().spawn(async move {
@@ -363,7 +370,7 @@ pub(crate) fn spawn_server_acceptor(server: QuicServer) -> QuicServerHandle {
                         }
                     };
                     crate::runtime().spawn(async move {
-                        if let Err(e) = handle_quic_stream(send, recv).await {
+                        if let Err(e) = handle_quic_stream(send, recv,authenticated).await {
                             log::debug!("socks5/server: stream ended: {e}");
                         }
                     });
@@ -403,16 +410,16 @@ impl FrontProto {
 /// it) to pick the proxy protocol, then hands off to the matching
 /// front-end. `0x05` is the SOCKS5 version byte; every HTTP request
 /// starts with an ASCII method verb, so there is no overlap.
-async fn pump_conn(tcp: TcpStream, conn: quinn::Connection) -> io::Result<()> {
+async fn pump_conn(tcp: TcpStream, conn: quinn::Connection, authenticated:bool) -> io::Result<()> {
     let mut first = [0u8; 1];
     let n = tcp.peek(&mut first).await?;
     if n == 0 {
         return Ok(());  // client closed before sending anything
     }
     if first[0] == SOCKS_VER {
-        pump_socks5_conn(tcp, conn).await
+        pump_socks5_conn(tcp, conn,authenticated).await
     } else {
-        pump_http_connect(tcp, conn).await
+        pump_http_connect(tcp, conn,authenticated).await
     }
 }
 
@@ -420,6 +427,7 @@ async fn pump_conn(tcp: TcpStream, conn: quinn::Connection) -> io::Result<()> {
 async fn pump_socks5_conn(
     mut tcp: TcpStream,
     conn:    quinn::Connection,
+    authenticated:bool,
 ) -> io::Result<()> {
     let target = match read_socks5_request(&mut tcp).await {
         Ok(t) => t,
@@ -432,7 +440,7 @@ async fn pump_socks5_conn(
         }
     };
     log::debug!("socks5: dispatching {target}");
-    dispatch_target(tcp, conn, target, FrontProto::Socks5).await
+    dispatch_target(tcp, conn, target, FrontProto::Socks5,authenticated).await
 }
 
 /// HTTP-CONNECT front-end: parse the `CONNECT host:port` request line
@@ -441,6 +449,7 @@ async fn pump_socks5_conn(
 async fn pump_http_connect(
     mut tcp: TcpStream,
     conn:    quinn::Connection,
+    authenticated:bool,
 ) -> io::Result<()> {
     let target = match read_http_connect_request(&mut tcp).await {
         Ok(t) => t,
@@ -452,7 +461,7 @@ async fn pump_http_connect(
         }
     };
     log::debug!("http-connect: dispatching {target}");
-    dispatch_target(tcp, conn, target, FrontProto::HttpConnect).await
+    dispatch_target(tcp, conn, target, FrontProto::HttpConnect,authenticated).await
 }
 
 /// Shared back half for both front-ends: open a QUIC bidi stream →
@@ -474,7 +483,9 @@ async fn dispatch_target(
     conn:    quinn::Connection,
     target:  Target,
     proto:   FrontProto,
+    authenticated:bool,
 ) -> io::Result<()> {
+    if bond_target(&target)&&!authenticated {tcp.write_all(&proto.reply(REP_RULESET_BLOCKED)).await?;return Ok(());}
     let (mut send, mut recv) = conn.open_bi().await
         .map_err(|e| io::Error::new(io::ErrorKind::ConnectionReset,
                                     format!("quic open_bi: {e}")))?;
@@ -521,10 +532,43 @@ async fn dispatch_target(
 async fn handle_quic_stream(
     mut send: quinn::SendStream,
     mut recv: quinn::RecvStream,
+    authenticated:bool,
 ) -> io::Result<()> {
     let target = read_target(&mut recv).await?;
+    if bond_target(&target){
+        let gateway=if authenticated{*BOND_GATEWAY.lock()}else{None};
+        let Some((address,key))=gateway else{let _=send.write_all(&[REP_RULESET_BLOCKED]).await;let _=send.finish();return Ok(());};
+        let result=tokio::time::timeout(Duration::from_secs(3),async{
+            let mut stream=TcpStream::connect(address).await?;stream.set_nodelay(true)?;
+            stream.write_all(&key).await?;if stream.read_u8().await?!=0{return Err(io::Error::other("Bond relay disabled"));}Ok::<_,io::Error>(stream)
+        }).await;
+        let Ok(Ok(stream))=result else{let _=send.write_all(&[REP_RULESET_BLOCKED]).await;let _=send.finish();return Ok(());};
+        send.write_all(&[REP_SUCCEEDED]).await?;
+        let(mut read,mut write)=stream.into_split();
+        tokio::join!(async{let _=tokio::io::copy(&mut recv,&mut write).await;let _=write.shutdown().await;},async{let _=tokio::io::copy(&mut read,&mut send).await;let _=send.finish();});return Ok(());
+    }
     log::debug!("socks5/server: target {target}");
 
+    let connect_result=connect_target(&target).await;
+    let (addr, tcp) = match connect_result {
+        Ok(pair) => {if send.write_all(&[REP_SUCCEEDED]).await.is_err(){return Ok(());}pair},
+        Err(e) => {let status=io_err_to_socks5_rep(&e);let _=send.write_all(&[status]).await;let _=send.finish();return Err(e);}
+    };
+    log::debug!("socks5/server: connected to {addr}");
+    let (mut tcp_r, mut tcp_w) = tcp.into_split();
+    tokio::join!(async{let _=tokio::io::copy(&mut recv,&mut tcp_w).await;let _=tcp_w.shutdown().await;},async{let _=tokio::io::copy(&mut tcp_r,&mut send).await;let _=send.finish();});Ok(())
+}
+/// Same DNS, address racing and SSRF checks as ordinary proxy requests.
+pub async fn connect_public_target(envelope:&[u8])->io::Result<TcpStream>{
+    let mut bytes=envelope;let target=read_target(&mut bytes).await?;
+    if !bytes.is_empty()||bond_target(&target){return Err(io::Error::new(io::ErrorKind::PermissionDenied,"Invalid bond destination"));}
+    let addresses=resolve_target(&target).await?.into_iter().filter(|a|!crate::nat::filter::is_blocked_dst(a.ip())).collect();
+    Ok(connect_public_addresses(addresses,|addr|TcpStream::connect(addr)).await?.1)
+}
+async fn connect_target(target:&Target)->io::Result<(SocketAddr,TcpStream)>{
+    connect_public_addresses(resolve_target(target).await?,|addr|TcpStream::connect(addr)).await
+}
+async fn resolve_target(target:&Target)->io::Result<Vec<SocketAddr>>{
     // Keep every DNS candidate. Previously only the first address was tried,
     // so a broken IPv6 route (or one failed backend) made the whole domain fail.
     let addr_result: io::Result<Vec<SocketAddr>> = match &target {
@@ -540,41 +584,7 @@ async fn handle_quic_stream(
         }
     };
 
-    // Map any failure path to a SOCKS5 reply byte, send it, return.
-    let connect_result: io::Result<(SocketAddr, TcpStream)> = match addr_result {
-        Err(e) => Err(e),
-        Ok(addresses) => connect_public_addresses(addresses, |addr| TcpStream::connect(addr)).await,
-    };
-
-    let (addr, tcp) = match connect_result {
-        Ok(pair) => {
-            // 0x00 = succeeded. Send before any byte-copy starts so the
-            // client can reply to its SOCKS5 caller promptly.
-            if send.write_all(&[REP_SUCCEEDED]).await.is_err() {
-                return Ok(());  // client gone, nothing to forward
-            }
-            pair
-        }
-        Err(e) => {
-            let status = io_err_to_socks5_rep(&e);
-            let _ = send.write_all(&[status]).await;
-            let _ = send.finish();
-            log::debug!("socks5/server: connect failed {target}: {e} → rep=0x{status:02x}");
-            return Err(e);
-        }
-    };
-    log::debug!("socks5/server: connected to {addr}");
-    let (mut tcp_r, mut tcp_w) = tcp.into_split();
-    let to_host = async move {
-        let _ = tokio::io::copy(&mut recv, &mut tcp_w).await;
-        let _ = tcp_w.shutdown().await;
-    };
-    let from_host = async move {
-        let _ = tokio::io::copy(&mut tcp_r, &mut send).await;
-        let _ = send.finish();
-    };
-    tokio::join!(to_host, from_host);
-    Ok(())
+    addr_result
 }
 
 /// Staggered, bounded address racing. Start the other IP family after 250ms

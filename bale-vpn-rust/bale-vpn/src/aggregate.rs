@@ -30,6 +30,7 @@ pub enum Policy {
     Failover,
     Adaptive,
     Latency,
+    Bonding,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -191,6 +192,9 @@ impl PathState {
     }
 }
 pub struct Runtime {
+    bond: Arc<crate::bond::Counters>,
+    bond_slots: Arc<Semaphore>,
+    bond_error: Mutex<Option<&'static str>>,
     instance: u64,
     config: Config,
     paths: Vec<Arc<PathState>>,
@@ -202,6 +206,9 @@ impl Runtime {
     fn new(config: Config) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self {
+            bond: Arc::new(crate::bond::Counters::default()),
+            bond_slots: Arc::new(Semaphore::new(16)),
+            bond_error: Mutex::new(None),
             instance: NEXT.fetch_add(1, Ordering::Relaxed),
             paths: config
                 .paths
@@ -243,7 +250,7 @@ impl Runtime {
         }
         let turn = self.cursor.fetch_add(1, Ordering::Relaxed);
         let index = match self.config.policy {
-            Policy::Adaptive|Policy::Latency => {
+            Policy::Adaptive|Policy::Latency|Policy::Bonding => {
                 let len=available.len();available.rotate_left(turn%len);
                 // Learn every unused path on actual traffic once. No synthetic
                 // probe, login, call or destination data is generated.
@@ -292,6 +299,8 @@ impl Runtime {
     }
     fn snapshot(&self) -> Snapshot {
         Snapshot {
+            bond: self.bond.snapshot(),
+            bond_error: *self.bond_error.lock(),
             instance: self.instance,
             running: false,
             listen_port: self.config.listen_port,
@@ -363,6 +372,8 @@ pub struct PathSnapshot {
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    bond: serde_json::Value,
+    bond_error: Option<&'static str>,
     instance: u64,
     pub running: bool,
     listen_port: u16,
@@ -479,6 +490,12 @@ impl Aggregate {
         }
         if config.paths.is_empty() {
             return Err(io::Error::other("Select at least one tunnel before starting the pool"));
+        }
+        if config.policy==Policy::Bonding{
+            let workers=self.workers.snapshots();
+            if config.paths.iter().any(|p|p.profile_id!=0&&!workers.iter().any(|w|w.running&&w.slot==p.profile_id as usize)){
+                return Err(io::Error::other("Bonding supports only owned, authenticated account tunnels"));
+            }
         }
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, config.listen_port)).await?;
         let runtime = Arc::new(Runtime::new(config));
@@ -658,6 +675,7 @@ async fn handle(mut client: TcpStream, runtime: Arc<Runtime>) -> io::Result<()> 
     let target = timeout(Duration::from_secs(10), request(&mut client))
         .await
         .map_err(io::Error::other)??;
+    if runtime.config.policy==Policy::Bonding{return handle_bond(client,runtime,&target).await;}
     let connected=if matches!(runtime.config.policy,Policy::Adaptive|Policy::Latency){
         timeout(Duration::from_secs(6),connect(&runtime,&target)).await.unwrap_or(Err(1))
     }else{connect(&runtime,&target).await};
@@ -674,6 +692,37 @@ async fn handle(mut client: TcpStream, runtime: Arc<Runtime>) -> io::Result<()> 
     if let Ok((sent,received))=&result {lease.path.quality.lock().bulk((*sent).max(*received),started.elapsed());}
     lease.path.completed.fetch_add(1,Ordering::Relaxed);
     result.map(|_|())
+}
+async fn handle_bond(mut client:TcpStream,runtime:Arc<Runtime>,target:&[u8])->io::Result<()>{
+    let Ok(_slot)=runtime.bond_slots.clone().try_acquire_owned()else{return reply(&mut client,1).await;};
+    let host=lktunnel::socks5_quic::BOND_HOST.as_bytes();let mut gateway=vec![5,1,0,3,host.len()as u8];gateway.extend_from_slice(host);gateway.extend_from_slice(&443u16.to_be_bytes());
+    let mut jobs=JoinSet::new();
+    for (index,path) in runtime.paths.iter().enumerate(){
+        if path.health.lock().retry_at.is_some_and(|at|at>Instant::now()){continue;}
+        path.active.fetch_add(1,Ordering::Relaxed);jobs.spawn(attempt(Lease{path:path.clone(),index},gateway.clone()));
+    }
+    let mut successful=Vec::new();
+    while let Some(result)=jobs.join_next().await{if let Ok((lease,Ok(stream)))=result{successful.push((lease,stream));}}
+    if successful.is_empty(){*runtime.bond_error.lock()=Some("Enable bonding relay on the server and connect authenticated tunnels");return reply(&mut client,1).await;}
+    successful.sort_by(|(a,_),(b,_)|{
+        let cost=|lease:&Lease|lease.path.quality.lock().setup_ms.unwrap_or(200.0);
+        cost(a).total_cmp(&cost(b))
+    });
+    let mut leases=Vec::new();let mut streams=Vec::<crate::bond::Stream>::new();
+    for(lease,stream)in successful{streams.push(Box::new(Counted{stream,path:lease.path.clone()}));leases.push(lease);}
+    let streams=match timeout(Duration::from_secs(25),crate::bond::bind(streams,&target[3..])).await{
+        Ok(Ok(streams))=>streams,
+        Ok(Err(error)) if error.get_ref().is_some_and(|e|e.is::<crate::bond::TargetStatus>())=>{
+            let code=error.get_ref().unwrap().downcast_ref::<crate::bond::TargetStatus>().unwrap().0;
+            *runtime.bond_error.lock()=Some("Bonded destination refused or unreachable");return reply(&mut client,code).await;
+        },
+        _=>{*runtime.bond_error.lock()=Some("Bonding needs the same enabled server controller on every path; update both sides");return reply(&mut client,1).await;}
+    };
+    *runtime.bond_error.lock()=None;runtime.bond.opened.fetch_add(1,Ordering::Relaxed);reply(&mut client,0).await?;
+    let(tx,rx)=tokio::sync::mpsc::channel(1);drop(tx);
+    let result=crate::bond::transfer(client,streams,rx,runtime.bond.clone()).await;
+    for lease in &leases{lease.path.completed.fetch_add(1,Ordering::Relaxed);}
+    result
 }
 async fn attempt(lease:Lease,target:Vec<u8>)->(Lease,Result<TcpStream,DialError>){
     let started=Instant::now();
@@ -1079,6 +1128,30 @@ mod tests {
             .unwrap();
         drop(rebound);
         server.abort();
+    }
+    #[tokio::test(flavor="multi_thread",worker_threads=4)]
+    async fn bonded_single_stream_crosses_two_authenticated_quic_tunnels_and_opens_one_destination(){
+        let destination=TcpListener::bind("127.0.0.1:0").await.unwrap();let address=destination.local_addr().unwrap();let accepts=Arc::new(AtomicUsize::new(0));let ac=accepts.clone();
+        let destination_task=tokio::spawn(async move{let mut jobs=JoinSet::new();loop{tokio::select!{accepted=destination.accept()=>{let(mut stream,_)=accepted.unwrap();ac.fetch_add(1,Ordering::Relaxed);jobs.spawn(async move{let(mut r,mut w)=stream.split();let _=tokio::io::copy(&mut r,&mut w).await;let _=w.shutdown().await;});},_=jobs.join_next(),if !jobs.is_empty()=>{}}}});
+        let server=crate::bond::Server::start_test(address).await.unwrap();lktunnel::socks5_quic::set_bond_gateway(Some(server.gateway()));
+        struct Reset(Arc<crate::bond::Server>);impl Drop for Reset{fn drop(&mut self){self.0.shutdown();lktunnel::socks5_quic::set_bond_gateway(None);}}
+        let _reset=Reset(server.clone());let mut tunnels=Vec::new();let mut c=config(Policy::Bonding);
+        for i in 0..2{
+            let client=lktunnel::security::Identity::generate().unwrap();let remote=lktunnel::security::Identity::generate().unwrap();
+            let(a,b)=lktunnel::connect_loopback_with_options(client.options(&[remote.certificate.clone()],false,true).unwrap(),remote.options(&[client.certificate.clone()],true,true).unwrap());
+            b.start_server().unwrap();c.paths[i].port=a.enable_socks5_server(0).await.unwrap().port();timeout(Duration::from_secs(10),a.ensure_quic_client()).await.unwrap().unwrap();assert!(a.is_peer_authenticated());tunnels.push((a,b));
+        }
+        let(port,task,r)=pool(c).await;let(mut client,code)=timeout(Duration::from_secs(15),open(port)).await.unwrap();assert_eq!(code,0);
+        let payload:Vec<u8>=(0..2*1024*1024).map(|i|(i%251)as u8).collect();let expected=payload.clone();
+        timeout(Duration::from_secs(15),async{let(mut read,mut write)=client.split();tokio::join!(async{write.write_all(&payload).await.unwrap();write.shutdown().await.unwrap();},async{let mut result=Vec::new();read.read_to_end(&mut result).await.unwrap();assert_eq!(result,expected);});}).await.unwrap();
+        assert_eq!(accepts.load(Ordering::Relaxed),1);assert_eq!(server.counters.opened.load(Ordering::Relaxed),1);
+        assert!(r.snapshot().paths.iter().all(|p|p.received_bytes>32*1024&&p.sent_bytes>32*1024));
+        for(a,b)in &tunnels{a.disconnect();b.disconnect();}task.abort();destination_task.abort();
+        // Reserved bonding endpoint is rejected by legacy clients, even while
+        // the local gateway exists. Normal proxy compatibility stays available.
+        let(a,b)=lktunnel::connect_loopback_with_options(Default::default(),Default::default());b.start_server().unwrap();let local=a.enable_socks5_server(0).await.unwrap().port();timeout(Duration::from_secs(10),a.ensure_quic_client()).await.unwrap().unwrap();
+        let host=lktunnel::socks5_quic::BOND_HOST.as_bytes();let mut target=vec![5,1,0,3,host.len()as u8];target.extend_from_slice(host);target.extend_from_slice(&443u16.to_be_bytes());
+        assert!(matches!(dial(local,&target).await,Err(DialError::Target(2))));a.disconnect();b.disconnect();
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn two_mutually_authenticated_tunnels_relay_concurrent_flows_and_keep_ssrf_guard() {

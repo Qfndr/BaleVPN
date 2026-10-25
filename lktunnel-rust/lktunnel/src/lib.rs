@@ -860,7 +860,7 @@ impl LkTunnel {
         let id = self.id;
         match self.enable_quic_server() {
             Ok(server) => {
-                let handle = socks5_quic::spawn_server_acceptor(server);
+                let handle = socks5_quic::spawn_server_acceptor(server,self.options.authenticated);
                 *self.quic_server_handle.lock() = Some(handle);
                 log::info!("quic stream acceptor up on tunnel {id}");
             }

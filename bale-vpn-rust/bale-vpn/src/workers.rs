@@ -14,6 +14,7 @@ struct Worker {
     port: u16,
 }
 pub struct Workers {
+    gateway: Mutex<Option<(std::net::SocketAddr,[u8;32])>>,
     directory: PathBuf,
     children: Mutex<HashMap<usize, Worker>>,
 }
@@ -27,10 +28,12 @@ pub struct Snapshot {
 impl Workers {
     pub fn new(directory: PathBuf) -> Self {
         Self {
+            gateway: Mutex::new(None),
             directory,
             children: Mutex::new(HashMap::new()),
         }
     }
+    pub fn set_gateway(&self,value:(std::net::SocketAddr,[u8;32])){*self.gateway.lock()=Some(value);}
     pub fn snapshots(&self) -> Vec<Snapshot> {
         let mut children = self.children.lock();
         children
@@ -75,6 +78,7 @@ impl Workers {
         config.save(Some(&directory))?;
         drop(lock);
         let mut command = Command::new(std::env::current_exe()?);
+        if let Some((address,key))=*self.gateway.lock(){command.env("BALEVPN_BOND_GATEWAY",address.to_string()).env("BALEVPN_BOND_GATEWAY_KEY",crate::settings::hex(&key));}
         command
             .args([
                 "--headless",

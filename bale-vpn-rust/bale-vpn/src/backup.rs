@@ -275,6 +275,7 @@ fn collect(
         };
         config.token.zeroize();
         config.aggregate = Default::default();
+        config.bond_server_enabled = false; // Controller capability is not an account setting.
         let identity = vault
             .read("identity.bin")?
             .ok_or_else(|| error("Account identity is missing"))?;
@@ -485,6 +486,7 @@ fn restore(
         let mut cfg = entry.config.clone();
         cfg.token.zeroize();
         cfg.aggregate = Default::default();
+        cfg.bond_server_enabled = false;
         cfg.port = management;
         cfg.socks5_port = socks;
         cfg.save(Some(&target))?;
@@ -569,7 +571,7 @@ mod tests {
         let target = tempfile::tempdir().unwrap();
         let identity = crate::settings::identity(source.path()).unwrap();
         let device = crate::device::identity(source.path()).unwrap();
-        let cfg = Config::default();
+        let cfg = Config { bond_server_enabled:true, ..Config::default() };
         cfg.save(Some(source.path())).unwrap();
         Vault::new(source.path())
             .write("token.bin", b"fixture-existing-session-not-a-real-token")
@@ -593,6 +595,7 @@ mod tests {
         .unwrap();
         assert_eq!(mapping.len(), 1);
         let destination = target.path().join("aggregate-profiles/path-1");
+        assert!(!Config::load(Some(&destination)).unwrap().bond_server_enabled);
         assert_eq!(crate::device::phone_for_session(&crate::device::identity(&destination).unwrap(),b"fixture-existing-session-not-a-real-token").as_deref(),Some("+10000000001"));
         assert_eq!(
             Vault::new(&destination).read("token.bin").unwrap().unwrap(),

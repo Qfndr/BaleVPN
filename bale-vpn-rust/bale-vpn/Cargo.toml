@@ -1,7 +1,7 @@
 # Single Rust binary replacing the Node bale-vpn application.
 [package]
 name        = "bale-vpn"
-version     = "2.6.3-dev.5"
+version     = "2.6.3-dev.6"
 edition.workspace = true
 publish.workspace = true
 description = "Bale VPN — single Rust binary (headless or GUI) replacing bale-vpn-node."
