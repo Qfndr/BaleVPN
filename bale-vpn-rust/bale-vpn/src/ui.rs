@@ -34,6 +34,7 @@ use tower_http::trace::TraceLayer;
 /// Build the router. Caller spawns this against a TcpListener.
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/flags/:name", get(country_flag))
         .route("/",              get(index))
         .route("/fonts/:name", get(font))
         .route("/config",        get(get_config).post(set_config))
@@ -229,6 +230,12 @@ async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::r
     ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
 }
 
+async fn country_flag(Path(name):Path<String>) -> axum::response::Response {
+    match crate::country_flags::get(&name) {
+        Some(bytes) => ([(header::CONTENT_TYPE,"image/svg+xml")],bytes).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
 async fn index() -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -290,8 +297,10 @@ async fn get_account(State(s): State<Arc<AppState>>) -> Result<Json<serde_json::
         "secureMode":cfg.preferences.secure_mode,"version":env!("CARGO_PKG_VERSION")})))
 }
 
-async fn set_settings(State(s): State<Arc<AppState>>, Json(preferences): Json<crate::settings::Preferences>) -> Result<Json<OkBody>,ApiError> {
+async fn set_settings(State(s): State<Arc<AppState>>, Json(mut preferences): Json<crate::settings::Preferences>) -> Result<Json<OkBody>,ApiError> {
+    preferences.normalize_codes().map_err(ApiError::Internal)?;
     preferences.validate(&s.identity).map_err(ApiError::Internal)?;
+    if s.cfg.read().await.preferences == preferences { return Ok(Json(OkBody {ok:true})); }
     // Applying settings must not silently terminate a working session.
     if s.cfg.read().await.peer_id.is_some() || s.server.client_count().await>0 {
         return Err(ApiError::Internal("Disconnect the tunnel before changing security or performance settings".into()));

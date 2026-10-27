@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Preferences {
     pub auto_reconnect: bool,
@@ -55,6 +55,23 @@ pub fn decode(code: &str) -> Result<Vec<u8>, String> {
         .collect()
 }
 impl Preferences {
+    /// Accept wrapped clipboard codes and multiple codes in one paste without
+    /// treating visual line wraps as new identities. Keep only distinct pins.
+    pub fn normalize_codes(&mut self) -> Result<(), String> {
+        let compact: String = self.client_codes.join("").chars().filter(|c| !c.is_whitespace()).collect();
+        if !compact.is_empty() && !compact.starts_with("bvp1:") {
+            return Err("Public pairing code must begin with bvp1:".into());
+        }
+        let mut codes = Vec::new();
+        for part in compact.split("bvp1:").skip(1) {
+            let normalized = code(&decode(&format!("bvp1:{part}"))?);
+            if !codes.contains(&normalized) { codes.push(normalized); }
+            if codes.len() > 64 { return Err("At most 64 trusted client codes are supported".into()); }
+        }
+        self.client_codes = codes;
+        if !self.server_code.trim().is_empty() { self.server_code=code(&decode(&self.server_code)?); }
+        Ok(())
+    }
     pub fn validate(&self, identity: &Identity) -> Result<(), String> {
         if !matches!(self.profile.as_str(), "balanced" | "throughput")
             || !(5..=120).contains(&self.retry_delay_secs)
@@ -203,6 +220,18 @@ impl Attempts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pasted_trust_codes_handle_wraps_duplicates_and_keep_every_identity() {
+        let a=Identity::generate().unwrap(); let b=Identity::generate().unwrap();
+        let ac=code(&a.certificate); let bc=code(&b.certificate);
+        let mut p=Preferences::default();
+        p.client_codes=vec![ac[..70].into(),ac[70..].into(),format!("\n{bc}\n{ac}")];
+        p.normalize_codes().unwrap();
+        assert_eq!(p.client_codes,vec![ac,bc]);
+        p.validate(&a).unwrap();p.options(&a,true).unwrap();
+        p.client_codes.push("not a public code".into());
+        assert!(p.normalize_codes().is_err());
+    }
     #[test]
     fn identity_survives_restart_and_invalid_codes_fail_closed() {
         let dir = tempfile::tempdir().unwrap();

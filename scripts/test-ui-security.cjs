@@ -155,6 +155,8 @@ function authHarness(reply) {
     setInterval: callback => { timers.set(++nextTimer, callback); return nextTimer; },
     clearInterval: timer => timers.delete(timer),
   });
+  vm.runInContext(script.slice(script.indexOf('function phoneDigits('),script.indexOf('function countryFlag('))+script.slice(script.indexOf('function normalizedPhone('),script.indexOf('function initPhoneControls(')), context);
+  vm.runInContext('var phoneControls=[];',context);
   vm.runInContext(authScript, context);
   get('phoneInput').value = '+989121234567';
   return { get, timers, context, advance:ms=>{now+=ms;[...timers.values()].forEach(callback=>callback());}, send: () => get('sendOtpBtn').click({ target: get('sendOtpBtn') }) };

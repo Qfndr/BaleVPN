@@ -8,6 +8,7 @@ const archive={format:'balevpn-account-v1',rounds:600000,salt:'00'.repeat(16),no
 const config={listenPort:1088,policy:'leastConnections',paths:[1,2].map(id=>({profileId:id,name:'Tunnel '+id,port:1080+id,managementPort:37200+id,weight:1}))};
 const preferences={secureMode:true,serverCode:'',clientCodes:[],profile:'balanced',retryDelaySecs:10,maxCallsPerMinute:3};
 const server=http.createServer(async(req,res)=>{try{
+ if(/^\/flags\/[A-Z]{2}\.svg$/.test(req.url)){const file=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets/flags',req.url.slice(7).toLowerCase());if(fs.existsSync(file)){res.setHeader('Content-Type','image/svg+xml');return res.end(fs.readFileSync(file));}res.statusCode=404;return res.end();}
  if(req.url==='/bond-ui.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'bond-ui.js')));}
  if(req.url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(assets,'index.html')));return;}

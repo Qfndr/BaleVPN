@@ -11,3 +11,5 @@ test('Persian translates combined server guidance and preserves technical values
  assert.equal(c.uiMessage('Example user name'),'Example user name');assert.match(c.uiMessage('Incorrect archive password or damaged account file'),/رمز فایل/);assert.match(c.uiMessage('(max 253)'),/حداکثر 253/);
 });
 test('English keeps original diagnostics and protocol strings verbatim',()=>{const c=harness('en');const original='SOCKS5 on 127.0.0.1:1080 → peer 42 [🔗 WebRTC] | sessions: 0  ↑ 0 KB';assert.equal(c.uiMessage(original),original);});
+
+test('Persian translates recovery and security save / handshake messages from reported screenshots',()=>{const c=harness('fa');for(const text of ['Connection interrupted','Disconnect the tunnel before changing security or performance settings','Secure transport: quic io: tunnel disconnected during quic handshake']){const out=c.uiMessage(text);assert.match(out,/[آ-ی]/);assert.ok(!out.includes('Disconnect'));assert.ok(!out.includes('handshake'));}});

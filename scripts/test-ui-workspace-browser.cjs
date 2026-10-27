@@ -14,7 +14,8 @@ let poolRunning=false;const workers=new Map();
 function poolStatus(){return {running:poolRunning,listenPort:poolConfig.listenPort,policy:poolConfig.policy,elapsedMs:1000,paths:poolConfig.paths.map(p=>({...p,active:0,receivedBytes:0,sentBytes:0,completed:0,retryAfterSeconds:0,error:null}))};}
 const server=http.createServer(async(req,res)=>{
  try {
-  if(req.url==='/bond-ui.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'bond-ui.js')));}
+  if(/^\/flags\/[A-Z]{2}\.svg$/.test(req.url)){const file=path.join(__dirname,'../bale-vpn-rust/bale-vpn/assets/flags',req.url.slice(7).toLowerCase());if(fs.existsSync(file)){res.setHeader('Content-Type','image/svg+xml');return res.end(fs.readFileSync(file));}res.statusCode=404;return res.end();}
+ if(req.url==='/bond-ui.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'bond-ui.js')));}
  if(req.url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(req.url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(assets,'index.html')));return;}
   if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(req.url)){res.setHeader('Content-Type','font/woff2');res.end(fs.readFileSync(path.join(assets,req.url)));return;}

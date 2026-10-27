@@ -36,6 +36,9 @@ fn retryable(error: Option<&str>) -> bool {
         return true;
     };
     let error = error.to_ascii_lowercase();
+    // A handshake timeout is inconclusive, unlike a certificate rejection.
+    // Network loss during setup must recover while auto-reconnect is enabled.
+    if error.contains("quic authentication timed out") { return true; }
     // Explicit refusal, invalid settings and failed peer verification need user
     // action. Never weaken pairing or repeatedly call a rejecting account.
     if [
@@ -159,6 +162,7 @@ mod tests {
             "manager events stream closed",
             "transport: connection reset",
             "Secure transport: connection timed out",
+            "Secure transport: QUIC authentication timed out; check pairing codes and both versions",
             "Wait 30s before another call attempt",
         ] {
             assert!(retryable(Some(e)), "{e}");

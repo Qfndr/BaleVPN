@@ -20,6 +20,7 @@ mod client;
 mod reconnect;
 mod aggregate;
 mod bond;
+mod country_flags;
 mod workers;
 mod profiles;
 mod backup;
