@@ -14,9 +14,9 @@ def main():
    assert request(base,'/aggregate',config)['ok']
    for slot in [1,2]:worker(base,slot,True)
    codes=[request(base,f'/aggregate/profiles/{i}/settings')['publicCode']for i in [1,2]]
-   prefs=request(base,'/settings')['preferences'];prefs['clientCodes']=[codes[0][:70],codes[0][70:],codes[1]+'\n'+codes[0]]
+   settings=request(base,'/settings');prefs=settings['preferences'];prefs['serverCode']=settings['publicCode'];prefs['clientCodes']=[codes[0][:70],codes[0][70:],codes[1]+'\n'+codes[0]]
    assert request(base,'/settings',prefs)['ok'];saved=request(base,'/settings')['preferences'];assert saved['clientCodes']==codes
-   assert request(base,'/tunnel/config',{'serverPeerId':'42','socks5Port':ports[0]+1 if ports[0]<65535 else 1080})['ok']
+   assert request(base,'/tunnel/config',{'serverPeerId':'42'})['ok']
    assert request(base,'/settings',saved)['ok']
    assert request(base,'/config')['peer_id']=='42'
    assert request(base,'/tunnel/disconnect',{})['ok']
