@@ -513,6 +513,7 @@ pub(crate) async fn keeper_task(
         let Some(conn) = conn else { return };
 
         let reason = conn.closed().await;
+        crate::diagnostics::connection("client_closed",&reason);
         let Some(owner) = weak.upgrade() else { return };
         // Initial warmup, explicit ensure and recovery share one owner of the
         // receive slot. Concurrent handshakes used to overwrite each other.

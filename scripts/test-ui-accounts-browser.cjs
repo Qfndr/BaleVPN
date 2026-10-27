@@ -27,10 +27,11 @@ const server=http.createServer(async(req,res)=>{try{
  else if(url==='/auth/start')result={ok:true,isRegistered:true,transactionHash:'fixture-tx-'+id,sentCodeType:2,nextSendCodeWaitTime:60};
  else if(url==='/auth/verify'){assert.equal(data.transactionHash,'fixture-tx-'+id);a.state={...a.state,tokenSet:true,wsReady:true,self:{id:String(id),name:'Test account '+id}};}
  else if(url==='/tunnel/config'){if(data.mode)a.state.mode=data.mode;else{assert.equal(data.socks5Port,1080+id);a.state={...a.state,clientActivated:true,clientRoomReady:true,peerAuthenticated:true,serverPeer:{id:data.serverPeerId},sessions:0};}}
+ else if(url==='/client/auto-reconnect'){a.state.autoReconnect=data.enabled;a.preferences.autoReconnect=data.enabled;}
  else if(url==='/tunnel/disconnect')a.state={...a.state,clientActivated:false,clientRoomReady:false,peerAuthenticated:false};
  else if(url==='/disconnect')a.state={...a.state,wsReady:false};
  else if(url==='/connect')a.state={...a.state,wsReady:true};
- else if(url==='/peers')result={peers:[{id:'101',type:'0',name:'Server One'},{id:'102',type:'0',name:'Server Two'}]};
+ else if(url==='/peers')result={peers:[{id:'101',name:'Server One'},{id:'102',name:'Server Two'}]};
  else if(url==='/server/max-clients')result={maxClients:5,maxSupported:253};
  else if(['/tunnel/clients','/server/admission','/server/blacklist','/server/pending'].includes(url))result=[];
  else if(url==='/contacts/search')result={ok:true,users:[]};
@@ -108,9 +109,10 @@ const server=http.createServer(async(req,res)=>{try{
  await page.locator('[data-route="4"] .route-connect').click();await page.waitForFunction(()=>!routeBusy.size);assert.equal(accounts.get(4).state.wsReady,false);
  await page.locator('[data-route="4"] .route-connect').click();await page.waitForFunction(()=>!routeBusy.size);assert.equal(accounts.get(4).state.wsReady,true);
  assert.ok(writes.some(w=>w.id===4&&w.url==='/connect'));assert.ok(!writes.some(w=>w.id===4&&w.url==='/tunnel/config'&&w.data.serverPeerId));
- await page.evaluate(()=>{accountStates.get(4).at=Date.now()-9000;renderAccountHub();});assert.equal(await page.locator('[data-route="4"]').getAttribute('data-ready'),'false');assert.equal(await page.locator('[data-route="4"] .route-status span').innerText(),'Status unavailable');
+ await page.evaluate(()=>{accountStates.get(4).at=Date.now()-9000;renderAccountHub();});assert.equal(await page.locator('[data-route="4"]').getAttribute('data-ready'),'false');assert.equal(await page.locator('[data-route="4"] .route-status > span').innerText(),'Status unavailable');
  const beforeFailure=writes.length;failedStates.add(4);await page.locator('[data-route="4"] .route-connect').click();await page.waitForFunction(()=>!routeBusy.size);assert.ok(!writes.slice(beforeFailure).some(w=>w.url==='/connect'||w.url==='/disconnect'||w.url==='/tunnel/config'),'An unavailable account must never receive a guessed call action');failedStates.delete(4);
  assert.equal(accounts.get(1).state.mode,'client');assert.equal(accounts.get(2).state.mode,'client');
+ const beforeToggle=writes.length;await page.locator('[data-route="2"] .route-auto input').check();await page.waitForFunction(()=>!routeReconnectBusy.size);assert.equal(accounts.get(2).state.autoReconnect,true);assert.ok(!accounts.get(1).state.autoReconnect);assert.deepEqual(writes.slice(beforeToggle).map(w=>w.url),['/client/auto-reconnect']);await page.locator('[data-route="2"] .route-auto input').uncheck();await page.waitForFunction(()=>!routeReconnectBusy.size);assert.equal(accounts.get(2).state.autoReconnect,false);
  assert.deepEqual(errors,[]);console.log('PASS flat accounts: independent destination rows and call actions, row/detail draft synchronization, client/server role defaults, server receive/stop, no servers in pool, stale status and failed-management safety; isolated OTP transactions, independent sign-in, peer/pairing/ports, two scoped calls, third account while others run, no sensitive browser storage, hidden profile polling suspended, language sync. Fixtures only.');
  }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

@@ -110,7 +110,7 @@ const server=http.createServer(async(req,res)=>{
   assert.equal(new Set(await page.locator('[id]').evaluateAll(nodes=>nodes.map(node=>node.id))).size,await page.locator('[id]').count(),'Duplicate DOM IDs');
   await tab('connection');await page.waitForFunction(()=>_aggregateLoaded);await page.locator('.account-manager>summary').click();
   assert.equal(await page.locator('.aggregate-path').count(),2);
-  await page.locator('.aggregate-path').nth(0).locator('summary').click();await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
+  await page.locator('.aggregate-path').nth(0).locator('[data-field=name]').fill('<img src=x onerror=alert(1)>');
   await page.locator('.aggregate-path').nth(0).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===1&&w.running));
   await page.locator('.aggregate-path').nth(1).locator('[data-action=start]').click();await page.waitForFunction(()=>_state.aggregateWorkers.some(w=>w.slot===2&&w.running));
   assert.equal(writes.at(-1).url,'/aggregate/worker');assert.equal(await page.locator('#aggregateSave').isEnabled(),true);

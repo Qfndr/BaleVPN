@@ -328,14 +328,23 @@ async fn set_auto_reconnect(State(s): State<Arc<AppState>>, Json(body): Json<Aut
 }
 
 async fn diagnostics(State(s): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let cfg=s.cfg.read().await;
+    let cfg=s.cfg.read().await.clone();
     let snap=s.client.snapshot().await;
-    // Whitelist only: no account ID, IP, destinations, certificates, token,
-    // private key, raw error body or configuration-file contents.
+    let fingerprint=|bytes:&[u8]|crate::settings::hex(ring::digest::digest(&ring::digest::SHA256,bytes).as_ref());
+    let trusted:Vec<_>=cfg.preferences.client_codes.iter().filter_map(|code|crate::settings::decode(code).ok()).map(|c|fingerprint(&c)).collect();
+    // Public certificate hashes allow pairing comparison, never the codes/keys.
+    // The event ring stores only fixed classifications, not raw error strings.
     Json(serde_json::json!({"applicationVersion":env!("CARGO_PKG_VERSION"),"mode":cfg.mode,
         "secureMode":cfg.preferences.secure_mode,"peerAuthenticated":s.client.tunnel().is_some_and(|t|t.is_peer_authenticated()) || s.server.authenticated_count()>0,"profile":cfg.preferences.profile,
         "websocketReady":s.signaling.is_connected(),"proxyReady":snap.as_ref().is_some_and(|x|x.connected),
         "socks5Port":cfg.socks5_port,"metrics":s.client.tunnel().and_then(|t|t.connection_metrics()),
+        "autoReconnect":cfg.preferences.auto_reconnect,"pairingFingerprint":fingerprint(&s.identity.certificate),
+        "trustedServerFingerprint":crate::settings::decode(&cfg.preferences.server_code).ok().map(|c|fingerprint(&c)),
+        "trustedClientFingerprints":trusted,"activeServerClients":s.server.client_count().await,
+        "pendingServerClients":s.server.pending_list().await.len(),"allowedCallerCount":s.server.admission_list().await.len(),"maxServerClients":s.server.max_clients(),
+        "events":lktunnel::diagnostics::snapshot(),
+        "lastClientFailure":s.client.last_error().map(|e|lktunnel::diagnostics::reason(&e)),
+        "clientReconnecting":s.client.reconnect_status().0,
         "retryAfterSeconds":s.attempts.lock().remaining(&cfg.preferences,std::time::Instant::now())}))
 }
 

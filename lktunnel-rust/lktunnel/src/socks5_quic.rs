@@ -335,37 +335,19 @@ pub(crate) fn spawn_server_acceptor(server: QuicServer, authenticated:bool) -> Q
             crate::runtime().spawn(async move {
                 let connection = match incoming.await {
                     Ok(c) => c,
-                    Err(e) => { log::warn!("socks5/server: incoming err: {e}"); return; }
+                    Err(e) => { crate::diagnostics::connection("server_setup",&e); log::warn!("socks5/server: incoming err: {e}"); return; }
                 };
                 struct Guard(Arc<std::sync::atomic::AtomicUsize>);
                 impl Drop for Guard {fn drop(&mut self){self.0.fetch_sub(1,Ordering::Relaxed);}}
                 sessions.fetch_add(1,Ordering::Relaxed);let _guard=Guard(sessions);
                 log::info!("socks5/server: quic connection established");
+                crate::diagnostics::record("server_setup","connected",None);
                 loop {
                     let (send, recv) = match connection.accept_bi().await {
                         Ok(s) => s,
-                        Err(quinn::ConnectionError::ApplicationClosed(_))
-                        | Err(quinn::ConnectionError::ConnectionClosed(_))
-                        | Err(quinn::ConnectionError::TimedOut)
-                        | Err(quinn::ConnectionError::LocallyClosed)
-                        // EndpointStopping covers the case where
-                        // the LkTunnel is dropping its QUIC
-                        // endpoint as part of normal teardown
-                        // — the accept loop sees "endpoint
-                        // driver future was dropped" which is a
-                        // routine shutdown event, not a real
-                        // error.
-                        | Err(quinn::ConnectionError::Reset)
-                        | Err(quinn::ConnectionError::TransportError(_)) => {
-                            log::info!("socks5/server: connection closed");
-                            break;
-                        }
-                        Err(quinn::ConnectionError::VersionMismatch) => {
-                            log::warn!("socks5/server: accept_bi: version mismatch");
-                            break;
-                        }
                         Err(e) => {
-                            log::debug!("socks5/server: accept_bi: {e}");
+                            crate::diagnostics::connection("server_closed",&e);
+                            log::info!("socks5/server: connection closed");
                             break;
                         }
                     };

@@ -20,6 +20,7 @@
 //! consumed; anything else gets a debug-log and is dropped.
 
 pub mod counters;
+pub mod diagnostics;
 pub mod dispatcher;
 pub mod errors;
 pub mod manager;
@@ -1034,6 +1035,7 @@ impl LkTunnel {
         // at the top of each iteration.
         use std::time::Duration;
         let mut backoff = Duration::from_millis(250);
+        crate::diagnostics::record("client_setup","started",None);
         let client = loop {
             if !self.connected.load(Ordering::Relaxed) {
                 log::info!("ensure_quic_client: tunnel disconnected — giving up");
@@ -1043,11 +1045,12 @@ impl LkTunnel {
             }
             let attempt = match tokio::time::timeout(Duration::from_secs(20), self.connect_quic_to_peer()).await {
                 Ok(result)=>result,
-                Err(_)=>{ *self.quic_rx_tx.lock()=None; return Err(quic_tunnel::QuicEndpointError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut,"QUIC authentication timed out; check pairing codes and both versions"))); }
+                Err(_)=>{ crate::diagnostics::record("client_setup","timeout",None); *self.quic_rx_tx.lock()=None; return Err(quic_tunnel::QuicEndpointError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut,"QUIC authentication timed out; check pairing codes and both versions"))); }
             };
             match attempt {
-                Ok(c) => break c,
+                Ok(c) => { crate::diagnostics::record("client_setup","connected",None); break c; },
                 Err(e) => {
+                    crate::diagnostics::endpoint("client_setup",&e);
                     if self.options.authenticated { return Err(e); }
                     log::debug!("ensure_quic_client: handshake attempt failed: {e} — retry in {backoff:?}");
                     tokio::time::sleep(backoff).await;

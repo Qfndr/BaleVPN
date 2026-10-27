@@ -14,6 +14,9 @@ def main():
    assert request(base,'/aggregate',config)['ok']
    for slot in [1,2]:worker(base,slot,True)
    codes=[request(base,f'/aggregate/profiles/{i}/settings')['publicCode']for i in [1,2]]
+   for slot in [0,1,2]:
+    diag=request(base,(f'/aggregate/profiles/{slot}'if slot else'')+'/diagnostics');assert len(diag['pairingFingerprint'])==64;assert isinstance(diag['events'],list);assert 'token'not in diag and 'privateKey'not in diag
+   capture=runpy.run_path(str(Path(__file__).with_name('collect-support.py')))['collect'](base,0);assert len(capture['accounts'])==3;assert all(c['samples'][0]['state']['available']for c in capture['accounts'])
    settings=request(base,'/settings');prefs=settings['preferences'];prefs['serverCode']=settings['publicCode'];prefs['clientCodes']=[codes[0][:70],codes[0][70:],codes[1]+'\n'+codes[0]]
    assert request(base,'/settings',prefs)['ok'];saved=request(base,'/settings')['preferences'];assert saved['clientCodes']==codes
    assert request(base,'/tunnel/config',{'serverPeerId':'42'})['ok']

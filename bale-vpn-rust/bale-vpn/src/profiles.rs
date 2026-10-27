@@ -169,7 +169,7 @@ mod tests {
     use super::*;
     #[test]
     fn account_forwarding_is_an_explicit_method_and_path_allowlist() {
-        for path in ["state", "settings", "peers"] {
+        for path in ["state", "settings", "peers", "diagnostics"] {
             assert!(allowed(&Method::GET, path));
         }
         for path in [
