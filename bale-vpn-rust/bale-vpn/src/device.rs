@@ -56,9 +56,9 @@ fn generate(directory: &Path, used: bool) -> io::Result<DeviceIdentity> {
     bytes[6] = (bytes[6] & 15) | 64;
     bytes[8] = (bytes[8] & 63) | 128;
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    let words = [
-        "Cedar", "Pearl", "Maple", "River", "Amber", "Cloud", "Olive", "Silver",
-    ];
+    let model_index=u32::from_le_bytes(bytes[..4].try_into().unwrap()) as usize % 512;
+    let label=include_str!("../assets/device-models.tsv").lines().nth(model_index)
+        .and_then(|line|line.split('\t').next()).ok_or_else(||io::Error::other("Invalid device catalog"))?;
     let value = DeviceIdentity {
         used,
         login_phone: None,
@@ -71,15 +71,17 @@ fn generate(directory: &Path, used: bool) -> io::Result<DeviceIdentity> {
             &hex[16..20],
             &hex[20..]
         ),
-        label: format!(
-            "{}-{}-{}",
-            words[(bytes[0] & 7) as usize],
-            words[(bytes[1] & 7) as usize],
-            &hex[16..28]
-        ),
+        label: label.to_owned(),
     };
     vault.write("device.bin", &serde_json::to_vec(&value)?)?;
     Ok(value)
+}
+pub fn model_details(label:&str)->Option<(&'static str,&'static str,&'static str)> {
+    include_str!("../assets/device-models.tsv").lines().find_map(|line|{
+        let mut fields=line.split('\t');
+        if fields.next()?!=label{return None;}
+        Some((fields.next()?,fields.next()?,fields.next()?))
+    })
 }
 pub fn prepare_login(directory: &Path) -> io::Result<DeviceIdentity> {
     let value = identity(directory)?;
@@ -131,6 +133,10 @@ mod tests {
         assert_eq!(first.label, identity(a.path()).unwrap().label);
         assert_ne!(first.hash, identity(b.path()).unwrap().hash);
         first.validate().unwrap();
+        assert!(model_details(&first.label).is_some());
+        let models:Vec<_>=include_str!("../assets/device-models.tsv").lines().collect();
+        assert_eq!(models.len(),512);
+        assert_eq!(models.iter().collect::<std::collections::HashSet<_>>().len(),512);
         mark_used(a.path()).unwrap();
         let next = prepare_login(a.path()).unwrap();
         assert_ne!(next.hash, first.hash);

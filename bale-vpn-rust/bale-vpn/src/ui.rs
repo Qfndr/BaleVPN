@@ -289,11 +289,14 @@ async fn get_account(State(s): State<Arc<AppState>>) -> Result<Json<serde_json::
     let token=s.token_store.load();
     let own=if token.is_some(){s.signaling.account_identity()}else{None};
     let phone=token.as_ref().and_then(|t|crate::device::phone_for_session(&device,t));
+    let model=crate::device::model_details(&device.label);
     let cfg=s.cfg.read().await;
     Ok(Json(serde_json::json!({"ok":true,"signedIn":token.is_some(),
         "id":own.as_ref().map(|u|u.uid.to_string()),"name":own.as_ref().and_then(|u|u.name.clone()),
         "username":own.as_ref().and_then(|u|u.nick.clone()),"loginPhone":phone,
         "deviceLabel":device.label,"mode":cfg.mode,"socks5Port":cfg.socks5_port,"managementPort":cfg.port,
+        "deviceId":device.hash,"deviceBrand":model.map(|m|m.0),"deviceModel":model.map(|m|m.1),"deviceModelCode":model.map(|m|m.2),
+        "deviceProtocol":"Bale web / gRPC-web","authAppId":4,"authLanguage":"fa","verifiedLoginMetadata":phone.is_some(),
         "secureMode":cfg.preferences.secure_mode,"version":env!("CARGO_PKG_VERSION")})))
 }
 

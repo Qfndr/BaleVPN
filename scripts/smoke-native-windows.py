@@ -71,7 +71,14 @@ def main():
             finally:
                 monitor.shutdown();monitor.server_close()
                 if process.poll()is None:
-                    process.terminate();process.wait(timeout=10)
+                    # A failed browser assertion must still stop the isolated managed workers.
+                    try:
+                        request=urllib.request.Request(base+'/shutdown',data=b'{}',headers={'Origin':base,'Content-Type':'application/json'})
+                        with urllib.request.urlopen(request,timeout=2):pass
+                        process.wait(timeout=5)
+                    except (OSError,subprocess.TimeoutExpired):
+                        subprocess.run(['taskkill','/PID',str(process.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                        process.wait(timeout=10)
     result={'windows_subsystem_without_console':True,'real_webview2_custom_titlebar':True,'real_tray_created':True,'hidden_start_close_to_tray_and_http_restore':True,'native_preferences_saved':True,'appearance_restored_after_native_restart_and_port_change':True,'encrypted_native_download_completed':True,'quit_drains_backend':True,'uses_isolated_temporary_data':True,'live_bale_login_tested':False}
     if args.report:args.report.write_text(json.dumps(result,indent=2),encoding='utf-8')
     print('PASS Windows native GUI, no console, unified titlebar, tray, hide/show, settings, encrypted download and graceful quit; isolated data only')

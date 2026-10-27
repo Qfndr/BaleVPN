@@ -8,6 +8,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix='bale-appearance-') as folder:
         work=Path(folder);data=work/'data'
         expected={'layout':'orbit','language':'fa','theme':'dark','palette':'teal','accent':'#087f76','font':'modern','size':'110','width':'wide','density':'comfortable','corners':'20','gradient':False,'metrics':True,'motion':True,'units':'bits','range':'900'}
+        device_identity=None
+        models={row.split('\t')[0]:row.split('\t')[1:] for row in (Path(__file__).resolve().parents[1]/'bale-vpn-rust/bale-vpn/assets/device-models.tsv').read_text(encoding='utf-8').splitlines()}
+        assert len(models)==512
         for attempt in range(2):
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             base=f'http://127.0.0.1:{port}'
@@ -23,6 +26,17 @@ def main():
                             if process.poll() is not None:raise RuntimeError((work/f'run-{attempt}.log').read_text(errors='replace'))
                             time.sleep(.1)
                     else:raise RuntimeError('Panel did not start')
+                    account=request('/account')
+                    import uuid
+                    assert uuid.UUID(account['deviceId']).version==4
+                    assert account['deviceLabel'] in models
+                    assert [account['deviceBrand'],account['deviceModel'],account['deviceModelCode']]==models[account['deviceLabel']]
+                    assert account['deviceProtocol']=='Bale web / gRPC-web' and account['authAppId']==4 and account['authLanguage']=='fa'
+                    assert account['loginPhone'] is None and account['verifiedLoginMetadata'] is False
+                    assert not {'token','privateKey','masterKey'}.intersection(account)
+                    current_identity=(account['deviceId'],account['deviceLabel'])
+                    if device_identity is not None:assert device_identity==current_identity
+                    device_identity=current_identity
                     if attempt==0:
                         assert before['appearance'] is None
                         initial=request('/state');assert request('/appearance',expected)['ok']
@@ -35,7 +49,7 @@ def main():
                 finally:
                     try:request('/shutdown',{});process.wait(timeout=10)
                     except Exception:process.terminate();process.wait(timeout=10)
-        result={'ok':True,'survivesRestartAndPortChange':True,'invalidPreferencesRejected':True,'transportUnchanged':True,'accountFree':True}
+        result={'ok':True,'survivesRestartAndPortChange':True,'invalidPreferencesRejected':True,'transportUnchanged':True,'accountFree':True,'modelCatalogMetadata':512,'deviceIdentitySurvivesRestart':True,'actualWebProtocolMetadata':True}
         if args.report:args.report.parent.mkdir(parents=True,exist_ok=True);args.report.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
         print(json.dumps(result))
 if __name__=='__main__':main()

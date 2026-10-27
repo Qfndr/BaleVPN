@@ -11,6 +11,7 @@ const snapshot=()=>({running:false,listenPort:1088,paths:config.paths.map(p=>({.
 const server=http.createServer(async(req,res)=>{try{
  let url=req.url;const match=url.match(/^\/aggregate\/profiles\/([1-8])\/(.*)$/),id=match?Number(match[1]):0;
  if(match)url='/'+match[2];
+ if(/^\/flags\/[a-z]{2}\.svg$/i.test(url)){res.setHeader('Content-Type','image/svg+xml');return res.end(fs.readFileSync(path.join(assets,url)));}
  if(url==='/bond-ui.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'bond-ui.js')));}
  if(url==='/pool-telemetry.js'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync(path.join(assets,'pool-telemetry.js')));}
  if(url==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end(fs.readFileSync(path.join(assets,'index.html')));return;}
@@ -41,12 +42,14 @@ const server=http.createServer(async(req,res)=>{try{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+server.address().port;
  const browser=await chromium.launch({headless:true,args:["--explicitly-allowed-ports="+server.address().port],...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
  try{
- const page=await browser.newPage({viewport:{width:1280,height:960}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await browser.newPage({viewport:{width:1280,height:960}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',e.stack);});
  await page.goto(base);await page.waitForFunction(()=>_aggregateLoaded);
  await page.locator('#tab-appearance').click();await page.selectOption('#languageSelect','fa');await page.locator('#tab-connection').click();
  assert.equal(await page.locator('#addClientAccount').innerText(),'افزودن حساب');
- async function add(id,role='client'){await page.locator('#addClientAccount').click();await page.waitForFunction(id=>accountFrames.get(id)?.contentWindow.baleProfileUI?.ready(),id);const frame=page.frame({url:base+'/aggregate/profiles/'+id+'/'});assert.ok(frame);await frame.waitForFunction(role=>_state.mode===role,role);assert.equal(await frame.locator('html').getAttribute('lang'),await page.locator('html').getAttribute('lang'));assert.equal(await frame.locator('#socks5Port').inputValue(),String(1080+id));assert.ok(await frame.locator('#socks5Port').isDisabled());return frame;}
+ async function add(id,role='client'){await page.locator('#addClientAccount').click();await page.waitForFunction(id=>accountFrames.get(id)?.contentWindow.baleProfileUI?.ready(),id);const frame=page.frame({url:base+'/aggregate/profiles/'+id+'/'});assert.ok(frame);await frame.waitForFunction(role=>_state.mode===role,role);await page.waitForFunction(id=>settingsDialogSlot===id,id);assert.equal(await frame.locator('html').getAttribute('lang'),await page.locator('html').getAttribute('lang'));assert.equal(await frame.locator('#socks5Port').inputValue(),String(1080+id));assert.ok(await frame.locator('#socks5Port').isDisabled());return frame;}
  const one=await add(1);await one.locator('#phoneInput').fill('+10000000001');await one.locator('#sendOtpBtn').click();await one.waitForFunction(()=>_txHash==='fixture-tx-1');
+ await one.locator('.phone-country').first().click();await one.locator('#phoneInputCountryMenu input').fill('IR');if(process.env.BALEVPN_SCREENSHOTS){fs.mkdirSync(process.env.BALEVPN_SCREENSHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,'account-phone-country-modal-fa.png')});}await one.locator('#phoneInputCountryMenu input').press('Escape');assert.equal(await page.locator('#profileModal').isVisible(),true);assert.equal(await one.evaluate(()=>_txHash),'fixture-tx-1');
+ for(const width of [390,320]){await page.setViewportSize({width,height:900});await one.locator('.phone-country').first().click();const menu=await one.locator('#phoneInputCountryMenu').boundingBox();assert.ok(menu.x>=0&&menu.y>=0&&menu.x+menu.width<=width+1&&menu.y+menu.height<=901,'Embedded country menu must fit the actual viewport');await one.locator('#phoneInputCountryMenu input').press('Escape');assert.equal(await page.locator('#profileModal').isVisible(),true);assert.equal(await one.evaluate(()=>_txHash),'fixture-tx-1');}await page.setViewportSize({width:1280,height:960});
  await page.locator('#profileModalClose').click();const two=await add(2);await two.locator('#phoneInput').fill('+10000000002');await two.locator('#sendOtpBtn').click();await two.waitForFunction(()=>_txHash==='fixture-tx-2');
  await two.locator('#otpInput').fill('222222');await two.locator('#verifyBtn').click();await two.waitForFunction(()=>_state.tokenSet);
  assert.equal(await one.evaluate(()=>_state.tokenSet),false);assert.equal(await one.evaluate(()=>_txHash),'fixture-tx-1');
@@ -56,7 +59,7 @@ const server=http.createServer(async(req,res)=>{try{
   if(id===2){await page.locator('#profileModalClose').click();await page.locator('[data-account="2"]').click();}
   await frame.waitForFunction(()=>document.getElementById('tunnelPeer').options.length===3);
   await frame.selectOption('#tunnelPeer',String(100+id)+':0');
-  await page.locator('#tab-security').click();await frame.locator('#serverCode').fill('bvp1:trusted-fixture-'+id);await frame.locator('#saveSettings').click();await frame.waitForFunction(()=>!document.getElementById('saveSettings').disabled);
+  await page.locator('#profileModal .settings-modal-nav [data-key=security]').click();await frame.locator('#serverCode').fill('bvp1:trusted-fixture-'+id);await frame.locator('#saveSettings').click();await frame.waitForFunction(()=>!document.getElementById('saveSettings').disabled);
  }
  await page.locator('#profileModalClose').click();await page.locator('#connectClientAccounts').click();await page.waitForFunction(()=>!accountBusy);
  const calls=writes.filter(w=>w.url==='/tunnel/config'&&w.data.serverPeerId);assert.equal(calls.length,2);assert.deepEqual(calls.map(w=>[w.id,w.data.serverPeerId,w.data.socks5Port]).sort(),[[1,'101',1081],[2,'102',1082]]);
@@ -67,7 +70,7 @@ const server=http.createServer(async(req,res)=>{try{
  assert.equal(accounts.get(1).state.clientRoomReady,false);assert.equal(accounts.get(2).state.clientRoomReady,false);
  await page.selectOption('[data-route="1"] .route-peer','102:0');await page.selectOption('[data-route="2"] .route-peer','101:0');
  assert.equal(await one.locator('#tunnelPeer').inputValue(),'102:0');assert.equal(await two.locator('#tunnelPeer').inputValue(),'101:0');
- await page.locator('[data-route="1"] .route-configure').click();await one.selectOption('#tunnelPeer','101:0');await page.waitForFunction(()=>routePeers.get(1)==='101:0');assert.equal(await page.locator('[data-route="1"] .route-peer').inputValue(),'101:0');await one.selectOption('#tunnelPeer','102:0');await page.waitForFunction(()=>routePeers.get(1)==='102:0');await page.locator('#profileModalClose').click();
+ await page.locator('[data-route="1"] .route-configure').click();await page.waitForFunction(()=>settingsDialogSlot===1);await one.selectOption('#tunnelPeer','101:0');await page.waitForFunction(()=>routePeers.get(1)==='101:0');assert.equal(await page.locator('[data-route="1"] .route-peer').inputValue(),'101:0');await one.selectOption('#tunnelPeer','102:0');await page.waitForFunction(()=>routePeers.get(1)==='102:0');await page.locator('#profileModalClose').click();
 
  await page.locator('[data-route="1"] .route-configure').click();await one.waitForFunction(()=>embeddedActive);
  await one.evaluate(()=>{window.__redundantUpdates=0;window.addEventListener('message',event=>{if(event.source===parent&&['bale-appearance','bale-profile-active'].includes(event.data?.type))window.__redundantUpdates++;});});
@@ -80,11 +83,11 @@ const server=http.createServer(async(req,res)=>{try{
  await page.locator('#profileModalClose').click();assert.equal(await one.evaluate(()=>embeddedActive),false);assert.equal(await two.evaluate(()=>embeddedActive),false);
  const storage=await page.evaluate(()=>JSON.stringify(localStorage));for(const secret of ['fixture-tx-','111111','222222','+1000000000'])assert.ok(!storage.includes(secret));
  // Audit untranslated UI text separately from user names and standard protocol labels.
- const leftovers=[];for(const tab of ['connection','traffic','aggregate','clients','security','performance','appearance']){await page.locator('#tab-'+tab).click();const texts=await page.locator('body').evaluate(body=>{const w=document.createTreeWalker(body,NodeFilter.SHOW_TEXT),result=[];let n;while(n=w.nextNode()){const e=n.parentElement;if(e?.checkVisibility()&&!e.closest('script,style,select,#selfName,[data-account-name],.aggregate-path-title,.aggregate-profile-link,.account-state,#keyFingerprint,.workspace-brand,.workspace-bottom,.sidebar-version b')){const t=n.nodeValue.trim();if(/[a-zA-Z]{3}/.test(t)&&!/[\u0600-\u06ff]/.test(t))result.push(t);}}return result;});for(const text of texts)leftovers.push([tab,text]);}
+ const leftovers=[];for(const tab of ['connection','traffic','aggregate','clients','security','performance','appearance']){await page.locator('#tab-'+tab).click();const texts=await page.locator('body').evaluate(body=>{const w=document.createTreeWalker(body,NodeFilter.SHOW_TEXT),result=[];let n;while(n=w.nextNode()){const e=n.parentElement;if(e?.checkVisibility()&&!e.closest('script,style,select,#selfName,[data-account-name],.aggregate-path-title,.aggregate-profile-link,.account-state,.route-identity,#keyFingerprint,.workspace-brand,.workspace-bottom,.sidebar-version b')){const t=n.nodeValue.trim();if(/[a-zA-Z]{3}/.test(t)&&!/[\u0600-\u06ff]/.test(t))result.push(t);}}return result;});for(const text of texts)leftovers.push([tab,text]);}
  if(process.env.BALEVPN_I18N_AUDIT)fs.writeFileSync(process.env.BALEVPN_I18N_AUDIT,JSON.stringify(leftovers,null,2));
  assert.deepEqual(leftovers,[],'Every visible prose label in the seven Persian tabs must be translated');
  await page.locator('#tab-connection').click();await page.locator('[data-account="1"]').click();
- await page.locator('#tab-connection').click();
+ await page.locator('#profileModal .settings-modal-nav [data-key=connection]').click();
  assert.match(await one.locator('#wsStateText').textContent(),/متصل/);
  await one.locator('.peer-lookup>summary').click();await one.locator('#peerSearchBtn').click();await one.waitForFunction(()=>document.getElementById('peerResults').textContent.includes('شماره تلفن'));
  await one.evaluate(()=>{_state={..._state,mode:'server',serverCallPrivacy:{everyone:true},lkRooms:2};applyState();});
