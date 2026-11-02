@@ -11,6 +11,7 @@ class Writer{
  #add(b){if(this.#size+b.length>MAX)throw new WireError('payload_too_large');this.#parts.push(b);this.#size+=b.length;return this;}
  int(n){if(!Number.isInteger(n)||n<-(2**31)||n>2**31-1)throw new WireError('invalid_int');const b=Buffer.alloc(4);b.writeInt32LE(n);return this.#add(b);}
  long(n){if(typeof n!=='bigint'||n<-(2n**63n)||n>=2n**63n)throw new WireError('invalid_long');const b=Buffer.alloc(8);b.writeBigInt64LE(n);return this.#add(b);}
+ double(n){if(typeof n!=='number'||!Number.isFinite(n))throw new WireError('invalid_double');const b=Buffer.alloc(8);b.writeDoubleLE(n);return this.#add(b);}
  bytes(value){const data=bytes(value),n=data.length,prefix=n<254?Buffer.from([n]):Buffer.from([254,n&255,n>>>8&255,n>>>16&255]);return this.#add(Buffer.concat([prefix,data,Buffer.alloc((4-(prefix.length+n)%4)%4)]));}
  string(value,max=4096){if(typeof value!=='string'||Buffer.byteLength(value)>max||/[\0\r\n]/.test(value))throw new WireError('invalid_string');const data=Buffer.from(value);if(new TextDecoder('utf-8',{fatal:true}).decode(data)!==value)throw new WireError('invalid_string');return this.bytes(data);}
  finish(){return Buffer.concat(this.#parts,this.#size);}
@@ -22,6 +23,7 @@ class Reader{
  int(){return this.#take(4).readInt32LE();}
  peekInt(){if(this.#offset+4>this.#buffer.length)throw new WireError('truncated_frame');return this.#buffer.readInt32LE(this.#offset);}
  long(){return this.#take(8).readBigInt64LE();}
+ double(){const n=this.#take(8).readDoubleLE();if(!Number.isFinite(n))throw new WireError('invalid_double');return n;}
  bytes(max=MAX){const first=this.#take(1)[0];if(first===255)throw new WireError('invalid_length');let n=first,prefix=1;if(first===254){n=this.#take(3).readUIntLE(0,3);prefix=4;if(n<254)throw new WireError('invalid_length');}if(n>max)throw new WireError('payload_too_large');const value=Buffer.from(this.#take(n));const padding=this.#take((4-(prefix+n)%4)%4);if(padding.some(n=>n!==0))throw new WireError('invalid_padding');return value;}
  string(max=4096){try{return new TextDecoder('utf-8',{fatal:true}).decode(this.bytes(max));}catch(e){if(e instanceof WireError)throw e;throw new WireError('invalid_utf8');}}
  end(){if(this.#offset!==this.#buffer.length)throw new WireError('trailing_data');}

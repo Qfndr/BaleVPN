@@ -40,5 +40,16 @@ function authSchema(source){
  if(constructors.size>100)throw Error('Unexpected dependency growth');
  return {provider:'eitaa',sourceSha256:SHA,layer:all.layer,methods,constructors:[...constructors.values()],responseAliases,liveLoginVerified:false};
 }
-if(require.main===module){try{const args=process.argv.slice(2);if(args.length!==2&&(args.length!==3||args[2]!=='--auth'))throw Error('Expected worker and output paths');const out=(args[2]==='--auth'?authSchema:extract)(fs.readFileSync(args[0],'utf8'));fs.writeFileSync(args[1],JSON.stringify(out,null,2)+'\n');console.log('Extracted '+out.methods.length+' methods and '+out.constructors.length+' constructors; worker not executed');}catch{console.error('Could not extract the reviewed Eitaa schema');process.exitCode=1;}}
-module.exports={extract,definition,SHA,authSchema};
+function callSchema(source){
+ const all=table(source),names=['messages.getDhConfig','phone.getCallConfig','phone.requestCall','phone.acceptCall','phone.confirmCall','phone.receivedCall','phone.discardCall','phone.sendSignalingData','updates.getState','updates.getDifference'];
+ const methods=names.map(name=>{const matches=all.API.methods.filter(m=>m.method===name);if(matches.length!==1)throw Error('Invalid call method');return matches[0];});
+ const primitive=new Set(['#','int','long','double','string','bytes','true','int128','int256','int512','!X','Object']);
+ const types=new Set(['Error','Pong','EitaaUpdatesExpireToken','EitaaTokenUpdating']),constructors=new Map();
+ const add=t=>{if(t.includes('?'))t=t.split('?')[1];if(/^Vector<.*>$/.test(t))t=t.slice(7,-1);if(!primitive.has(t))types.add(t);};
+ for(const m of methods){add(m.type);for(const p of m.params)add(p.type);}
+ for(const type of types){const api=all.API.constructors.filter(c=>c.type===type),candidates=api.length?api:all.MTProto.constructors.filter(c=>c.type===type);if(!candidates.length)throw Error('Missing call dependency');for(const c of candidates){const prior=constructors.get(c.id);if(prior&&JSON.stringify(prior)!==JSON.stringify(c))throw Error('Conflicting call dependency');constructors.set(c.id,c);for(const p of c.params)add(p.type);}}
+ if(constructors.size>1500)throw Error('Unexpected dependency growth');
+ return {provider:'eitaa',sourceSha256:SHA,layer:all.layer,methods,constructors:[...constructors.values()],responseAliases:{},liveCallVerified:false};
+}
+if(require.main===module){try{const args=process.argv.slice(2);if(args.length!==2&&(args.length!==3||!['--auth','--calls'].includes(args[2])))throw Error('Expected worker and output paths');const out=(args[2]==='--auth'?authSchema:args[2]==='--calls'?callSchema:extract)(fs.readFileSync(args[0],'utf8'));fs.writeFileSync(args[1],JSON.stringify(out,null,2)+'\n');console.log('Extracted '+out.methods.length+' methods and '+out.constructors.length+' constructors; worker not executed');}catch{console.error('Could not extract the reviewed Eitaa schema');process.exitCode=1;}}
+module.exports={extract,definition,SHA,authSchema,callSchema};

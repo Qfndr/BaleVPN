@@ -54,4 +54,4 @@ class AccountClient{
  }
  close(){this.#transport.close();this.#token='';this.#imei='';}
 }
-module.exports={AccountClient,passwordHash,deviceProfile,validProfile};
+module.exports={AccountClient,passwordHash,deviceProfile,validProfile,serviceError};

@@ -12,12 +12,18 @@ it is not yet connected to live signaling or a provider relay carrier.
 The actual web call controller was subsequently located in the larger official
 dialogs chunk. The [private encrypted signaling codec](call-signaling.md) now
 matches 24 official packet fixtures and supports bounded replay protection;
-actual call RPC/events, SDP/media adaptation and verified relay routing remain.
+live call control and verified relay routing remain.
 
 The [single-audio SDP adapter](media-description.md) now passes eight official
 parser/projector fixtures and a real native local TURN/DTLS/SRTP/RTP/QUIC test
 with a 256 KiB exact echo through encrypted Eitaa-shaped descriptions. Live
-provider RPC/events, a provider-specific bridge and route/billing tests remain.
+provider call control, a provider-specific bridge and route/billing tests remain.
+
+The [private call RPC client and codec](call-rpc.md) now support ten reviewed
+methods and their complete 495-constructor dependency closure. Mixed message/call
+updates, legacy constructor IDs and exact 64-bit IDs are covered. Ten request
+and nine response fixtures match the official serializer. This is not yet wired
+to a live account call controller or offered as a working Eitaa tunnel.
 
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker
