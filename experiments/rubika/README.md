@@ -1,7 +1,7 @@
 # Rubika service-wire research
 
-This is an isolated research component, not a supported login or tunnel in the
-product. The Rubika lab tab remains marked as research. No Bale/iGap/Nasim data,
+This is an isolated research component, not a supported tunnel in the product.
+The Rubika lab tab now exposes two independent experimental login forms. No Bale/iGap/Nasim data,
 device registrations, sessions or traffic paths are read or changed.
 
 The current official HTML on 2026-11-03 still references
@@ -42,10 +42,16 @@ and optional `pass_key` for its password challenge. Sign-in additionally sends
 the code hash, verification code and wrapped public key. Their HTTP shapes are
 fixture-tested; **actual SMS delivery, international-number acceptance, second
 password behavior, user registration and login are unverified**. This module
-does not yet provide the auth state machine, encrypted session restore, account
-UI or call controller. Those must be implemented before enabling real login in
-the lab. A future restore must validate the stored self user ID through a signed
-protected read, without silently registering another device.
+now provides an account-local auth state machine, sealed session storage and
+restore, password challenge handling and two account forms in the local lab.
+`auth-session.cjs` saves accepted credentials before device registration. Restore
+validates the stored self user ID through a signed protected read without an OTP,
+sign-in or automatic device registration. An uncertain registration is retained;
+explicit registration recovery is available only after a service requirement.
+Cancellation epochs and per-slot write queues prevent late operations from
+reviving a closed account or overwriting a newer snapshot. Device metadata
+identifies this desktop lab honestly; it does not impersonate a mobile phone.
+See [the Persian walkthrough](../../docs/rubika-login-lab-fa.md).
 
 Recorded evidence is in [auth-wire-evidence-2026-11-03.json](auth-wire-evidence-2026-11-03.json).
 The opt-in anonymous discovery succeeded with one request, without a phone,
@@ -67,7 +73,9 @@ factories/helpers with fixture data in Chrome. External browser requests are
 blocked. It verifies four CBC fixtures in both directions, RSA-OAEP auth in both
 directions, identical RSA-SHA256 signatures, auth transform and public-key field.
 No real account or service request is involved. The full Node regression suite
-passed 132 tests without skips, including 12 new Rubika wire/HTTP tests.
+passed 146 tests without skips, including 25 Rubika wire/HTTP/auth tests.
+The browser suite passed with offline provider fixtures in FA/EN and widths
+320–1440px. Real network login, SMS and calls are not included in those results.
 
 Voice-call support remains a separate research task: native APK declarations
 include WebRTC/relay fields, but the current main web bundle does not establish

@@ -6,12 +6,17 @@ const {MediaPair}=require('./media-pair.cjs');
 const {AuthSession:NasimAuth}=require('../nasim/auth-session.cjs');
 const {ApiError:NasimError}=require('../nasim/http-client.cjs');
 const {CallPair:NasimCallPair}=require('../nasim/call-pair.cjs');
+const {AuthSession:RubikaAuth}=require('../rubika/auth-session.cjs');
+const {ApiError:RubikaError}=require('../rubika/http-client.cjs');
 function sameSecret(a,b){const x=Buffer.from(a||''),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
-async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimBridgeExecutable,nasimOpenBridge,nasimSessionFactory=()=>new NasimAuth(),sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
+async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimBridgeExecutable,nasimOpenBridge,rubikaSessionFactory=(slot,options)=>new RubikaAuth(options),nasimSessionFactory=()=>new NasimAuth(),sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
  if(!directory)throw new Error('An explicit isolated laboratory data directory is required');
- const vault=new SessionVault(directory),sessions=new Map(),calls=new Map(),secret=crypto.randomBytes(32).toString('hex');let origin,closing=false,unlocking=false;
+ const vault=new SessionVault(directory),sessions=new Map(),calls=new Map(),secret=crypto.randomBytes(32).toString('hex');let origin,closing=false,unlocking=false,locking=false;
+ const rubikaWrites=new Map(),rubikaOperations=new Set();
+ function rubikaWrite(slot,operation){const queued=(rubikaWrites.get(slot)||Promise.resolve()).then(operation);rubikaWrites.set(slot,queued.catch(()=>{}));return queued;}
  for(const slot of [1,2]){const account=sessionFactory(slot,bytes=>calls.get(slot)?.handlePush(bytes));sessions.set(slot,account);calls.set(slot,new CallSession(account));}
  const nasimSessions=new Map([1,2].map(slot=>[slot,nasimSessionFactory(slot)]));
+ const rubikaSessions=new Map([1,2].map(slot=>[slot,rubikaSessionFactory(slot,{saveSession:record=>rubikaWrite(slot,()=>vault.save('rubika',slot,record))})]));
  const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpenBridge});
  const media=bridgeExecutable?new MediaPair({executable:bridgeExecutable,accounts:sessions,calls,...openBridge?{open:openBridge}:{}}):null;
  // Keep UI and backend from the same startup snapshot while research code is
@@ -28,10 +33,12 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    if(!sameSecret(req.headers.authorization,'Bearer '+secret))throw error('unauthorized',401);
    if(req.headers.origin&&req.headers.origin!==origin)throw error('invalid_origin',403);
    if(req.method==='POST'&&req.headers.origin!==origin)throw error('invalid_origin',403);
+   if(locking&&req.method!=='GET')throw error('vault_locked',423);
    if(req.method==='GET'&&url.pathname==='/api/state'){
     const accounts=[];for(const [slot,session]of sessions)accounts.push({provider:'igap',slot,...session.state,call:calls.get(slot).state,stored:await vault.has('igap',slot)});
     const nasimAccounts=[];for(const [slot,session]of nasimSessions)nasimAccounts.push({provider:'nasim',slot,...session.state,call:nasimCalls.getCall(slot),stored:await vault.has('nasim',slot)});
-    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts},nasimMedia:nasimCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:false,tunnelReady:false}}});
+    const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot)});
+    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking||locking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts},nasimMedia:nasimCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:true,liveCallVerified:false,tunnelReady:false}}});
    }
    if(req.method==='GET'&&url.pathname==='/api/countries')return json(countries);
    if(req.method!=='POST')throw error('not_found',404);
@@ -41,7 +48,25 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    if(url.pathname==='/api/vault/unlock'){
     if(unlocking)throw error('vault_busy',409);unlocking=true;try{await vault.unlock(body.password);return json({ok:true});}finally{unlocking=false;body.password='';}
    }
-   if(url.pathname==='/api/vault/lock'){media?.close();nasimCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values()])session.close();vault.lock();return json({ok:true});}
+   const rubika=url.pathname.match(/^\/api\/rubika\/([12])\/(start|verify|password|resume|register|stop|logout|forget)$/);
+   if(rubika){
+    if(!vault.unlocked)throw error('vault_locked',423);const slot=Number(rubika[1]),session=rubikaSessions.get(slot);let result;
+    const tracked=rubika[2]!=='stop';if(tracked&&rubikaOperations.has(slot))throw error('account_busy',409);if(tracked)rubikaOperations.add(slot);
+    try{
+    switch(rubika[2]){
+     case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
+     case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
+     case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
+     case 'resume':if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('rubika',slot);if(!record)throw error('no_saved_session');result=await session.restore(record);}break;
+     case 'register':result=await session.register();break;
+     case 'stop':session.stop();return json({ok:true});
+     case 'logout':result=await session.logout();await rubikaWrite(slot,()=>vault.remove('rubika',slot));return json({ok:true,...result});
+     case 'forget':if(session.state.busy)throw error('account_busy',409);session.close();await rubikaWrite(slot,()=>vault.remove('rubika',slot));return json({ok:true});
+    }
+    return json({ok:true,...result});
+    }finally{if(tracked)rubikaOperations.delete(slot);}
+   }
+   if(url.pathname==='/api/vault/lock'){locking=true;try{media?.close();nasimCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values()])session.close();await Promise.allSettled(rubikaWrites.values());vault.lock();return json({ok:true});}finally{locking=false;}}
    const nasimMedia=url.pathname.match(/^\/api\/nasim\/media\/(prepare|dial|accept|end|reset)$/);
    if(nasimMedia){
     if(!vault.unlocked)throw error('vault_locked',423);
@@ -111,9 +136,9 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
   else if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(url.pathname)){file=path.join(ASSETS,url.pathname.slice(1));type='font/woff2';}
   else throw error('not_found',404);
   const data=uiAssets.get(url.pathname)||await fs.readFile(file);res.writeHead(200,{'Content-Type':type});res.end(data);
- }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e instanceof NasimError?{statusCode:e.statusCode,serviceType:e.serviceType}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
+ }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e instanceof NasimError?{statusCode:e.statusCode,serviceType:e.serviceType}:{},...e instanceof RubikaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{origin='http://127.0.0.1:'+server.address().port;resolve();});});
- async function close(){if(closing)return;closing=true;media?.close();nasimCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values()])session.close();vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+ async function close(){if(closing)return;closing=true;media?.close();nasimCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values()])session.close();await Promise.allSettled(rubikaWrites.values());vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  return {origin,url:origin+'/#'+secret,close,server};
 }
 if(require.main===module){const args=process.argv.slice(2);let directory,bridgeExecutable,nasimBridgeExecutable,port=37131;for(let i=0;i<args.length;i++){if(args[i]==='--data-dir')directory=args[++i];else if(args[i]==='--port')port=Number(args[++i]);else if(args[i]==='--bridge')bridgeExecutable=args[++i];else if(args[i]==='--nasim-bridge')nasimBridgeExecutable=args[++i];else throw new Error('Unknown argument');}if(!directory||!Number.isInteger(port)||port<0||port>65535||bridgeExecutable&&!path.isAbsolute(bridgeExecutable)||nasimBridgeExecutable&&!path.isAbsolute(nasimBridgeExecutable)){console.error('node experiments/providers/lab.cjs --data-dir ISOLATED-DIRECTORY [--port 37131] [--bridge ABSOLUTE-NATIVE-HELPER] [--nasim-bridge ABSOLUTE-NASIM-HELPER]');process.exitCode=2;}else startLab({directory,port,bridgeExecutable,nasimBridgeExecutable}).then(lab=>{console.log(lab.url);for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>lab.close().then(()=>process.exit(0)));}).catch(()=>{console.error('Could not start the isolated local login tool');process.exitCode=1;});}

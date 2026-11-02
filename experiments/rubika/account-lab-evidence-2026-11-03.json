@@ -1,0 +1,25 @@
+{
+  "date": "2026-11-03",
+  "scope": "Isolated Rubika two-account login lab; no production Bale changes",
+  "node": {"passed": 146, "failed": 0, "skipped": 0, "rubikaWireHttpAuthTests": 25},
+  "browser": {
+    "passed": true,
+    "languages": ["fa", "en"],
+    "widthRangePx": [320, 1440],
+    "serviceFixturesOnly": true,
+    "applicationExternalRequests": 0,
+    "checks": ["independent accounts", "password challenge without false code-sent message", "encrypted vault", "retained-key restore without OTP or automatic registration", "cleared secret inputs", "theme and language persistence"]
+  },
+  "auth": {
+    "sealedBeforeRegistration": true,
+    "rsaBitsMinimum": 2048,
+    "registrationUncertaintyPreserved": true,
+    "explicitRecoveryOnlyAfterServiceRequirement": true,
+    "perAccountWriteSerialization": true,
+    "lateOperationCancellation": true,
+    "protectedSelfReadOnRestore": true,
+    "honestDesktopMetadata": true
+  },
+  "unverified": ["live OTP delivery", "international-number acceptance", "real password challenge", "service acceptance of 2048-bit RSA", "live login and device registration", "live restore", "voice-call API", "provider relay data path", "throughput", "operator billing", "international outage behavior"],
+  "releasePublished": false
+}

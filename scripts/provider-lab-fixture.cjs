@@ -73,4 +73,15 @@ function fakeNasimBridgeFactory(){const peers=[];return async()=>{
    for(const target of [this,other])target.state={phase:'connected',mediaConnected:true,peerAuthenticated:true,proxyReady:true,relayPair:true,socksAddress:target.options.role==='client'?'127.0.0.1:'+target.options.socksPort:null,receivedBytes:524288,sentBytes:1024,quic:{rttMs:23,lostPackets:0,sentPackets:100,profile:'throughput'}};
   },async addCandidate(){},close(){this.state={phase:'closed'};}};peers.push(peer);return peer;
 };}
-module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,fakeBridgeFactory,fakeNasimBridgeFactory};
+class FakeRubikaAuth extends FakeAuth{
+ constructor(slot,calls,{saveSession=async()=>{}}={}, {challenge=false}={}){super(slot,calls);this.save=saveSession;this.challenge=challenge;}
+ get state(){const base=super.state;return {...base,provider:'rubika',connected:base.signedIn,codeDigits:6,delivery:this.stage==='code'?'SMS':null,
+  registration:this.record?'confirmed':null,selfConfirmed:base.signedIn,deviceModel:this.record?'BaleVPN Provider Lab (desktop)':null};}
+ async start(phone){this.calls.push({slot:this.slot,action:'rubika-start',phone});this.stage=this.challenge?'password':'code';return this.challenge?{twoFactorRequired:true}:{codeRequested:true};}
+ async password(value){assert.equal(value,'fixture-password');this.calls.push({slot:this.slot,action:'rubika-password'});this.stage='code';return {codeRequested:true};}
+ async verify(code){assert.equal(code,'123456');this.calls.push({slot:this.slot,action:'rubika-verify'});this.record={provider:'rubika',userId:'u0'+String(this.slot).repeat(32),auth:'fixture-rubika-auth-secret-'+this.slot,
+  privateKey:'fixture-rubika-private-key-'+this.slot,publicKey:'fixture-public-key',profile:{deviceHash:'a'.repeat(32),deviceModel:'BaleVPN Provider Lab (desktop)',systemVersion:'fixture-system'},registration:'confirmed',loginPhone:'+989120000001'};
+  await this.save(this.record);this.stage='authenticated';return {authenticated:true};}
+ async restore(record){this.calls.push({slot:this.slot,action:'rubika-restore'});this.record=record;this.stage='authenticated';return {authenticated:true};}
+}
+module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,fakeBridgeFactory,fakeNasimBridgeFactory};
