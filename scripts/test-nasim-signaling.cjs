@@ -106,13 +106,24 @@ test('call requests use v2.5 encrypted JSON on the fixed topic and do not retry 
  }finally{connection.close();}
 });
 
-test('cleanSession, callback failures and truncated EOF end the stream visibly without automatically reading chat history or reconnecting',async()=>{
- for(const mode of ['sync','callback','truncated']){
+test('cleanSession resets old call state and continues receiving fresh events without loading chat history or reconnecting',async()=>{
+ const f=fixture(),connection=await f.open();
+ try{
+  f.push(Buffer.from('id: 0\nevent: cleanSession\n\n'));
+  await waitFor(()=>f.events.length===1);assert.equal(f.events[0].type,'streamReset');
+  assert.equal(connection.state.phase,'connected');assert.equal(connection.state.historyGaps,1);assert.equal(connection.state.awaitingFreshEvent,true);
+  f.push(frame(1,[config()]));await waitFor(()=>f.events.length===2);
+  assert.deepEqual(f.events.map(event=>event.type),['streamReset','config']);
+  assert.equal(connection.state.callEvents,1);assert.equal(connection.state.awaitingFreshEvent,false);assert.equal(f.seen.length,2);
+ }finally{connection.close();}
+});
+
+test('callback failures and truncated EOF end the stream visibly without automatically reading chat history or reconnecting',async()=>{
+ for(const mode of ['callback','truncated']){
   const f=fixture({onEvent:mode==='callback'?()=>{throw new Error('private callback detail');}:undefined}),connection=await f.open();
-  if(mode==='sync')f.push(Buffer.from('id: 1\nevent: cleanSession\n\n'));
-  else if(mode==='callback')f.push(frame(1,[config()]));
+  if(mode==='callback')f.push(frame(1,[config()]));
   else{const bytes=frame(1,[config()]);f.push(bytes.subarray(0,bytes.length-1));f.end();}
-  await waitFor(()=>['failed','needs_sync'].includes(connection.state.phase));
+  await waitFor(()=>connection.state.phase==='failed');
   assert.equal(f.seen.length,2);assert.ok(!JSON.stringify(connection.state).includes('private callback detail'));
   await assert.rejects(connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'}),/not_connected/);connection.close();
  }

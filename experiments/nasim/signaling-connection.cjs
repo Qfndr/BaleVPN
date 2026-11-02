@@ -37,6 +37,8 @@ class SignalingConnection{
  #ignored=0;
  #invalid=0;
  #replayed=0;
+ #historyGaps=0;
+ #awaitingFreshEvent=false;
  #pending=new Set();
  #unbind;
  static async open(session,{fetchImpl=globalThis.fetch,onEvent=()=>{},cursor='0',signal}={}){
@@ -81,7 +83,15 @@ class SignalingConnection{
    const frames=this.#parser.push(chunk.value);
    for(const frame of frames){
     if(this.#abort.signal.aborted)return;this.#frames++;
-    if(frame.event==='cleanSession')throw new ApiError('stream_sync_required');
+    if(frame.event==='cleanSession'){
+     // The official worker keeps reading after this notice. Chat clients
+     // reload their conversation list; a call-only consumer instead discards
+     // any stale call state and continues receiving fresh live events.
+     this.#historyGaps++;this.#awaitingFreshEvent=true;
+     try{await this.#onEvent({provider:'nasim',type:'streamReset',lastEventId:this.#cursor.toString()});}
+     catch{throw new ApiError('event_handler_failed');}
+     continue;
+    }
     if(frame.event!=='message')continue;
     const cursor=BigInt(frame.id);if(cursor<=this.#cursor){this.#replayed++;continue;}
     const messages=frame.data?.messages;
@@ -93,7 +103,7 @@ class SignalingConnection{
      try{await this.#onEvent(event);}catch{throw new ApiError('event_handler_failed');}
      this.#calls++;
     }
-    this.#cursor=cursor;
+    this.#cursor=cursor;this.#awaitingFreshEvent=false;
    }
   }}finally{reader.releaseLock();}
  }
@@ -129,13 +139,14 @@ class SignalingConnection{
    throw new ApiError(this.#abort.signal.aborted?'closed':controller.signal.aborted?'timeout':'call_transport_failed');}
   finally{clearTimeout(timer);plain?.fill(0);body?.fill(0);this.#pending.delete(controller);}
  }
- #fail(reason){if(['closed','failed','needs_sync'].includes(this.#phase))return;
-  this.#phase=reason==='stream_sync_required'?'needs_sync':'failed';this.#reason=reason;this.#dispose();}
+ #fail(reason){if(['closed','failed'].includes(this.#phase))return;
+  this.#phase='failed';this.#reason=reason;this.#dispose();}
  #dispose(){this.#unbind?.();this.#unbind=null;this.#abort.abort();this.#api?.close();for(const pending of this.#pending)pending.abort();
   this.#reader?.cancel().catch(()=>{});this.#parser?.close();this.#session=null;}
  close(){if(this.#phase==='closed')return;this.#phase='closed';this.#reason=null;this.#dispose();}
  get state(){return {provider:'nasim',phase:this.#phase,reason:this.#reason,lastEventId:this.#cursor.toString(),
   receivedFrames:this.#frames,callEvents:this.#calls,ignoredMessages:this.#ignored,invalidCallMessages:this.#invalid,
-  replayedFrames:this.#replayed,pendingRequests:this.#pending.size,liveCallVerified:false,tunnelReady:false,billingVerified:false};}
+  replayedFrames:this.#replayed,historyGaps:this.#historyGaps,awaitingFreshEvent:this.#awaitingFreshEvent,
+  pendingRequests:this.#pending.size,liveCallVerified:false,tunnelReady:false,billingVerified:false};}
 }
 module.exports={SignalingConnection,serverBase};

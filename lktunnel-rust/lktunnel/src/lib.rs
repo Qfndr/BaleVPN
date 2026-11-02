@@ -38,6 +38,7 @@ pub mod socks5_quic;
 pub mod tun;
 
 pub mod security;
+pub mod carrier;
 #[cfg(test)]
 mod recovery_tests;
 
@@ -346,8 +347,8 @@ pub fn connect_loopback_with_options(a: security::TunnelOptions, b: security::Tu
     // `a` is the client side (drives `enable_socks5_server`); `b` is the
     // server side (`start_server`). The roles must match those calls'
     // guards, same as a real `connect` / `connect_server` pair.
-    let (a_inner, a_send_rx) = build_loopback_inner(TunnelRole::Client, a);
-    let (b_inner, b_send_rx) = build_loopback_inner(TunnelRole::Server, b);
+    let (a_inner, a_send_rx) = build_channel_inner(TunnelRole::Client, a);
+    let (b_inner, b_send_rx) = build_channel_inner(TunnelRole::Server, b);
     spawn_loopback_forwarder(a_send_rx, Arc::clone(&b_inner));
     spawn_loopback_forwarder(b_send_rx, Arc::clone(&a_inner));
     a_inner.connected.store(true, Ordering::Relaxed);
@@ -357,7 +358,7 @@ pub fn connect_loopback_with_options(a: security::TunnelOptions, b: security::Tu
     (a_inner, b_inner)
 }
 
-fn build_loopback_inner(role: TunnelRole, options: security::TunnelOptions) -> (Arc<LkTunnel>, tokio::sync::mpsc::Receiver<Vec<u8>>) {
+fn build_channel_inner(role: TunnelRole, options: security::TunnelOptions) -> (Arc<LkTunnel>, tokio::sync::mpsc::Receiver<Vec<u8>>) {
     let id = NEXT_TUNNEL_ID.fetch_add(1, Ordering::Relaxed);
     let (send_tx, send_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(SEND_QUEUE_CAP);
     let (state_tx, _state_rx) = tokio::sync::watch::channel(TunnelState::Connecting);

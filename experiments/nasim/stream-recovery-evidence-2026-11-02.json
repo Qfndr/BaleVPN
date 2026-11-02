@@ -1,0 +1,45 @@
+{
+  "provider": "nasim",
+  "observedDate": "2026-11-02",
+  "supersedes": {
+    "file": "signaling-evidence-2026-11-02.json",
+    "fields": ["cleanSessionBehavior", "fullOfficialSseWorkerExecuted"],
+    "reason": "Executing the official worker confirmed that cleanSession does not terminate live event reception. Chat-history synchronization is separate."
+  },
+  "officialSseWorker": {
+    "url": "https://web.nasimrezvan.com/assets/SSE.worker-B_oEmBu_.js",
+    "sha256": "0ced14127586594e01d8785ebd0f942981f4be9e4d5f6efcf8b5ae03cadc4860",
+    "unmodifiedSourceExecuted": true,
+    "test": "scripts/test-nasim-official-sse.cjs",
+    "transport": "in-memory ReadableStream supplied by a fixture fetch shim",
+    "encryptedFixtureAfterCleanSessionReceived": true,
+    "actualServiceRequests": 0
+  },
+  "cleanSessionBehavior": {
+    "continuesLiveStream": true,
+    "privateEvent": "streamReset",
+    "publicMetadata": ["historyGaps", "awaitingFreshEvent"],
+    "chatHistoryDownloaded": false,
+    "callControllerMustInvalidateStaleState": true
+  },
+  "externalCarrierCore": {
+    "module": "lktunnel-rust/lktunnel/src/carrier.rs",
+    "mutualQuicAuthenticationRequired": true,
+    "plaintextFramesRejected": true,
+    "boundedQueuesAndBackpressure": true,
+    "ownerDropDisconnects": true,
+    "verifiedEchoBytes": 262144,
+    "testCarrier": "in-process channels, no RTP or provider sockets",
+    "newTestsPassed": 4,
+    "fullRustLibraryTestsPassed": 53,
+    "nasimNativeMediaDriverImplemented": false
+  },
+  "nodeTests": {"passed": 91, "failed": 0, "skipped": 0},
+  "realLoginTested": false,
+  "liveCallTested": false,
+  "selectedTurnRoutingVerified": false,
+  "throughputMeasured": false,
+  "operatorBillingVerified": false,
+  "internationalOutageTested": false,
+  "productionIntegrationComplete": false
+}
