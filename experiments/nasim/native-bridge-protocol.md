@@ -93,6 +93,11 @@ cd ..
 node --test scripts/test-nasim-native.cjs
 ```
 
+The [account-owned call controller](call-controller.md) now integrates this
+manager as a separate library component; its signaling/native flow is tested
+with injected fixtures and it is not yet connected to the lab UI. That evidence
+must not be confused with the real helper/relay process tests above.
+
 Windows execution has been tested. This Linux command is source-build guidance;
 a Linux helper has not yet been built or executed here. No live provider login,
 call, provider-selected relay, remote VPS, sustained-speed, tariff or outage
