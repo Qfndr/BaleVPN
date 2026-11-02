@@ -1,11 +1,27 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {startLab}=require('../experiments/providers/lab.cjs');
-const {FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
+const {FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,eitaaFixture,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
- try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
+ try{await fn({lab,request,dir,calls,key});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
+
+test('two Eitaa HTTP accounts distinguish bare acknowledgement, handle password and restore sealed identities without another login',()=>fixture(async({request,calls,dir})=>{
+ assert.equal((await request('/api/eitaa/1/start',{country:'IR',phone:'09120000001'})).status,423);assert.equal(calls.length,0);
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ const start=await(await request('/api/eitaa/1/start',{country:'IR',phone:'09120000001'})).json();assert.equal(start.acknowledged,true);assert.equal(start.codeRequested,false);
+ let state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.eitaa[0].codeHashSource,'localCompatibility');assert.equal(state.providerAccounts.eitaa[0].signedIn,false);
+ assert.equal((await request('/api/eitaa/1/verify',{code:'123456'})).status,200);
+ await request('/api/eitaa/2/start',{country:'IR',phone:'09120000002'});const challenge=await(await request('/api/eitaa/2/verify',{code:'123456'})).json();assert.equal(challenge.twoFactorRequired,true);assert.equal((await request('/api/eitaa/2/password',{password:'fixture-password'})).status,200);
+ state=await(await request('/api/state')).json();assert.ok(state.providerAccounts.eitaa.every(a=>a.signedIn&&a.stored));assert.ok(state.accounts.every(a=>!a.signedIn));assert.ok(state.providerAccounts.rubika.every(a=>!a.signedIn));assert.equal(state.capabilities.eitaa.tunnelReady,false);assert.equal((await request('/api/eitaa/1/call/dial',{})).status,404);
+ const publicState=JSON.stringify(state);for(const secret of ['fixture-eitaa-token','fixture-eitaa-code-hash','fixture-password','+989120000001','"imei"'])assert.ok(!publicState.includes(secret));
+ for(const slot of [1,2]){const disk=await fs.readFile(path.join(dir,'eitaa',slot+'.json'),'utf8');assert.ok(!disk.includes('fixture-eitaa-token'));}
+ await request('/api/vault/lock',{});state=await(await request('/api/state')).json();assert.ok(state.providerAccounts.eitaa.every(a=>!a.hasSession&&a.stored));await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ for(const slot of [1,2])assert.equal((await request('/api/eitaa/'+slot+'/resume',{})).status,200);
+ assert.equal(calls.filter(c=>c.action==='eitaa-auth.sendCode').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-auth.signIn').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-users.getUsers').length,4);
+ await request('/api/eitaa/1/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.eitaa[0].stored,false);assert.equal(state.providerAccounts.eitaa[1].signedIn,true);
+}));
 
 async function waitForLab(request,predicate){const deadline=Date.now()+2000;while(true){const state=await(await request('/api/state')).json();if(predicate(state))return state;if(Date.now()>deadline)throw Error('Laboratory call state timed out');await new Promise(r=>setTimeout(r,5));}}
 test('Rubika accounts seal private keys independently and restore without creating another login or touching the other providers',()=>fixture(async({request,dir,calls})=>{
@@ -72,7 +88,7 @@ test('loopback HTTP management rejects missing nonce, cross-origin writes, rebin
  const before=await(await request('/api/state')).json();assert.equal(before.vault.unlocked,false);assert.deepEqual(Object.keys(before.capabilities),['igap','eitaa','nasim','rubika']);assert.ok(Object.values(before.capabilities).every(p=>!p.tunnelReady));
  assert.equal((await request('/api/igap/1/start',{country:'IR',phone:'09120000001'})).status,423);assert.equal(calls.length,0);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
- for(const route of ['/api/eitaa/1/start','/api/rubika/3/start','/api/bale/1/start','/api/igap/3/start'])assert.equal((await request(route,{phone:'09120000001'})).status,404);
+ for(const route of ['/api/eitaa/3/start','/api/rubika/3/start','/api/bale/1/start','/api/igap/3/start'])assert.equal((await request(route,{phone:'09120000001'})).status,404);
  assert.equal(calls.length,0);
 }));
 

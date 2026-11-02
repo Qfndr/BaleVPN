@@ -13,14 +13,16 @@ const FIELDS={
 };
 function text(v,max){return typeof v==='string'&&!!v&&Buffer.byteLength(v)<=max&&!/[\0\r\n]/.test(v);}
 function token(v){return v===''||text(v,4096);}
-function requestInput(name,input,language){
+function deviceProfile(){return {deviceModel:'BaleVPN Provider Lab (desktop)',systemVersion:(os.platform()+' '+os.release()+' '+os.arch()).slice(0,128)};}
+function validProfile(p){return p&&p.deviceModel==='BaleVPN Provider Lab (desktop)'&&text(p.systemVersion,128)&&!/[\x00-\x1f\x7f]/.test(p.systemVersion);}
+function requestInput(name,input,language,profile){
  const fields=Object.hasOwn(FIELDS,name)&&FIELDS[name];if(!fields||!input||typeof input!=='object'||Array.isArray(input)||![Object.prototype,null].includes(Object.getPrototypeOf(input))||Object.keys(input).some(k=>!fields.includes(k)))throw new ApiError('invalid_request');
  const phone=v=>typeof v==='string'&&/^\+[1-9]\d{6,14}$/.test(v),code=v=>typeof v==='string'&&/^\d{4,10}$/.test(v);
  if(name==='auth.sendCode'){if(!phone(input.phone_number))throw new ApiError('invalid_phone');return {...input,api_id:2496,api_hash:'8da85b0d5bfe62527e5b244c209159c3',settings:{_:'codeSettings'}};}
  if(name==='auth.signIn'){if(!phone(input.phone_number)||!code(input.phone_code)||!text(input.phone_code_hash,4096))throw new ApiError('invalid_request');}
  if(name==='auth.checkPassword2'){if(!(input.password_hash instanceof Uint8Array)||input.password_hash.length!==32||!phone(input.phone_number)||!code(input.phone_code))throw new ApiError('invalid_request');}
  if(name==='users.getUsers')return {id:[{_:'inputUserSelf'}]};
- if(name==='eitaaRefreshToken')return {app_info:{_:'eitaaAppInfo',build_version:2496,device_model:'BaleVPN Provider Lab (desktop)',system_version:(os.platform()+' '+os.release()+' '+os.arch()).slice(0,128),app_version:'5.2 K',lang_code:language,sign:''}};
+ if(name==='eitaaRefreshToken')return {app_info:{_:'eitaaAppInfo',build_version:2496,device_model:profile.deviceModel,system_version:profile.systemVersion,app_version:'5.2 K',lang_code:language,sign:''}};
  return input;
 }
 function serviceError(value){
@@ -34,14 +36,14 @@ function passwordHash(password,salt){
  try{return crypto.createHash('sha256').update(salt).update(bytes).update(salt).digest();}finally{bytes.fill(0);}
 }
 class AccountClient{
- #transport;#imei;#token;#language;
- constructor({imei,token:sessionToken='',language='fa',provider='eitaa',...options}={}){
-  if(provider!=='eitaa'||typeof imei!=='string'||!/^[a-z0-9]{15}__web$/.test(imei)||!token(sessionToken)||!['fa','en'].includes(language))throw new ApiError('invalid_credentials');
-  this.#transport=new Transport(options);this.#imei=imei;this.#token=sessionToken;this.#language=language;
+ #transport;#imei;#token;#language;#profile;
+ constructor({imei,token:sessionToken='',language='fa',provider='eitaa',profile=deviceProfile(),...options}={}){
+  if(provider!=='eitaa'||typeof imei!=='string'||!/^[a-z0-9]{15}__web$/.test(imei)||!token(sessionToken)||!['fa','en'].includes(language)||!validProfile(profile))throw new ApiError('invalid_credentials');
+  this.#transport=new Transport(options);this.#imei=imei;this.#token=sessionToken;this.#language=language;this.#profile={deviceModel:profile.deviceModel,systemVersion:profile.systemVersion};
  }
  setToken(value){this.#transport.assertOpen();if(!text(value,4096))throw new ApiError('invalid_credentials');this.#token=value;}
  async request(name,input={},options={}){
-  this.#transport.assertOpen();const value=requestInput(name,input,this.#language);if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
+  this.#transport.assertOpen();const value=requestInput(name,input,this.#language,this.#profile);if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
   const body=wire.envelope(codec.method(name,value),{imei:this.#imei,token:this.#token});
   let result=codec.response(await this.#transport.post(body,options),name);this.#transport.assertOpen();if(result?._==='rpc_result')result=result.result;
   if(result?._==='error'||result?._==='eitta_error')throw serviceError(result);
@@ -52,4 +54,4 @@ class AccountClient{
  }
  close(){this.#transport.close();this.#token='';this.#imei='';}
 }
-module.exports={AccountClient,passwordHash};
+module.exports={AccountClient,passwordHash,deviceProfile,validProfile};

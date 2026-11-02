@@ -84,4 +84,18 @@ class FakeRubikaAuth extends FakeAuth{
   await this.save(this.record);this.stage='authenticated';return {authenticated:true};}
  async restore(record){this.calls.push({slot:this.slot,action:'rubika-restore'});this.record=record;this.stage='authenticated';return {authenticated:true};}
 }
-module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,fakeBridgeFactory,fakeNasimBridgeFactory};
+function eitaaFixture(slot,calls,options,{ack=false,challenge=false}={}){
+ const {AuthSession}=require('../experiments/eitaa/auth-session.cjs'),{ApiError}=require('../experiments/eitaa/http-client.cjs'),{passwordHash}=require('../experiments/eitaa/account-client.cjs');
+ const user={_:'user',id:8000000n+BigInt(slot),self:true,first_name:'Fixture Eitaa '+slot};
+ return new AuthSession({...options,createClient:()=>({setToken(){},close(){},async request(method,input){
+  calls.push({slot,action:'eitaa-'+method});
+  if(method==='auth.sendCode')return ack?{acknowledged:true,codeIssued:false}:{_:'auth.sentCode',phone_code_hash:'fixture-eitaa-code-hash',type:{_:'auth.sentCodeTypeSms',length:6}};
+  if(method==='auth.signIn'){assert.equal(input.phone_code,'123456');if(challenge){const e=new ApiError('service_rejected');e.serviceCode='SESSION_PASSWORD_NEEDED';throw e;}}
+  if(method==='account.getPassword')return {_:'account.password2',current_salt:Buffer.alloc(24,0xa5),hint:'Fixture Eitaa password'};
+  if(method==='auth.checkPassword2')assert.deepEqual(Buffer.from(input.password_hash),passwordHash('fixture-password',Buffer.alloc(24,0xa5)));
+  if(method==='auth.signIn'||method==='auth.checkPassword2')return {_:'auth.authorization',token:'fixture-eitaa-token-'+slot,user};
+  if(method==='users.getUsers')return [user];if(method==='auth.logOut')return true;
+  throw Error('Unexpected Eitaa fixture method');
+ }})});
+}
+module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,eitaaFixture,fakeBridgeFactory,fakeNasimBridgeFactory};

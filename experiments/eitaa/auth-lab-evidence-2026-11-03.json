@@ -1,0 +1,24 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "scope": "Two independent account lifecycle/controllers and local forms; production Bale unchanged",
+  "node": {"passed": 179, "failed": 0, "skipped": 0, "newAuthLifecycleTests": 12, "newHttpAccountTests": 1},
+  "browser": {"passed": true, "languages": ["fa", "en"], "themes": ["dark", "light"], "widthRangePx": [320, 1440], "applicationExternalRequests": 0, "serviceFixturesOnly": true},
+  "checks": ["save accepted token before protected self read", "exact self ID confirmation", "sealed real-disk restore without OTP", "same token/device/profile retained", "late-callback cancellation", "serialized saves across cancellation", "explicit-only token refresh", "positive logout acknowledgement", "password inputs and salts not saved", "no public raw token/device/full phone", "provider namespace isolation"],
+  "bareAcknowledgement": {
+    "claimsCodeIssued": false,
+    "claimsCodeDelivered": false,
+    "verificationNeedsExplicitReceivedCode": true,
+    "codeHashProvenance": "Local request-ID compatibility path observed in the official web worker; never presented as a service-issued hash",
+    "officialRequestIdParityFixtures": 4
+  },
+  "password": {"observedLegacySaltedSha256": true, "modernSrpImplemented": false, "unknownAlgorithmRejected": true},
+  "noImplicitActionsOnRestore": ["sendCode", "signIn", "device registration", "token refresh"],
+  "liveLoginVerified": false,
+  "liveOtpSentByTests": false,
+  "liveCallVerified": false,
+  "providerRelayVerified": false,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "releasePublished": false
+}

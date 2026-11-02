@@ -1,7 +1,8 @@
 # Eitaa service and call research
 
 This component is isolated from production Bale. Eitaa is still marked as
-research in the local provider panel: no login, media or tunnel is enabled.
+a two-account login laboratory in the local provider panel. Media and tunnels
+remain unavailable; real login is unverified.
 
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker
@@ -30,19 +31,20 @@ availability or operator discount. No account, OTP, login or call was used.
 
 The official worker has a branch that resolves an `auth.sendCode` request after
 a `pong` with a synthetic six-digit `auth.sentCode`, using the request message
-ID as its hash. This branch is not copied: a ping acknowledgement cannot prove
-code delivery, authorization or a valid service-issued code hash. The eventual
-login controller must handle this compatibility question from actual account
-evidence and show uncertain acknowledgement honestly.
+ID as its hash. The synthetic sent-code response is not copied: a ping
+acknowledgement cannot prove delivery, authorization or a service-issued hash.
+The controller labels the acknowledgement unconfirmed and offers the local
+correlation compatibility path only after an explicit received-code submission.
+Actual service acceptance of that path remains unverified.
 
 `service-schema.json` stores selected factual field/ID declarations for 16
 login/call methods and 15 constructors, extracted without running the worker.
 It includes the current authorization token and user fields, password method,
 call DH/protocol fields, and WebRTC connection credentials. Their declarations
-do not prove that the service accepts them. Token refresh/sign generation,
-actual code/hash semantics, password handling, retained-device restore,
-live call events, DH validation and a real provider relay carrier remain work
-to complete before Eitaa can be offered as a working tunnel.
+do not prove that the service accepts them. Live verification of token refresh,
+code/hash semantics, password handling and retained-device restore remains,
+along with live call events, DH validation and a provider relay carrier, before
+Eitaa can be offered as a working tunnel.
 
 `auth-schema.json` now records the full selected account dependency closure:
 eight account methods and 73 constructors, including the nested self profile,
@@ -63,17 +65,19 @@ automatically. Error strings are reduced to a fixed code whitelist and bounded
 flood-wait duration. Raw decoded account records must never reach public state.
 
 For an acknowledged `sendCode` pong the result is only
-`{acknowledged:true,codeIssued:false}`. No hash is invented. A sign-in or self-read
-pong is rejected. The controller still needs to reconcile this service behavior
-with actual account evidence. The observed legacy password calculation
+`{acknowledged:true,codeIssued:false}`. This private client invents no hash. A
+sign-in or self-read pong is rejected. The controller's explicit compatibility
+attempt is separate and still needs actual account evidence. The legacy calculation
 SHA-256(salt || UTF-8 password || salt) matches three offline official fixtures;
 this does not verify live password acceptance or implement the modern SRP KDF.
-The auth lifecycle, sealed storage/restore and forms are still to be connected.
+The account lifecycle, sealed storage/restore and two local forms are now
+connected. See [the Persian login guide](../../docs/eitaa-login-lab-fa.md) and
+[auth lab evidence](auth-lab-evidence-2026-11-03.json).
 See [account-wire evidence](account-wire-evidence-2026-11-03.json).
 
 ```powershell
 node --test scripts/test-eitaa-wire.cjs
-node --test scripts/test-eitaa-account.cjs
+node --test scripts/test-eitaa-account.cjs scripts/test-eitaa-auth.cjs
 # Opt-in only: anonymous ping, never OTP or login:
 node scripts/probe-eitaa-public.cjs --connect
 # Offline parity; point at the already downloaded, pinned worker:
@@ -90,8 +94,9 @@ Unicode and short/long TL byte encoding; four ping fixtures cover signed longs.
 The extracted field declarations must also match both committed schemas. Eight
 account request shapes and four private response fixtures match the official
 serializer, including nested Unicode self profiles and shared flag fields.
-The Node regression suite passed 166 tests without failures or skips, including
-20 Eitaa tests. Existing helper process tests used the real Windows executables;
+The Node regression suite passed 179 tests without failures or skips.
+The browser suite covers eight isolated account forms, Eitaa acknowledgement
+and password flows, encrypted restore, both languages/themes and 320–1440px. Existing helper process tests used the real Windows executables;
 the Eitaa HTTP tests used bounded offline responses in addition to the separate
 single live anonymous probe. No production executable was rebuilt for this step.
 
@@ -99,3 +104,31 @@ The Android APK was previously inspected as compiled metadata/DEX fields, not
 installed, run or recovered as original source. Neither that inspection nor
 this service probe verifies voice/video support, provider-carried traffic,
 foreign-VPS performance, quarter-rate billing or international-outage behavior.
+
+## Account lifecycle and acknowledgement compatibility
+
+`auth-session.cjs` saves accepted credentials before protected self confirmation.
+Only the exact active self ID can establish public signed-in state. Late replies
+are invalidated by epochs; writes remain serialized across cancellation. Stop
+preserves accepted credentials, logout requires true from the service, and local
+forget is independent. Restore reuses the retained token, web device ID and
+profile and never requests an OTP, sign-in, registration or automatic refresh.
+Explicit token refresh seals the replacement before another self confirmation.
+Device metadata is marked unadvertised until that explicit refresh.
+
+The private account client still does not invent a service-issued hash after
+pong. The controller offers the official web compatibility path only after an
+explicit user-entered received code. It places a local request correlation in
+the sign-in field that the official web also fills locally; the UI reports code
+issuance/delivery as unconfirmed and labels its provenance localCompatibility.
+Four offline fixtures match the SHA-pinned official request-ID generator,
+including repeated/backwards clocks. This is compatibility evidence, not proof
+of real OTP delivery or server acceptance. A lost request is uncertain and has
+a cooldown; no verify or retry is initiated automatically.
+
+Legacy password handling retains the received code only in memory, uses the
+observed salt KDF and wipes temporary hash/salt buffers. Modern SRP remains
+unimplemented and is explicitly rejected rather than downgraded. This must be
+completed if the live service requires it. The browser exercises the actual
+Eitaa controller with a synthetic account client, not a real account. A separate
+real AccountClient/wire/vault fixture verifies disk restore without another OTP.
