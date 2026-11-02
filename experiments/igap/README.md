@@ -1,7 +1,9 @@
 # iGap feasibility spike
 
 This directory is experimental and is **not imported by the application**.
-It does not add iGap login or a selectable provider to BaleVPN.
+It does not add a selectable provider to BaleVPN. The separate loopback-only
+[local login laboratory](../../docs/provider-local-login-fa.md) now implements
+the current login flow; live account login and calls still need verification.
 
 The current web client also uses LiveKit room RPCs. See
 [current multi-provider findings](../../docs/messenger-providers-fa.md); the legacy
@@ -9,6 +11,10 @@ SDP codec below is not the sole/current call implementation.
 
 Implemented:
 
+- `auth-session.cjs`: independent two-account login state, resend cooldown,
+  optional second password/profile completion, encrypted-channel login and
+  saved-session restoration. Tested with protocol-shaped fixtures, not real OTPs.
+  Session storage and the local UI live in `../providers`; no Bale data is read.
 - `secure-connection.cjs`, `rpc-connection.cjs`: actual v3 connection securing and
   correlated encrypted requests. Key exchange and unauthenticated InfoConfig
   round-trip were tested against the real service; no login or call was made.
@@ -27,8 +33,8 @@ Implemented:
 
 The codec handles the **plaintext packet inside connection encryption**. Its
 output must not be sent directly to the documented production WebSocket. iGap
-authentication, incoming call handling and real relay behavior remain
-unimplemented/unverified. The separate v3 connection module secures its own
+live authentication, incoming call handling and real relay behavior remain
+unverified. Incoming call handling is not implemented. The separate v3 connection module secures its own
 WebSocket; it does not turn the legacy SDP codec into an authenticated provider.
 Decoded SDP, tokens and ICE credentials are sensitive; do not log them.
 

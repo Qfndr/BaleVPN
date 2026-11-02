@@ -39,6 +39,9 @@ test('inherited TLS verification bypass is refused before constructing a transpo
  try{await assert.rejects(Connection.open({WebSocketImpl:FakeSocket}),e=>e.reason==='tls_verification_disabled');assert.equal(FakeSocket.instances.length,before);}
  finally{if(previous===undefined)delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;else process.env.NODE_TLS_REJECT_UNAUTHORIZED=previous;}
 });
+test('login sends the current connection key only inside its encrypted RPC and rejects a supplied replacement',async()=>{
+ const [c,s]=await open();try{const login=c.login(w.string(2,'fixture-session-token',100));const request=s.requests.at(-1);assert.equal(request.action,102);assert.deepEqual(w.one(request.fields,12,2),s.key);assert.equal(w.str(request.fields,2,100),'fixture-session-token');s.respond(request,30102,w.field(14,41,0));await login;const before=s.requests.length;await assert.rejects(c.login(w.field(12,Buffer.alloc(32))),e=>e.reason==='invalid_request');assert.equal(s.requests.length,before);}finally{c.close();}
+});
 test('invalid and overflowing requests never reach the transport',async()=>{
  const [c,s]=await open();try{
   await assert.rejects(c.request(999));await assert.rejects(c.request(506,w.field(1,Buffer.alloc(0))));await assert.rejects(c.request(506,Buffer.alloc(60000)));

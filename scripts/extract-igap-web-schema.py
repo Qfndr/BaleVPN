@@ -4,7 +4,7 @@ Does not execute JavaScript or connect to a service. Keeps only call/auth schema
 """
 import argparse,base64,hashlib,json,re
 from pathlib import Path
-FILES={'Global.proto','Request.proto','Response.proto','Error.proto','ConnectionSecuring.proto','Heartbeat.proto','InfoTime.proto','InfoConfig.proto','UserRegister.proto','UserVerify.proto','UserLogin.proto','UserVerifyNewDevice.proto','SignalingCallCreateRoom.proto','SignalingCallJoinRoom.proto','SignalingCallOffer.proto','SignalingCallRinging.proto','SignalingCallLeaveRoom.proto','SignalingCallAddContact.proto'}
+FILES={'Global.proto','Request.proto','Response.proto','Error.proto','ConnectionSecuring.proto','Heartbeat.proto','InfoTime.proto','InfoConfig.proto','UserRegister.proto','UserVerify.proto','UserLogin.proto','UserVerifyNewDevice.proto','UserTwoStepVerificationGetPasswordDetail.proto','UserTwoStepVerificationVerifyPassword.proto','UserProfileSetNickname.proto','UserSessionLogout.proto','SignalingCallCreateRoom.proto','SignalingCallJoinRoom.proto','SignalingCallOffer.proto','SignalingCallRinging.proto','SignalingCallLeaveRoom.proto','SignalingCallAddContact.proto'}
 def varint(data,at):
     value=0
     for i in range(10):

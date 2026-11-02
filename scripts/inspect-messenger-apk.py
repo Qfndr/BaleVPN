@@ -68,9 +68,29 @@ def dex_strings(data):
         _,at=leb(data,at);end=data.find(b'\0',at,min(len(data),at+65537))
         if end<0:raise ValueError('Invalid DEX string terminator')
         yield data[at:end].decode('utf-8','replace')
-def inspect(path):
+def dex_field_declarations(data,prefixes):
+    strings=list(dex_strings(data));count=u32(data,64);offset=u32(data,68)
+    if count>2000000 or offset+count*4>len(data):raise ValueError('Invalid DEX type table')
+    types=[]
+    for i in range(count):
+        index=u32(data,offset+i*4)
+        if index>=len(strings):raise ValueError('Invalid DEX type string')
+        types.append(strings[index])
+    count=u32(data,80);offset=u32(data,84)
+    if count>2000000 or offset+count*8>len(data):raise ValueError('Invalid DEX field table')
+    result={};selected=0
+    for i in range(count):
+        owner,kind,name=struct.unpack_from('<HHI',data,offset+i*8)
+        if owner>=len(types) or kind>=len(types) or name>=len(strings):raise ValueError('Invalid DEX field index')
+        if any(types[owner].startswith(prefix)for prefix in prefixes):
+            selected+=1
+            if selected>5000:raise ValueError('Declaration output limit')
+            result.setdefault(types[owner],[]).append({'field':strings[name],'type':types[kind]})
+    return result
+def inspect(path,class_prefixes=()):
+    if any(not isinstance(p,str)or not p.startswith('L')or len(p)>256 for p in class_prefixes):raise ValueError('Invalid class prefix')
     if path.stat().st_size>200*1024*1024:raise ValueError('APK size limit')
-    markers=set();endpoints=set();dexes=[]
+    markers=set();endpoints=set();dexes=[];declarations={}
     with zipfile.ZipFile(path)as apk:
         if len(apk.infolist())>100000:raise ValueError('APK entry count limit')
         def read(name,limit):
@@ -93,9 +113,10 @@ def inspect(path):
                         if parts.hostname and not parts.username:endpoints.add(urlunsplit((parts.scheme,parts.netloc,parts.path,'','')))
                     except ValueError:pass
             dexes.append({'file':name,'strings':count})
+            if class_prefixes:declarations.update(dex_field_declarations(read(name,128*1024*1024),class_prefixes))
     with path.open('rb')as stream:digest=hashlib.file_digest(stream,'sha256').hexdigest()
-    return {'apk':str(path),'sha256':digest,'identity':identity,'dexes':dexes,'nativeLibraries':libraries,'callMarkers':sorted(markers),'publicEndpoints':sorted(endpoints),'installedOrExecuted':False,'featureSupportVerified':False}
+    return {'apk':str(path),'sha256':digest,'identity':identity,'dexes':dexes,'nativeLibraries':libraries,'callMarkers':sorted(markers),'publicEndpoints':sorted(endpoints),'fieldDeclarations':declarations,'installedOrExecuted':False,'featureSupportVerified':False}
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('apk',type=Path);parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
-    result=inspect(args.apk);args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');print(json.dumps({'identity':result['identity'],'dexFiles':len(result['dexes']),'callMarkers':len(result['callMarkers']),'output':str(args.output)}))
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('apk',type=Path);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--class-prefix',action='append',default=[]);args=parser.parse_args()
+    result=inspect(args.apk,args.class_prefix);args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8');print(json.dumps({'identity':result['identity'],'dexFiles':len(result['dexes']),'callMarkers':len(result['callMarkers']),'declarationClasses':len(result['fieldDeclarations']),'output':str(args.output)}))
 if __name__=='__main__':main()

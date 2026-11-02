@@ -17,6 +17,11 @@ def dex(strings):
     struct.pack_into('<I',header,32,base+len(data));struct.pack_into('<I',header,36,112);struct.pack_into('<I',header,40,0x12345678);struct.pack_into('<II',header,56,len(strings),112)
     return bytes(header)+struct.pack('<'+'I'*len(offsets),*offsets)+data
 class InspectionTests(unittest.TestCase):
+    def test_call_model_field_declarations_are_bounded_metadata(self):
+        data=bytearray(dex(['Lexample/Call;','Z','p2p_allowed']));data+=b'\0'*((-len(data))%4);type_offset=len(data);data+=struct.pack('<II',0,1);field_offset=len(data);data+=struct.pack('<HHI',0,1,2);struct.pack_into('<I',data,32,len(data));struct.pack_into('<II',data,64,2,type_offset);struct.pack_into('<II',data,80,1,field_offset)
+        self.assertEqual(apk.dex_field_declarations(data,['Lexample/']),{'Lexample/Call;':[{'field':'p2p_allowed','type':'Z'}]})
+        struct.pack_into('<H',data,field_offset,5)
+        with self.assertRaises(ValueError):apk.dex_field_declarations(data,['Lexample/'])
     def test_actual_binary_manifest_shapes(self):self.assertEqual(apk.manifest_identity(manifest()),{'package':'org.example','versionName':'1.2','versionCode':42})
     def test_dex_strings_and_truncation(self):
         self.assertEqual(list(apk.dex_strings(dex(['hello','Lio/livekit/Room;']))),['hello','Lio/livekit/Room;'])

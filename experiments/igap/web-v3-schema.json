@@ -1196,6 +1196,62 @@
       "enums": []
     },
     {
+      "file": "UserProfileSetNickname.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserProfileSetNickname",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "nickname",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserProfileSetNicknameResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "nickname",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "initials",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
       "file": "UserRegister.proto",
       "package": "proto",
       "messages": [
@@ -1335,6 +1391,160 @@
               }
             }
           ],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserSessionLogout.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserSessionLogout",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserSessionLogoutResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserTwoStepVerificationGetPasswordDetail.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserTwoStepVerificationGetPasswordDetail",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserTwoStepVerificationGetPasswordDetailResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "question_one",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "question_two",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "hint",
+              "number": 4,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "has_confirmed_recovery_email",
+              "number": 5,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "unconfirmed_email_pattern",
+              "number": 6,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserTwoStepVerificationVerifyPassword.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserTwoStepVerificationVerifyPassword",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "password",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserTwoStepVerificationVerifyPasswordResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
           "nested": []
         }
       ],

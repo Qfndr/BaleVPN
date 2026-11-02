@@ -3,7 +3,7 @@ const crypto=require('node:crypto');
 const {wire:w,MAX_FRAME}=require('./signaling.cjs');
 const security=require('./secure-connection.cjs');
 const ENDPOINT='wss://secure.igap.net/hybrid/?apiVersion=3&version=1';
-const ALLOWED=new Set([3,100,101,102,145,502,506,913,914,915,916,917,918]);
+const ALLOWED=new Set([3,100,101,102,105,127,131,132,145,502,506,913,914,915,916,917,918]);
 class RpcError extends Error{constructor(reason,major,minor,waitSeconds){super('iGap RPC '+reason);this.name='IgapRpcError';this.reason=reason;if(major!==undefined)this.major=major;if(minor!==undefined)this.minor=minor;if(waitSeconds)this.waitSeconds=waitSeconds;}}
 class Connection{
  #socket;#key;#params;#phase='greeting';#pending=new Map();#deadline;#heartbeat;#resolve;#reject;#rootKey;#push;
@@ -57,6 +57,10 @@ class Connection{
   try{this.#socket?.close();}catch{}
  }
  close(){this.#fail('closed');}
+ login(fields){
+  if(this.#phase!=='ready')return Promise.reject(new RpcError('not_connected'));
+  try{if(!Buffer.isBuffer(fields)||w.parse(fields).has(12))throw new Error();return this.request(102,Buffer.concat([fields,w.field(12,this.#key)]));}catch{return Promise.reject(new RpcError('invalid_request'));}
+ }
  get status(){return {phase:this.#phase,pending:this.#pending.size,cipher:this.#params?.method||null,authenticated:false,providerVerified:false};}
 }
 async function probe(){const c=await Connection.open();try{

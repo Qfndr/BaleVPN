@@ -1,0 +1,748 @@
+{
+  "provider": "rubika",
+  "observedDate": "2026-11-02",
+  "android": {
+    "versionCode": 411,
+    "versionName": "4.1.1",
+    "compileSdkVersion": 34,
+    "package": "app.rbmain.a"
+  },
+  "sources": [
+    {
+      "kind": "javascript",
+      "url": "https://web.rubika.ir/runtime-es2015.0dae8cbc97194c7caed4.js",
+      "finalUrl": "https://web.rubika.ir/runtime-es2015.0dae8cbc97194c7caed4.js",
+      "bytes": 1485,
+      "sha256": "6c5acbb82a46a4971660f65131241dffcc28828f4dbd76b8ec7bab0b468250f8"
+    },
+    {
+      "kind": "javascript",
+      "url": "https://web.rubika.ir/scripts.9fc52888a9a75ff81dc6.js",
+      "finalUrl": "https://web.rubika.ir/scripts.9fc52888a9a75ff81dc6.js",
+      "bytes": 239152,
+      "sha256": "ce6a8cf6469cdbdd25b156bedc707cd0080ada2d8ebdde2e75b1ea7bcc6274e2"
+    },
+    {
+      "kind": "javascript",
+      "url": "https://web.rubika.ir/main-es2015.6421623571994c9dd619.js",
+      "finalUrl": "https://web.rubika.ir/main-es2015.6421623571994c9dd619.js",
+      "bytes": 3472393,
+      "sha256": "47b302b9166ed8c9138f9d959e9107c53dcb78c9447f8281715f657b68080acb"
+    },
+    {
+      "kind": "apk",
+      "url": "https://cdnu7.iranlms.ir/Rubika_4_1_1.apk",
+      "finalUrl": "https://cdnu7.iranlms.ir/Rubika_4_1_1.apk",
+      "bytes": 89156091,
+      "sha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c"
+    }
+  ],
+  "callFieldDeclarations": {
+    "Lir/aaap/messengercore/model/VoiceCallModels$AcceptCallInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "library_versions",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "max_layer",
+        "type": "I"
+      },
+      {
+        "field": "min_layer",
+        "type": "I"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$AcceptCallOutput;": [
+      {
+        "field": "call_update",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateObject;"
+      },
+      {
+        "field": "chat_update",
+        "type": "Lir/aaap/messengercore/model/ChatUpdateObject;"
+      },
+      {
+        "field": "message_update",
+        "type": "Lir/aaap/messengercore/model/MessageUpdateObject;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallAbsObject;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "call_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "discard_reason",
+        "type": "Lir/aaap/messengercore/model/MessageCallData$DiscardReasonEnum;"
+      },
+      {
+        "field": "duration",
+        "type": "I"
+      },
+      {
+        "field": "message_id",
+        "type": "J"
+      },
+      {
+        "field": "object_guid",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "other_participants",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "request_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallRequestType;"
+      },
+      {
+        "field": "start_time",
+        "type": "J"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallConfig;": [
+      {
+        "field": "audio_bitrate_step_decr",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_bitrate_step_incr",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_init_bitrate",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_init_bitrate_edge",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_init_bitrate_gprs",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_init_bitrate_saving",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_max_bitrate",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_max_bitrate_edge",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_max_bitrate_gprs",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_max_bitrate_saving",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "audio_min_bitrate",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "max_unsent_stream_packets",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "p2p_to_relay_switch_threshold",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "packet_loss_for_extra_ec",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "rate_flags",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "rate_min_rtt",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "rate_min_send_loss",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "reconnecting_state_timeout",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "relay_switch_threshold",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "relay_to_p2p_switch_threshold",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "unack_nop_threshold",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallOutObject;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "call_out_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallOutType;"
+      },
+      {
+        "field": "sip_call_out_data",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$SipCallOutObject;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallOutType;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallOutType;"
+      },
+      {
+        "field": "SIP",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallOutType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallProtocolType;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallProtocolType;"
+      },
+      {
+        "field": "CallOut",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallProtocolType;"
+      },
+      {
+        "field": "WebRtc",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallProtocolType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallRequestType;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallRequestType;"
+      },
+      {
+        "field": "Caller",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallRequestType;"
+      },
+      {
+        "field": "Receiver",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallRequestType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallSignalDataObject;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "data",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallStartedInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      },
+      {
+        "field": "Accepted",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      },
+      {
+        "field": "Discarded",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      },
+      {
+        "field": "Requested",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      },
+      {
+        "field": "Waiting",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallType;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "CallOut",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "Video",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "Voice",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;"
+      },
+      {
+        "field": "Delete",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;"
+      },
+      {
+        "field": "Edit",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;"
+      },
+      {
+        "field": "New",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateObject;": [
+      {
+        "field": "action",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateActionEnum;"
+      },
+      {
+        "field": "call",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$PhoneCall;"
+      },
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "object_guid",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "timestamp",
+        "type": "I"
+      },
+      {
+        "field": "type",
+        "type": "Lir/aaap/messengercore/model/ChatType;"
+      },
+      {
+        "field": "updated_parameters",
+        "type": "Ljava/util/ArrayList;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$ConnectionType;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$ConnectionType;"
+      },
+      {
+        "field": "Tg",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$ConnectionType;"
+      },
+      {
+        "field": "WebRTC",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$ConnectionType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$DiscardCallInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "duration",
+        "type": "I"
+      },
+      {
+        "field": "reason",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$DiscardCallOutput;": [
+      {
+        "field": "call_update",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateObject;"
+      },
+      {
+        "field": "chat_update",
+        "type": "Lir/aaap/messengercore/model/ChatUpdateObject;"
+      },
+      {
+        "field": "message_update",
+        "type": "Lir/aaap/messengercore/model/MessageUpdateObject;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      },
+      {
+        "field": "Busy",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      },
+      {
+        "field": "Disconnect",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      },
+      {
+        "field": "Hangup",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      },
+      {
+        "field": "Missed",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$FilterTypeEnum;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$FilterTypeEnum;"
+      },
+      {
+        "field": "All",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$FilterTypeEnum;"
+      },
+      {
+        "field": "Missed",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$FilterTypeEnum;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$GetCallsInput;": [
+      {
+        "field": "filter_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$FilterTypeEnum;"
+      },
+      {
+        "field": "max_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "min_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "sort",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$SortTypeEnum;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$GetCallsOutput;": [
+      {
+        "field": "calls",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "has_continue",
+        "type": "Z"
+      },
+      {
+        "field": "new_max_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "new_min_id",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$GetSignalingDataInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$GetSignalingDataOutput;": [
+      {
+        "field": "data_list",
+        "type": "Ljava/util/ArrayList;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$GetVoiceCallOutput;": [
+      {
+        "field": "call_config",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallConfig;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$PhoneCall;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "call_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "connections",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "discard_reason",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$EnumDiscardCallReason;"
+      },
+      {
+        "field": "duration",
+        "type": "I"
+      },
+      {
+        "field": "key",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "library_versions",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "other_participants",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "p2p_allowed",
+        "type": "Z"
+      },
+      {
+        "field": "protocol_layer",
+        "type": "I"
+      },
+      {
+        "field": "receive_time",
+        "type": "I"
+      },
+      {
+        "field": "report_rating",
+        "type": "Z"
+      },
+      {
+        "field": "state",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallStateEnum;"
+      },
+      {
+        "field": "timestamp",
+        "type": "I"
+      },
+      {
+        "field": "updatedTimeStampMap",
+        "type": "Ljava/util/HashMap;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$PhoneConnection;": [
+      {
+        "field": "constructor",
+        "type": "I"
+      },
+      {
+        "field": "id",
+        "type": "J"
+      },
+      {
+        "field": "ip",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "ipv6",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "peer_tag",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "port",
+        "type": "I"
+      },
+      {
+        "field": "turn_password",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "turn_username",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$ConnectionType;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$RateCallInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "comment",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "star_count",
+        "type": "I"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$ReceivedCallInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$ReceivedCallOutput;": [
+      {
+        "field": "call_update",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateObject;"
+      },
+      {
+        "field": "chat_update",
+        "type": "Lir/aaap/messengercore/model/ChatUpdateObject;"
+      },
+      {
+        "field": "message_update",
+        "type": "Lir/aaap/messengercore/model/MessageUpdateObject;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$RequestCallInput;": [
+      {
+        "field": "call_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallType;"
+      },
+      {
+        "field": "library_versions",
+        "type": "Ljava/util/ArrayList;"
+      },
+      {
+        "field": "max_layer",
+        "type": "I"
+      },
+      {
+        "field": "min_layer",
+        "type": "I"
+      },
+      {
+        "field": "receiver_phone_number",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "sip_version",
+        "type": "I"
+      },
+      {
+        "field": "support_call_out",
+        "type": "Z"
+      },
+      {
+        "field": "user_guid",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$RequestCallOutput;": [
+      {
+        "field": "call_type",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallProtocolType;"
+      },
+      {
+        "field": "call_update",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallUpdateObject;"
+      },
+      {
+        "field": "callout_data",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$CallOutObject;"
+      },
+      {
+        "field": "chat_update",
+        "type": "Lir/aaap/messengercore/model/ChatUpdateObject;"
+      },
+      {
+        "field": "message_update",
+        "type": "Lir/aaap/messengercore/model/MessageUpdateObject;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$SendSignalDataInput;": [
+      {
+        "field": "call_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "data",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$SipCallOutObject;": [
+      {
+        "field": "caller_id",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "ip",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "password",
+        "type": "Ljava/lang/String;"
+      },
+      {
+        "field": "username",
+        "type": "Ljava/lang/String;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$SortTypeEnum;": [
+      {
+        "field": "$VALUES",
+        "type": "[Lir/aaap/messengercore/model/VoiceCallModels$SortTypeEnum;"
+      },
+      {
+        "field": "FromMax",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$SortTypeEnum;"
+      },
+      {
+        "field": "FromMin",
+        "type": "Lir/aaap/messengercore/model/VoiceCallModels$SortTypeEnum;"
+      }
+    ],
+    "Lir/aaap/messengercore/model/VoiceCallModels$TL_updatePhoneCallSignalingData;": [
+      {
+        "field": "data",
+        "type": "[B"
+      },
+      {
+        "field": "phone_call_id",
+        "type": "Ljava/lang/String;"
+      }
+    ]
+  },
+  "nativeLibraries": [
+    "lib/arm64-v8a/libtmessages.38.so",
+    "lib/armeabi-v7a/libtmessages.38.so",
+    "lib/x86/libtmessages.38.so",
+    "lib/x86_64/libtmessages.38.so"
+  ],
+  "androidInstalledOrExecuted": false,
+  "authenticatedLoginTested": false,
+  "liveCallTested": false,
+  "realCarrierIntegrityTested": false,
+  "productionProviderEnabled": false,
+  "testAccountsAvailable": 2,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "tariffSource": {
+    "url": "https://rubika.ir/",
+    "section": "tariffs",
+    "observedClaim": "The official site says traffic is charged at the full rate; an operator-specific measurement is still required.",
+    "pageSha256": "cbd471926cceeb1bcdacc377effbd67fa755e05b8d20d91c31485fd6ba96ba74"
+  }
+}
