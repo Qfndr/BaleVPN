@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "productionBaleModified": false,
+  "officialHtml": {
+    "url": "https://web.eitaa.com/",
+    "sha256": "2f93331f920d38d2bc155e1833a131e3b777d71f70c53e876c6b403bc2a0aba5",
+    "sameAsPreviousDownload": true,
+    "mainScript": "index-tZPoBcpJ.js"
+  },
+  "worker": {
+    "url": "https://web.eitaa.com/mtproto.worker-CJJzYEpd.js",
+    "sha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+    "wholeWorkerExecuted": false,
+    "currentTransport": "HTTPS eitaaObject TL envelope without MTProto authKey",
+    "layer": 135,
+    "flags": 128
+  },
+  "anonymousProbe": {
+    "endpoint": "https://hasan.eitaa.ir/eitaa/",
+    "method": "ping",
+    "requests": 1,
+    "correlatedPong": true,
+    "elapsedMs": 609,
+    "otpSubmitted": false,
+    "accountUsed": false
+  },
+  "offlineOfficialSerializerParity": {
+    "passed": true,
+    "envelopeFixtures": 4,
+    "signedPingFixtures": 4,
+    "selectedSchemaMatches": true,
+    "networkUsed": false
+  },
+  "nodeRegression": {"passed": 156, "failed": 0, "skipped": 0, "newEitaaTests": 10},
+  "loginAcknowledgement": "Official pong-to-synthetic-sentCode conversion is deliberately not implemented; code delivery remains unverified",
+  "unverified": ["live login", "international phone acceptance", "retained session restore", "password challenge", "voice/video call API", "media relay carrier", "throughput", "billing discount", "international outage behavior"],
+  "releasePublished": false
+}

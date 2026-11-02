@@ -1,0 +1,771 @@
+{
+  "provider": "eitaa",
+  "observedDate": "2026-11-03",
+  "source": {
+    "url": "https://web.eitaa.com/mtproto.worker-CJJzYEpd.js",
+    "sha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f"
+  },
+  "serviceTransport": "HTTPS TL eitaaObject; current worker creates networkers with no MTProto authKey",
+  "layer": 135,
+  "flags": 128,
+  "methods": [
+    {
+      "id": 2059302893,
+      "method": "eitaaObject",
+      "params": [
+        {
+          "name": "token",
+          "type": "string"
+        },
+        {
+          "name": "imei",
+          "type": "string"
+        },
+        {
+          "name": "packed_data",
+          "type": "bytes"
+        },
+        {
+          "name": "layer",
+          "type": "int"
+        },
+        {
+          "name": "flags",
+          "type": "int"
+        }
+      ],
+      "type": "EitaaObject"
+    },
+    {
+      "id": 2059302892,
+      "method": "ping",
+      "params": [
+        {
+          "name": "ping_id",
+          "type": "long"
+        }
+      ],
+      "type": "Pong"
+    },
+    {
+      "id": -1502141361,
+      "method": "auth.sendCode",
+      "params": [
+        {
+          "name": "phone_number",
+          "type": "string"
+        },
+        {
+          "name": "api_id",
+          "type": "int"
+        },
+        {
+          "name": "api_hash",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "CodeSettings"
+        }
+      ],
+      "type": "auth.SentCode"
+    },
+    {
+      "id": -1126886015,
+      "method": "auth.signIn",
+      "params": [
+        {
+          "name": "phone_number",
+          "type": "string"
+        },
+        {
+          "name": "phone_code_hash",
+          "type": "string"
+        },
+        {
+          "name": "phone_code",
+          "type": "string"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": -1987323361,
+      "method": "auth.checkPassword2",
+      "params": [
+        {
+          "name": "password_hash",
+          "type": "bytes"
+        },
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "phone_code",
+          "type": "flags.0?string"
+        },
+        {
+          "name": "phone_number",
+          "type": "flags.1?string"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": 1418342645,
+      "method": "account.getPassword",
+      "params": [],
+      "type": "account.Password"
+    },
+    {
+      "id": 227648840,
+      "method": "users.getUsers",
+      "params": [
+        {
+          "name": "id",
+          "type": "Vector<InputUser>"
+        }
+      ],
+      "type": "Vector<User>"
+    },
+    {
+      "id": 1461180992,
+      "method": "auth.logOut",
+      "params": [],
+      "type": "Bool"
+    },
+    {
+      "id": -599448727,
+      "method": "eitaaRefreshToken",
+      "params": [
+        {
+          "name": "app_info",
+          "type": "EitaaAppInfo"
+        }
+      ],
+      "type": "EitaaRefreshToken"
+    },
+    {
+      "id": 651135312,
+      "method": "messages.getDhConfig",
+      "params": [
+        {
+          "name": "version",
+          "type": "int"
+        },
+        {
+          "name": "random_length",
+          "type": "int"
+        }
+      ],
+      "type": "messages.DhConfig"
+    },
+    {
+      "id": 1430593449,
+      "method": "phone.getCallConfig",
+      "params": [],
+      "type": "DataJSON"
+    },
+    {
+      "id": 1124046573,
+      "method": "phone.requestCall",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "video",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "user_id",
+          "type": "InputUser"
+        },
+        {
+          "name": "random_id",
+          "type": "int"
+        },
+        {
+          "name": "g_a_hash",
+          "type": "bytes"
+        },
+        {
+          "name": "protocol",
+          "type": "PhoneCallProtocol"
+        }
+      ],
+      "type": "phone.PhoneCall"
+    },
+    {
+      "id": 1003664544,
+      "method": "phone.acceptCall",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPhoneCall"
+        },
+        {
+          "name": "g_b",
+          "type": "bytes"
+        },
+        {
+          "name": "protocol",
+          "type": "PhoneCallProtocol"
+        }
+      ],
+      "type": "phone.PhoneCall"
+    },
+    {
+      "id": 788404002,
+      "method": "phone.confirmCall",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPhoneCall"
+        },
+        {
+          "name": "g_a",
+          "type": "bytes"
+        },
+        {
+          "name": "key_fingerprint",
+          "type": "long"
+        },
+        {
+          "name": "protocol",
+          "type": "PhoneCallProtocol"
+        }
+      ],
+      "type": "phone.PhoneCall"
+    },
+    {
+      "id": 399855457,
+      "method": "phone.receivedCall",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPhoneCall"
+        }
+      ],
+      "type": "Bool"
+    },
+    {
+      "id": -1295269440,
+      "method": "phone.discardCall",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "video",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "peer",
+          "type": "InputPhoneCall"
+        },
+        {
+          "name": "duration",
+          "type": "int"
+        },
+        {
+          "name": "reason",
+          "type": "PhoneCallDiscardReason"
+        },
+        {
+          "name": "connection_id",
+          "type": "long"
+        }
+      ],
+      "type": "Updates"
+    }
+  ],
+  "constructors": [
+    {
+      "id": 880243653,
+      "predicate": "pong",
+      "params": [
+        {
+          "name": "msg_id",
+          "type": "long"
+        },
+        {
+          "name": "ping_id",
+          "type": "long"
+        }
+      ],
+      "type": "Pong"
+    },
+    {
+      "id": -994444869,
+      "predicate": "error",
+      "params": [
+        {
+          "name": "code",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "type": "Error"
+    },
+    {
+      "id": -404,
+      "predicate": "eitta_error",
+      "params": [
+        {
+          "name": "code",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "type": "Error"
+    },
+    {
+      "id": 1577067778,
+      "predicate": "auth.sentCode",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "type",
+          "type": "auth.SentCodeType"
+        },
+        {
+          "name": "phone_code_hash",
+          "type": "string"
+        },
+        {
+          "name": "next_type",
+          "type": "flags.1?auth.CodeType"
+        },
+        {
+          "name": "timeout",
+          "type": "flags.2?int"
+        }
+      ],
+      "type": "auth.SentCode"
+    },
+    {
+      "id": -1073693790,
+      "predicate": "auth.sentCodeTypeSms",
+      "params": [
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": 1035688326,
+      "predicate": "auth.sentCodeTypeApp",
+      "params": [
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": -855308010,
+      "predicate": "auth.authorization",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "token",
+          "type": "string"
+        },
+        {
+          "name": "user",
+          "type": "User"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": -557924733,
+      "predicate": "codeSettings",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "allow_flashcall",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "current_number",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "allow_app_hash",
+          "type": "flags.4?true"
+        }
+      ],
+      "type": "CodeSettings"
+    },
+    {
+      "id": -138301121,
+      "predicate": "inputUserSelf",
+      "params": [],
+      "type": "InputUser"
+    },
+    {
+      "id": -321753653,
+      "predicate": "user",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "flags2",
+          "type": "#"
+        },
+        {
+          "name": "eFlags",
+          "type": "#"
+        },
+        {
+          "name": "self",
+          "type": "flags.10?true"
+        },
+        {
+          "name": "contact",
+          "type": "flags.11?true"
+        },
+        {
+          "name": "mutual_contact",
+          "type": "flags.12?true"
+        },
+        {
+          "name": "deleted",
+          "type": "flags.13?true"
+        },
+        {
+          "name": "bot",
+          "type": "flags.14?true"
+        },
+        {
+          "name": "bot_chat_history",
+          "type": "flags.15?true"
+        },
+        {
+          "name": "bot_nochats",
+          "type": "flags.16?true"
+        },
+        {
+          "name": "verified",
+          "type": "flags.17?true"
+        },
+        {
+          "name": "restricted",
+          "type": "flags.18?true"
+        },
+        {
+          "name": "min",
+          "type": "flags.20?true"
+        },
+        {
+          "name": "bot_inline_geo",
+          "type": "flags.21?true"
+        },
+        {
+          "name": "support",
+          "type": "flags.23?true"
+        },
+        {
+          "name": "scam",
+          "type": "flags.24?true"
+        },
+        {
+          "name": "apply_min_photo",
+          "type": "flags.25?true"
+        },
+        {
+          "name": "fake",
+          "type": "flags.26?true"
+        },
+        {
+          "name": "id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "flags.0?long"
+        },
+        {
+          "name": "first_name",
+          "type": "flags.1?string"
+        },
+        {
+          "name": "last_name",
+          "type": "flags.2?string"
+        },
+        {
+          "name": "username",
+          "type": "flags.3?string"
+        },
+        {
+          "name": "phone",
+          "type": "flags.4?string"
+        },
+        {
+          "name": "photo",
+          "type": "flags.5?UserProfilePhoto"
+        },
+        {
+          "name": "status",
+          "type": "flags.6?UserStatus"
+        },
+        {
+          "name": "bot_info_version",
+          "type": "flags.14?int"
+        },
+        {
+          "name": "restriction_reason",
+          "type": "flags.18?Vector<RestrictionReason>"
+        },
+        {
+          "name": "bot_inline_placeholder",
+          "type": "flags.19?string"
+        },
+        {
+          "name": "lang_code",
+          "type": "flags.22?string"
+        },
+        {
+          "name": "miniApp",
+          "type": "eFlags.0?true"
+        },
+        {
+          "name": "badge_name",
+          "type": "eFlags.1?string"
+        },
+        {
+          "name": "badge_red_color",
+          "type": "eFlags.2?true"
+        },
+        {
+          "name": "miniAppGeo",
+          "type": "eFlags.4?true"
+        },
+        {
+          "name": "bot_active_users",
+          "type": "flags2.12?int"
+        }
+      ],
+      "type": "User"
+    },
+    {
+      "id": 1635347945,
+      "predicate": "eitaaAppInfo",
+      "params": [
+        {
+          "name": "build_version",
+          "type": "int"
+        },
+        {
+          "name": "device_model",
+          "type": "string"
+        },
+        {
+          "name": "system_version",
+          "type": "string"
+        },
+        {
+          "name": "app_version",
+          "type": "string"
+        },
+        {
+          "name": "lang_code",
+          "type": "string"
+        },
+        {
+          "name": "sign",
+          "type": "string"
+        }
+      ],
+      "type": "EitaaAppInfo"
+    },
+    {
+      "id": -58224696,
+      "predicate": "phoneCallProtocol",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "udp_p2p",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "udp_reflector",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "min_layer",
+          "type": "int"
+        },
+        {
+          "name": "max_layer",
+          "type": "int"
+        },
+        {
+          "name": "library_versions",
+          "type": "Vector<string>"
+        }
+      ],
+      "type": "PhoneCallProtocol"
+    },
+    {
+      "id": -1770029977,
+      "predicate": "phoneCall",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "p2p_allowed",
+          "type": "flags.5?true"
+        },
+        {
+          "name": "video",
+          "type": "flags.6?true"
+        },
+        {
+          "name": "id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "long"
+        },
+        {
+          "name": "date",
+          "type": "int"
+        },
+        {
+          "name": "admin_id",
+          "type": "long"
+        },
+        {
+          "name": "participant_id",
+          "type": "long"
+        },
+        {
+          "name": "g_a_or_b",
+          "type": "bytes"
+        },
+        {
+          "name": "key_fingerprint",
+          "type": "long"
+        },
+        {
+          "name": "protocol",
+          "type": "PhoneCallProtocol"
+        },
+        {
+          "name": "connections",
+          "type": "Vector<PhoneConnection>"
+        },
+        {
+          "name": "start_date",
+          "type": "int"
+        }
+      ],
+      "type": "PhoneCall"
+    },
+    {
+      "id": -1655957568,
+      "predicate": "phoneConnection",
+      "params": [
+        {
+          "name": "id",
+          "type": "long"
+        },
+        {
+          "name": "ip",
+          "type": "string"
+        },
+        {
+          "name": "ipv6",
+          "type": "string"
+        },
+        {
+          "name": "port",
+          "type": "int"
+        },
+        {
+          "name": "peer_tag",
+          "type": "bytes"
+        }
+      ],
+      "type": "PhoneConnection"
+    },
+    {
+      "id": 1667228533,
+      "predicate": "phoneConnectionWebrtc",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "turn",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "stun",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "id",
+          "type": "long"
+        },
+        {
+          "name": "ip",
+          "type": "string"
+        },
+        {
+          "name": "ipv6",
+          "type": "string"
+        },
+        {
+          "name": "port",
+          "type": "int"
+        },
+        {
+          "name": "username",
+          "type": "string"
+        },
+        {
+          "name": "password",
+          "type": "string"
+        }
+      ],
+      "type": "PhoneConnection"
+    }
+  ],
+  "declarationsAreNotLiveCallProof": true,
+  "loginVerified": false,
+  "liveCallVerified": false
+}
