@@ -1,0 +1,37 @@
+{
+  "provider": "igap",
+  "observedDate": "2026-11-02",
+  "protocolVersion": 1,
+  "windowsHelper": {
+    "sha256": "71848c958d332d9171e2da37893e876cdab95c1c3990f73e328e1245ab337b10",
+    "bytes": 8333312,
+    "built": true,
+    "processTestsPassed": true
+  },
+  "sourceSha256": {
+    "lktunnel-rust/lktunnel/examples/provider_bridge.rs": "f3fd775294ea00b166e02a17e237386656d3042f7f08c8f107705b279be1422c",
+    "experiments/providers/native-bridge.cjs": "25b55c30b657e279d794fad8be9acd8cc71e625d958e2666b6afdedc613b4166",
+    "experiments/providers/media-pair.cjs": "878539582d0144703e00c7d0bb4873bd091bf59f412d5118605a01d754550934"
+  },
+  "tests": {
+    "nodePassed": 60,
+    "nodeSkipped": 0,
+    "rustBridgeConfigPassed": 2,
+    "rustCoreMutualAuthPassed": 2,
+    "browserFixturePassed": true
+  },
+  "strictMutualAuthenticationRequired": true,
+  "loopbackProxyOnly": true,
+  "linuxHelperBuiltOrExecuted": false,
+  "liveAccountLoginTested": false,
+  "liveCallTested": false,
+  "actualProviderMediaIntegrityTested": false,
+  "throughputBenchmarked": false,
+  "selectedRelayVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false,
+  "productionProviderEnabled": false,
+  "roomCredentialsInArgv": false,
+  "roomCredentialsInEnvironment": false,
+  "roomCredentialsInFiles": false
+}

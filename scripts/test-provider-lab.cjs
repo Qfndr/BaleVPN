@@ -1,8 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {startLab}=require('../experiments/providers/lab.cjs');
-const {FakeCallAuth}=require('./provider-lab-fixture.cjs');
+const {FakeCallAuth,fakeBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true});}
 }
@@ -18,6 +18,21 @@ test('loopback HTTP management rejects missing nonce, cross-origin writes, rebin
  for(const route of ['/api/eitaa/1/start','/api/rubika/1/start','/api/bale/1/start','/api/igap/3/start'])assert.equal((await request(route,{phone:'09120000001'})).status,404);
  assert.equal(calls.length,0);
 }));
+
+test('media endpoints require joined accounts, keep native tokens private and stop both sides when the vault locks',()=>fixture(async({request})=>{
+ assert.equal((await request('/api/igap/media/start',{})).status,423);
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ assert.equal((await request('/api/igap/media/start',{})).status,400);
+ for(const slot of [1,2]){await request('/api/igap/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/igap/'+slot+'/verify',{code:'12345'});}
+ await request('/api/igap/1/call/dial',{targetSlot:2});
+ await request('/api/igap/2/call/join',{});await request('/api/igap/1/call/join',{});
+ const response=await request('/api/igap/media/start',{clientSlot:1,socksPort:1089,throughput:true});assert.equal(response.status,200);
+ const result=await response.json();assert.equal(result.media.phase,'running');assert.equal(result.media.billingVerified,false);
+ assert.ok(!JSON.stringify(result).includes('fixture.payload.signature'));
+ assert.equal((await request('/api/igap/media/start',{clientSlot:2})).status,400);
+ await request('/api/vault/lock',{});
+ const state=await(await request('/api/state')).json();assert.equal(state.media.phase,'stopped');assert.ok(state.media.bridges.every(b=>b.phase==='closed'));
+},{native:true}));
 
 test('HTTP call flow allows only two signed-in local accounts and returns no room credentials',()=>fixture(async({request,calls})=>{
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});

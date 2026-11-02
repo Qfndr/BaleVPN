@@ -18,6 +18,11 @@ Implemented:
 - `secure-connection.cjs`, `rpc-connection.cjs`: actual v3 connection securing and
   correlated encrypted requests. Key exchange and unauthenticated InfoConfig
   round-trip were tested against the real service; no login or call was made.
+- `../providers/native-bridge.cjs`, `media-pair.cjs`, and the Rust
+  `provider_bridge` example: optional two-process media trial with fresh
+  reciprocal certificate pins, stdin-only credentials, loopback SOCKS and
+  strict mutual authentication. Windows process tests passed; no real call,
+  throughput, Linux execution, carrier-route or billing proof yet.
 - `call-session.cjs`: account-bound create/offer/ring/join/leave, two-party
   admission, no automatic dialing, correlated credentials and late-response
   cancellation. Real service calls and actual media transport are unverified.
@@ -37,7 +42,7 @@ Implemented:
 The codec handles the **plaintext packet inside connection encryption**. Its
 output must not be sent directly to the documented production WebSocket. iGap
 live authentication, incoming call handling and real relay behavior remain
-unverified. The experimental `call-session.cjs` now handles admitted incoming offers and explicit ring/join/leave operations. It is not connected to a media engine. Caller-side duplicate join behavior still needs real-service verification; see `call-cycle-evidence-2026-11-02.json`. The separate v3 connection module secures its own
+unverified. The experimental `call-session.cjs` now handles admitted incoming offers and explicit ring/join/leave operations. The optional pipe-controlled native helper is now connected to the existing RTP/QUIC engine, but real iGap media forwarding is unverified. Caller-side duplicate join behavior still needs real-service verification; see `call-cycle-evidence-2026-11-02.json`. The separate v3 connection module secures its own
 WebSocket; it does not turn the legacy SDP codec into an authenticated provider.
 Decoded SDP, tokens and ICE credentials are sensitive; do not log them.
 

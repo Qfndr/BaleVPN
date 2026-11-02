@@ -2,11 +2,13 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
 const {SessionVault}=require('./session-vault.cjs');const {AuthSession}=require('../igap/auth-session.cjs');const {normalize,countries}=require('./phone.cjs');
 const {RpcError}=require('../igap/rpc-connection.cjs');const ASSETS=path.resolve(__dirname,'../../bale-vpn-rust/bale-vpn/assets');
 const {CallSession}=require('../igap/call-session.cjs');
+const {MediaPair}=require('./media-pair.cjs');
 function sameSecret(a,b){const x=Buffer.from(a||''),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
-async function startLab({directory,port=37131,sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
+async function startLab({directory,port=37131,bridgeExecutable,openBridge,sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
  if(!directory)throw new Error('An explicit isolated laboratory data directory is required');
  const vault=new SessionVault(directory),sessions=new Map(),calls=new Map(),secret=crypto.randomBytes(32).toString('hex');let origin,closing=false,unlocking=false;
  for(const slot of [1,2]){const account=sessionFactory(slot,bytes=>calls.get(slot)?.handlePush(bytes));sessions.set(slot,account);calls.set(slot,new CallSession(account));}
+ const media=bridgeExecutable?new MediaPair({executable:bridgeExecutable,accounts:sessions,calls,...openBridge?{open:openBridge}:{}}):null;
  const error=(reason,status=400)=>Object.assign(new Error(reason),{reason,status});
  const server=http.createServer(async(req,res)=>{try{
   const headers={'Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",'X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};for(const [k,v]of Object.entries(headers))res.setHeader(k,v);
@@ -20,7 +22,7 @@ async function startLab({directory,port=37131,sessionFactory=(slot,onPush)=>new 
    if(req.method==='POST'&&req.headers.origin!==origin)throw error('invalid_origin',403);
    if(req.method==='GET'&&url.pathname==='/api/state'){
     const accounts=[];for(const [slot,session]of sessions)accounts.push({provider:'igap',slot,...session.state,call:calls.get(slot).state,stored:await vault.has('igap',slot)});
-    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking},accounts,capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:false,tunnelReady:false},nasim:{loginLab:false,tunnelReady:false},rubika:{loginLab:false,tunnelReady:false}}});
+    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking},accounts,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:false,tunnelReady:false},nasim:{loginLab:false,tunnelReady:false},rubika:{loginLab:false,tunnelReady:false}}});
    }
    if(req.method==='GET'&&url.pathname==='/api/countries')return json(countries);
    if(req.method!=='POST')throw error('not_found',404);
@@ -30,7 +32,12 @@ async function startLab({directory,port=37131,sessionFactory=(slot,onPush)=>new 
    if(url.pathname==='/api/vault/unlock'){
     if(unlocking)throw error('vault_busy',409);unlocking=true;try{await vault.unlock(body.password);return json({ok:true});}finally{unlocking=false;body.password='';}
    }
-   if(url.pathname==='/api/vault/lock'){for(const call of calls.values())call.reset();for(const session of sessions.values())session.close();vault.lock();return json({ok:true});}
+   if(url.pathname==='/api/vault/lock'){media?.close();for(const call of calls.values())call.reset();for(const session of sessions.values())session.close();vault.lock();return json({ok:true});}
+   if(['/api/igap/media/start','/api/igap/media/stop'].includes(url.pathname)){
+    if(!vault.unlocked)throw error('vault_locked',423);if(!media)throw error('native_bridge_unavailable',503);
+    if(url.pathname.endsWith('/stop')){media.close();return json({ok:true});}
+    return json({ok:true,media:await media.start({clientSlot:body.clientSlot,socksPort:body.socksPort,throughput:body.throughput})});
+   }
    const match=url.pathname.match(/^\/api\/igap\/([12])\/(start|verify|password|profile|resume|stop|logout|forget|call\/(?:dial|ring|join|leave|reset))$/);if(!match)throw error('not_found',404);
    if(!vault.unlocked)throw error('vault_locked',423);const slot=Number(match[1]),session=sessions.get(slot);let result;
    switch(match[2]){
@@ -44,16 +51,16 @@ async function startLab({directory,port=37131,sessionFactory=(slot,onPush)=>new 
     }
     case 'call/ring':return json({ok:true,call:await calls.get(slot).ring()});
     case 'call/join':return json({ok:true,call:await calls.get(slot).join()});
-    case 'call/leave':return json({ok:true,call:await calls.get(slot).leave({terminate:body.terminate??false})});
+    case 'call/leave':media?.close();return json({ok:true,call:await calls.get(slot).leave({terminate:body.terminate??false})});
     case 'call/reset':if(!['idle','ended','uncertain'].includes(calls.get(slot).state.phase)||calls.get(slot).state.busy)throw error('call_busy',409);calls.get(slot).reset();return json({ok:true});
     case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
     case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
     case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
     case 'profile':result=await session.completeProfile(body.name);break;
     case 'resume':if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('igap',slot);if(!record)throw error('no_saved_session');result=await session.restore(record);}break;
-    case 'stop':session.stop();calls.get(slot).reset();return json({ok:true});
-    case 'logout':result=await session.logout();calls.get(slot).reset();await vault.remove('igap',slot);return json({ok:true,...result});
-    case 'forget':if(session.state.busy)throw error('account_busy',409);calls.get(slot).reset();session.close();await vault.remove('igap',slot);return json({ok:true});
+    case 'stop':session.stop();media?.close();calls.get(slot).reset();return json({ok:true});
+    case 'logout':result=await session.logout();media?.close();calls.get(slot).reset();await vault.remove('igap',slot);return json({ok:true,...result});
+    case 'forget':if(session.state.busy)throw error('account_busy',409);media?.close();calls.get(slot).reset();session.close();await vault.remove('igap',slot);return json({ok:true});
    }
    if(session.state.hasSession&&['authenticated','profile_required'].includes(session.state.stage)){
     try{await vault.save('igap',slot,session.exportSession());}catch{throw error('session_save_failed',500);}
@@ -69,8 +76,8 @@ async function startLab({directory,port=37131,sessionFactory=(slot,onPush)=>new 
   const data=await fs.readFile(file);res.writeHead(200,{'Content-Type':type});res.end(data);
  }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{origin='http://127.0.0.1:'+server.address().port;resolve();});});
- async function close(){if(closing)return;closing=true;for(const call of calls.values())call.reset();for(const session of sessions.values())session.close();vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+ async function close(){if(closing)return;closing=true;media?.close();for(const call of calls.values())call.reset();for(const session of sessions.values())session.close();vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  return {origin,url:origin+'/#'+secret,close,server};
 }
-if(require.main===module){const args=process.argv.slice(2);let directory,port=37131;for(let i=0;i<args.length;i++){if(args[i]==='--data-dir')directory=args[++i];else if(args[i]==='--port')port=Number(args[++i]);else throw new Error('Unknown argument');}if(!directory||!Number.isInteger(port)||port<0||port>65535){console.error('node experiments/providers/lab.cjs --data-dir ISOLATED-DIRECTORY [--port 37131]');process.exitCode=2;}else startLab({directory,port}).then(lab=>{console.log(lab.url);for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>lab.close().then(()=>process.exit(0)));}).catch(()=>{console.error('Could not start the isolated local login tool');process.exitCode=1;});}
+if(require.main===module){const args=process.argv.slice(2);let directory,bridgeExecutable,port=37131;for(let i=0;i<args.length;i++){if(args[i]==='--data-dir')directory=args[++i];else if(args[i]==='--port')port=Number(args[++i]);else if(args[i]==='--bridge')bridgeExecutable=args[++i];else throw new Error('Unknown argument');}if(!directory||!Number.isInteger(port)||port<0||port>65535||bridgeExecutable&&!path.isAbsolute(bridgeExecutable)){console.error('node experiments/providers/lab.cjs --data-dir ISOLATED-DIRECTORY [--port 37131] [--bridge ABSOLUTE-NATIVE-HELPER]');process.exitCode=2;}else startLab({directory,port,bridgeExecutable}).then(lab=>{console.log(lab.url);for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>lab.close().then(()=>process.exit(0)));}).catch(()=>{console.error('Could not start the isolated local login tool');process.exitCode=1;});}
 module.exports={startLab};

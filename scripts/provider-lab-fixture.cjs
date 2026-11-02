@@ -33,4 +33,12 @@ class FakeCallAuth extends FakeAuth{
   }};
  }
 }
-module.exports={FakeAuth,FakeCallAuth};
+function fakeBridgeFactory(){let index=0;return async()=>{
+ const identity=++index;return {publicCertificate:identity.toString(16).repeat(160),state:{phase:'prepared'},
+  async connect(session,options){this.state={phase:'connected',role:options.role,mediaConnected:true,
+   peerAuthenticated:true,proxyReady:options.role==='client',socksAddress:options.role==='client'?'127.0.0.1:'+options.socksPort:null,
+   receivedBytes:12345,sentBytes:2000,quic:options.role==='client'?{rttMs:110,lostPackets:2}:null};},
+  close(){this.state={phase:'closed',role:this.state.role};}
+ };
+};}
+module.exports={FakeAuth,FakeCallAuth,fakeBridgeFactory};
