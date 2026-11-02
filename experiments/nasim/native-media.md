@@ -5,7 +5,8 @@ carrier for two compatible native tunnel endpoints. It is independent of the
 existing LiveKit/Bale `rtc::Engine`. It uses the authenticated external-carrier
 API and the existing SOCKS5/QUIC stack. A [private native pipe helper](native-bridge-protocol.md)
 and parent process controller now expose it for integration testing. It is not
-yet connected to Nasim's account/call controller or enabled in the product.
+enabled in the main product. The experimental account controller and local
+two-account lab now use this bridge; live provider calls remain unverified.
 
 The owner supplies private TURN configuration from an authenticated call. The
 driver accepts bounded TURN/UDP URLs with separate password credentials. Empty

@@ -94,11 +94,12 @@ node --test scripts/test-nasim-native.cjs
 ```
 
 The [account-owned call controller](call-controller.md) now integrates this
-manager as a separate library component; its signaling/native flow is tested
-with injected fixtures and it is not yet connected to the lab UI. That evidence
+manager; the local lab now exposes explicit controls for its two-account
+flow, tested with injected provider/native fixtures. That evidence
 must not be confused with the real helper/relay process tests above.
 
 Windows execution has been tested. This Linux command is source-build guidance;
 a Linux helper has not yet been built or executed here. No live provider login,
 call, provider-selected relay, remote VPS, sustained-speed, tariff or outage
-test is implied. The lab UI and main product do not yet invoke this helper.
+test is implied. The lab UI can now invoke the helper when an absolute
+`--nasim-bridge` path is supplied; the main product does not enable it.

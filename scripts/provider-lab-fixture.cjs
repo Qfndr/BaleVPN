@@ -42,15 +42,35 @@ function fakeBridgeFactory(){let index=0;return async()=>{
  };
 };}
 class FakeNasimAuth extends FakeAuth{
- get state(){const state=super.state;return {...state,provider:'nasim',connected:state.signedIn,events:this.eventsState||{phase:'idle'},callReady:false};}
+ constructor(slot,calls){super(slot,calls);if(!nasimPeers.has(calls))nasimPeers.set(calls,new Map());nasimPeers.get(calls).set(slot,this);}
+ get state(){const state=super.state;return {...state,provider:'nasim',clientId:this.record?.clientId||null,connected:state.signedIn,events:this.eventsState||{phase:'idle'},callReady:false};}
  async start(phone){this.calls.push({slot:this.slot,action:'nasim-start',phone});this.stage='code';return {codeRequested:true};}
  async verify(code){assert.equal(code,'12345');this.calls.push({slot:this.slot,action:'nasim-verify'});this.record={provider:'nasim',
-  userId:'nasim-'+this.slot,clientId:'client-'+this.slot,token:'fixture-nasim-secret-token-'+this.slot,deviceId:'web.fixture-nasim-device-'+this.slot,loginPhone:'+989120000001'};
+  userId:String(40+this.slot),clientId:'client-'+this.slot,token:'fixture-nasim-secret-token-'+this.slot,deviceId:'web.fixture-nasim-device-'+this.slot,loginPhone:'+989120000001'};
   this.stage='authenticated';return {authenticated:true};}
  async restore(record){this.calls.push({slot:this.slot,action:'nasim-restore'});this.record=record;this.stage='authenticated';return {authenticated:true};}
- async connectSignals(){assert.equal(this.stage,'authenticated');this.eventsState={phase:'connected',callEvents:0};return {eventsConnected:true};}
- disconnectSignals(){this.eventsState={phase:'closed'};}
+ async connectSignals({onEvent=()=>{}}={}){assert.equal(this.stage,'authenticated');this.onEvent=onEvent;this.eventsState={phase:'connected',callEvents:0};
+  this.signalConnection={send:async(signal,{peerId})=>{
+   const codec=require('../experiments/nasim/call-codec.cjs'),request=codec.outgoing(signal,this.record.userId,peerId);
+   this.calls.push({slot:this.slot,action:'nasim-signal',type:signal.type});
+   const other=[...nasimPeers.get(this.calls).values()].find(a=>a.record?.userId===peerId);assert.ok(other);
+   if(signal.type==='callRequest'){
+    for(const target of [this,other])target.onEvent(codec.incoming({type:'msgGroupCall',senderClientID:this.record.clientId,time:Date.now(),data:{type:'config',callUUID:'fixture-nasim-call',callData:{method:'audio',
+     participants:[{userID:Number(this.record.userId)},{userID:Number(peerId)}],invitedParticipantUserID:Number(peerId),stunServer:{url:'relay.fixture.gap.im:3478'},turnServer:{url:'relay.fixture.gap.im:3478',username:'fixture-private-turn-user',password:'fixture-private-turn-password'}}}},target.record.userId));
+   }else other.onEvent?.(codec.incoming({type:'msgGroupCall',senderClientID:this.record.clientId,from:{id:Number(this.record.userId)},data:request.body.data},other.record.userId));
+   return {acknowledged:true};
+  }};return {eventsConnected:true};}
+ disconnectSignals(){this.eventsState={phase:'closed'};this.signalConnection=null;this.onEvent=null;}
  stop(){this.disconnectSignals();super.stop();}
  close(){this.disconnectSignals();super.close();}
 }
-module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,fakeBridgeFactory};
+const nasimPeers=new WeakMap();
+function fakeNasimBridgeFactory(){const peers=[];return async()=>{
+ const cert=(peers.length+1).toString(16).padStart(2,'0').repeat(80),sdp=type=>({type,sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=fingerprint:sha-256 '+Array(32).fill('AA').join(':')+'\r\na=ice-pwd:fixture-private-ice\r\n'});
+ const peer={publicCertificate:cert,state:{phase:'prepared'},async configure(call,options){this.options=options;this.state={phase:'configured'};},
+  async offer(){this.state.phase='connecting';return sdp('offer');},async answer(){this.state.phase='connecting';return sdp('answer');},
+  async setAnswer(){const other=peers.find(p=>p.publicCertificate===this.options.trustedCertificates[0]);assert.equal(other.options.trustedCertificates[0],cert);
+   for(const target of [this,other])target.state={phase:'connected',mediaConnected:true,peerAuthenticated:true,proxyReady:true,relayPair:true,socksAddress:target.options.role==='client'?'127.0.0.1:'+target.options.socksPort:null,receivedBytes:524288,sentBytes:1024,quic:{rttMs:23,lostPackets:0,sentPackets:100,profile:'throughput'}};
+  },async addCandidate(){},close(){this.state={phase:'closed'};}};peers.push(peer);return peer;
+};}
+module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,fakeBridgeFactory,fakeNasimBridgeFactory};

@@ -1,11 +1,51 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {startLab}=require('../experiments/providers/lab.cjs');
-const {FakeCallAuth,FakeNasimAuth,fakeBridgeFactory}=require('./provider-lab-fixture.cjs');
+const {FakeCallAuth,FakeNasimAuth,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
- try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true});}
+ try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
+
+async function waitForLab(request,predicate){const deadline=Date.now()+2000;while(true){const state=await(await request('/api/state')).json();if(predicate(state))return state;if(Date.now()>deadline)throw Error('Laboratory call state timed out');await new Promise(r=>setTimeout(r,5));}}
+test('Nasim media control prepares only local distinct accounts, needs explicit call/accept and keeps all transport secrets private',()=>fixture(async({request,calls})=>{
+ assert.equal((await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090,throughput:true})).status,423);
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ assert.equal((await request('/api/nasim/media/prepare',{})).status,400);
+ for(const provider of ['nasim','igap'])for(const slot of [1,2]){await request('/api/'+provider+'/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/'+provider+'/'+slot+'/verify',{code:'12345'});}
+ for(const body of [{clientSlot:3},{socksPort:80},{throughput:'true'},{url:'turn:foreign.invalid'}])assert.equal((await request('/api/nasim/media/prepare',body)).status,400);
+ assert.equal((await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090,throughput:true})).status,200);
+ let state=await waitForLab(request,s=>s.nasimMedia.accounts.every(c=>c.phase==='ready'));assert.ok(state.accounts.every(a=>a.signedIn));
+ assert.equal(calls.filter(c=>c.action==='nasim-signal').length,0);
+ assert.equal((await request('/api/nasim/media/accept',{slot:2})).status,400);
+ assert.equal((await request('/api/nasim/media/dial',{slot:1})).status,200);
+ state=await waitForLab(request,s=>s.nasimMedia.accounts[1].phase==='incoming');assert.equal(state.nasimMedia.accounts[1].media.phase,'prepared');
+ assert.equal((await request('/api/nasim/media/accept',{slot:2})).status,200);
+ state=await waitForLab(request,s=>s.nasimMedia.accounts.every(c=>c.phase==='connected'));
+ assert.equal(state.nasimMedia.accounts[0].media.socksAddress,'127.0.0.1:1090');
+ assert.equal(state.capabilities.nasim.tunnelReady,false);assert.equal(state.nasimMedia.billingVerified,false);
+ for(const secret of ['fixture-private-turn-password','fixture-private-turn-user','ice-pwd','fingerprint','trustedCertificates','iceServers','fixture-nasim-secret'])assert.ok(!JSON.stringify(state).includes(secret));
+ assert.deepEqual(calls.filter(c=>c.action==='nasim-signal').map(c=>c.type),['callRequest','accept','offer','answer']);
+ await request('/api/nasim/media/end',{slot:1});state=await waitForLab(request,s=>s.nasimMedia.accounts.every(c=>['idle','ended'].includes(c.phase)));
+ assert.ok(state.accounts.every(a=>a.signedIn));assert.ok(state.nasimMedia.accounts.every(c=>c.media===null));
+ assert.equal((await request('/api/nasim/media/prepare',{clientSlot:2,socksPort:1091,throughput:false})).status,200);
+ await request('/api/vault/lock',{});state=await(await request('/api/state')).json();assert.ok(state.nasimMedia.accounts.every(c=>c.media===null));
+ assert.ok(state.providerAccounts.nasim.every(a=>!a.signedIn));
+},{nasimNative:true}));
+
+for(const stopRoute of ['/api/nasim/media/reset','/api/nasim/1/stop'])test('Nasim cancellation closes both late helpers via '+stopRoute,async()=>{
+ const pending=[];let closed=0;
+ await fixture(async({request})=>{
+  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+  for(const slot of [1,2]){await request('/api/nasim/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/nasim/'+slot+'/verify',{code:'12345'});}
+  const preparing=request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090});
+  const deadline=Date.now()+2000;while(pending.length!==2){if(Date.now()>deadline)throw Error('Helpers were not requested');await new Promise(r=>setTimeout(r,5));}
+  assert.equal((await request(stopRoute,{})).status,200);
+  for(const resolve of pending)resolve({publicCertificate:'aa'.repeat(80),state:{phase:'prepared'},close(){closed++;}});
+  assert.equal((await preparing).status,400);assert.equal(closed,2);
+  const state=await(await request('/api/state')).json();assert.equal(state.nasimMedia.phase,stopRoute.endsWith('/reset')?'idle':'ended');assert.ok(state.nasimMedia.accounts.every(c=>c.media===null));
+ },{nasimNative:true,nasimOpenBridge:()=>new Promise(resolve=>pending.push(resolve))});
+});
 test('loopback HTTP management rejects missing nonce, cross-origin writes, rebinding and unsupported provider actions',()=>fixture(async({lab,request,calls,key})=>{
  assert.equal((await fetch(lab.origin+'/api/state')).status,401);
  assert.equal((await request('/api/vault/unlock',{password:'fixture-passphrase-123'},{Origin:'https://attacker.invalid'})).status,403);

@@ -1,8 +1,10 @@
 # Account-owned experimental call controller
 
 `call-session.cjs` connects one authenticated Nasim account/event connection to
-one private native media bridge. It is a library component; the current lab UI
-does not yet instantiate it or provide its call controls. Main-product provider
+one private native media bridge. The local two-account lab now instantiates it
+through `call-pair.cjs`, with explicit prepare/dial/approve/end controls. See
+[panel evidence](panel-evidence-2026-11-03.json) and the
+[Persian guide](../../docs/nasim-call-lab-fa.md). Main-product provider
 integration, live-account testing, tariff validation and outage testing remain
 required. The existing iGap/Bale controllers and traffic paths are unchanged.
 
