@@ -780,4 +780,5 @@ mod tests {
         relay.close().await.unwrap();
         echo.abort();
     }
+    include!("peer_media_adapter_test.rs");
 }

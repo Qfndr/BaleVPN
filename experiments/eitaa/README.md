@@ -14,6 +14,11 @@ dialogs chunk. The [private encrypted signaling codec](call-signaling.md) now
 matches 24 official packet fixtures and supports bounded replay protection;
 actual call RPC/events, SDP/media adaptation and verified relay routing remain.
 
+The [single-audio SDP adapter](media-description.md) now passes eight official
+parser/projector fixtures and a real native local TURN/DTLS/SRTP/RTP/QUIC test
+with a 256 KiB exact echo through encrypted Eitaa-shaped descriptions. Live
+provider RPC/events, a provider-specific bridge and route/billing tests remain.
+
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker
 is `https://web.eitaa.com/mtproto.worker-CJJzYEpd.js`, SHA-256

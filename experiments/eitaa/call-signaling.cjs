@@ -30,7 +30,7 @@ function validateSignal(value){
  }else if(value['@type']==='InitialSetup'){
   if(!Array.isArray(value.fingerprints)||!value.fingerprints.length||value.fingerprints.length>4||value.fingerprints.some(f=>!plain(f)||f.hash!=='sha-256'||typeof f.fingerprint!=='string'||! /^(?:[0-9a-f]{2}:){31}[0-9a-f]{2}$/i.test(f.fingerprint)||!['active','passive','actpass'].includes(f.setup))||
    typeof value.ufrag!=='string'||! /^[A-Za-z0-9+/_-]{4,256}$/.test(value.ufrag)||typeof value.pwd!=='string'||! /^[A-Za-z0-9+/_-]{22,256}$/.test(value.pwd))throw new SignalError('invalid_signal_payload');
-  const media=m=>plain(m)&&typeof m.ssrc==='string'&&/^\d{1,10}$/.test(m.ssrc)&&Number(m.ssrc)>0&&Number(m.ssrc)<=0xffffffff&&Array.isArray(m.rtpExtensions)&&m.rtpExtensions.length<=32&&Array.isArray(m.payloadTypes)&&m.payloadTypes.length>0&&m.payloadTypes.length<=64;
+  const media=m=>plain(m)&&typeof m.ssrc==='string'&&/^-?\d{1,10}$/.test(m.ssrc)&&Number(m.ssrc)!==0&&Number(m.ssrc)>=-0x80000000&&Number(m.ssrc)<=0xffffffff&&Array.isArray(m.rtpExtensions)&&m.rtpExtensions.length<=32&&Array.isArray(m.payloadTypes)&&m.payloadTypes.length>0&&m.payloadTypes.length<=64;
   if(!media(value.audio)||value.video!==undefined&&!media(value.video)||value.screencast!==undefined&&!media(value.screencast))throw new SignalError('invalid_signal_payload');
  }else throw new SignalError('unsupported_signal_type');
  return value;
