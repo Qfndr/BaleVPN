@@ -58,8 +58,19 @@ const canonical=value=>JSON.stringify(value,(_,item)=>typeof item==='bigint'?{$b
     const legacy=iv.toString()+Buffer.concat([cipher.update(JSON.stringify({status:'success',data:{loggedOut:true}})),cipher.final()]).toString('base64');
     const decodedLegacy=await page.evaluate(({data,token})=>window.requestWorker({type:'decrypt',data,token}),{data:legacy,token:legacyToken});
     assert.deepEqual(decodedLegacy,{status:'success',data:{loggedOut:true}});
+    const eventPayload=JSON.stringify({messages:[{type:'msgGroupCall',data:{type:'accept',callUUID:'fixture-call',callData:{}}}],text:'آزمایش رویداد'});
+    const eventBytes=Array.from(wire.encryptBytes(Buffer.from(eventPayload),secret));
+    const decodedEvent=await page.evaluate(async({payload,secret})=>{
+      const plain=await window.requestWorker({type:'decryptGcm',data:Uint8Array.from(payload).buffer,token:secret});
+      return new TextDecoder().decode(plain);
+    },{payload:eventBytes,secret});assert.equal(decodedEvent,eventPayload);
+    const encryptedEvent=await page.evaluate(async({text,secret})=>{
+      const data=new TextEncoder().encode(text).buffer;
+      const blob=await window.requestWorker({type:'encryptGcm',data,token:secret});
+      return Array.from(new Uint8Array(await blob.arrayBuffer()));
+    },{text:eventPayload,secret});assert.equal(wire.decryptBytes(Buffer.from(encryptedEvent),secret).toString(),eventPayload);
     console.log(JSON.stringify({ok:true,fixtureCount:fixtures.length,directions:2,officialWorkerSha256:SHA,
-      legacyCbcInterop:true,blockedExternalRequests:blockedExternal,serviceRequests:0,otpSubmitted:false,liveCallTested:false}));
+      legacyCbcInterop:true,rawJsonGcmInterop:true,blockedExternalRequests:blockedExternal,serviceRequests:0,otpSubmitted:false,liveCallTested:false}));
   } finally {await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error('Official Nasim worker interoperability test failed',error.name,
   String(error.message).slice(0,300),String(error.stack).split('\n').slice(1,4).join('\n'));process.exitCode=1;});

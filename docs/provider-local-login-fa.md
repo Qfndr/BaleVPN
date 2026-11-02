@@ -48,6 +48,18 @@ node experiments/providers/lab.cjs --data-dir "$HOME/balevpn-provider-lab" --por
 
 درخواست خواندنیِ بدون حساب به مسیر وضعیت، HTTP 401 گرفت؛ این فقط رد دسترسی بدون حساب را نشان می‌دهد و اثبات ورود یا رفت‌وبرگشت رمزگذاری‌شدهٔ واقعی نیست. هیچ شماره یا کد واقعی در این تحقیق ارسال نشده است. **تماس، مسیر RTP و تونل نسیم رضوان هنوز پیاده‌سازی/تأیید نشده‌اند**؛ کنترل‌های تماس آی‌گپ به حساب نسیم رضوان وصل نمی‌شوند.
 
+## دریافت اختیاری رویدادهای نسیم رضوان
+
+پس از ورود، دکمهٔ «دریافت رویدادها» فقط برای همان حساب فعال می‌شود. این دکمه از سرویس، آدرس جریان SSE را می‌گیرد و تنها به مقصد HTTPS زیر دامنه‌های مجاز گپ/نسیم رضوان وصل می‌شود؛ نشانی دلخواه، پورت غیرمعمول، query، fragment یا اطلاعات کاربری داخل URL پذیرفته نمی‌شود. توکن در header می‌رود و در URL یا وضعیت عمومی قرار نمی‌گیرد. هویت دستگاه یا نشست تازه‌ای ساخته نمی‌شود.
+
+این کار **تماس برقرار یا پاسخ داده نمی‌دهد و پروکسی نمی‌سازد**. وضعیت «رویدادها متصل» فقط اتصال کانال رویداد است. پیام‌های معمولی پس از رمزگشایی برای تشخیص نوع، فیلتر می‌شوند و ذخیره، نمایش یا گزارش نمی‌شوند. وضعیت عمومی فقط شمارنده، cursor و خطای ثابت دارد؛ SDP، رمز TURN، توکن و متن پیام در آن نیستند.
+
+«قطع رویدادها» دریافت همان حساب را متوقف می‌کند. هنگام آماده‌سازی، دکمه به لغو تغییر می‌کند. توقف حساب، خروج یا قفل مخزن هم جریان و درخواست‌های در انتظار آن را لغو می‌کند؛ پاسخ دیررس نمی‌تواند حساب را دوباره فعال کند. حساب‌های دیگر و بله تغییر نمی‌کنند.
+
+اگر سرویس `cleanSession` بخواهد، وضعیت «همگام‌سازی اولیهٔ سرویس لازم است» دیده می‌شود. دریافت در این حالت متوقف می‌شود؛ دانلود خودکار تاریخچه یا bootstrap اولیه هنوز پیاده‌سازی نشده است. دریافت پیام روی حساب واقعی هم هنوز تست نشده است. برای گزارش، فقط مرحله و خطای نمایش‌داده‌شده کافی است؛ دادهٔ خام جریان یا تنظیمات رله را در چت نفرستید.
+
+مسیر ارسال سیگنال تماس در کد، API نسخهٔ 2.5 با JSON رمزگذاری‌شده و topic ثابت دو حساب است؛ با API MessagePack ورود یکی نیست. شکل‌های دعوت، config رله، SDP، ICE و پایان تماس از وب فعلی تطبیق داده شدند. هنوز کنترل‌کنندهٔ کامل پذیرش تماس و موتور رسانهٔ بومی نسیم رضوان متصل نشده‌اند؛ کدک و کانال به‌تنهایی اثبات قابلیت تونل نیستند.
+
 ## آزمایش دعوت و پذیرش تماس
 
 پس از ورود دو حساب **متفاوت**، بخش «آزمایش سیگنال تماس» ظاهر می‌شود. در ردیف حساب اول، «تماس با حساب دیگر» را بزنید. فقط همان حساب دومِ واردشده در این پنل مجاز به دریافت این آزمایش است؛ شماره یا شناسهٔ دلخواه پذیرفته نمی‌شود.
@@ -103,7 +115,7 @@ node experiments/providers/lab.cjs --data-dir "$HOME/balevpn-provider-lab" --por
 آزمون‌ها شامل دو ورود مستقل شبیه‌سازی‌شده، رمز دوم، بازیابی بدون OTP، پاسخ دیررس، قطع اتصال، خطای حساب متفاوت، دستکاری مخزن، Host/Origin نامجاز و چیدمان فارسی/انگلیسی است. این‌ها جای آزمایش با حساب واقعی را نمی‌گیرند. مشخصات برنامه با نام آزمایشگاه و سکوی واقعی رایانه ارسال می‌شوند؛ گوشی جعلی یا ناشناسی از سرویس ادعا نمی‌شود.
 
 ```powershell
-node --test scripts/test-igap-signaling.cjs scripts/test-igap-current.cjs scripts/test-igap-rpc.cjs scripts/test-igap-call.cjs scripts/test-provider-auth.cjs scripts/test-provider-vault.cjs scripts/test-provider-lab.cjs scripts/test-provider-billing.cjs scripts/test-provider-native.cjs scripts/test-provider-media-pair.cjs scripts/test-nasim-auth.cjs scripts/test-nasim-http.cjs scripts/test-nasim-wire.cjs
+node --test scripts/test-igap-signaling.cjs scripts/test-igap-current.cjs scripts/test-igap-rpc.cjs scripts/test-igap-call.cjs scripts/test-provider-auth.cjs scripts/test-provider-vault.cjs scripts/test-provider-lab.cjs scripts/test-provider-billing.cjs scripts/test-provider-native.cjs scripts/test-provider-media-pair.cjs scripts/test-nasim-auth.cjs scripts/test-nasim-http.cjs scripts/test-nasim-wire.cjs scripts/test-nasim-signaling.cjs
 python scripts/test-messenger-research.py
 ```
 

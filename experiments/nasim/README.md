@@ -16,6 +16,11 @@ See [the local panel guide](../../docs/provider-local-login-fa.md) and
   responses, one outstanding request per account, cancellation without retries,
   fixed public errors. Explicit logout follows the legacy official PUT route
   and its JSON/AES-CBC acknowledgment format.
+- `sse-parser.cjs`, `signaling-connection.cjs`, `call-codec.cjs`: bounded
+  encrypted SSE events and the separate v2.5 encrypted JSON call API. Only
+  approved provider HTTPS destinations receive headers. Complete frames,
+  account cancellation, replay cursors and private relay/SDP handling are
+  covered by fixtures. No automatic answering/retry/history download.
 - `auth-session.cjs`: distinct device/account state, OTP, optional second
   password, one device registration, explicit naming for new users, encrypted
   vault export and restore without OTP or another device registration.
@@ -34,7 +39,7 @@ login proof. **Real login, SMS delivery, calls, media, billing, outage behavior
 and production integration remain unverified.**
 
 ```powershell
-node --test scripts/test-nasim-wire.cjs scripts/test-nasim-http.cjs scripts/test-nasim-auth.cjs
+node --test scripts/test-nasim-wire.cjs scripts/test-nasim-http.cjs scripts/test-nasim-auth.cjs scripts/test-nasim-signaling.cjs
 # Opt-in, read-only anonymous request. Does not request OTP:
 node scripts/probe-nasim-public.cjs --connect
 # Set BALEVPN_NASIM_WORKER to the downloaded pinned worker. Requires Playwright:
@@ -44,3 +49,5 @@ node scripts/test-nasim-official-worker.cjs
 The official worker is not redistributed. Its source URL and SHA-256 are in the
 evidence file. The worker test blocks external networking and uses fixture data.
 The production Bale account folders, tokens and keys are never read or migrated.
+
+The panel exposes an explicit **Receive events** action per signed-in Nasim account. This does not place or answer calls. Initial `cleanSession` synchronization is not implemented: the stream stops with a visible `stream_sync_required` state rather than silently pretending it is ready. Call admission, native media, selected TURN routing, real account testing and production integration remain outstanding. The full official SSE worker was inspected, not executed; crypto interoperability was tested with its separately pinned official crypto worker.

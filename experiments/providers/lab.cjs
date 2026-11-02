@@ -40,10 +40,12 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimS
     if(unlocking)throw error('vault_busy',409);unlocking=true;try{await vault.unlock(body.password);return json({ok:true});}finally{unlocking=false;body.password='';}
    }
    if(url.pathname==='/api/vault/lock'){media?.close();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values()])session.close();vault.lock();return json({ok:true});}
-   const nasim=url.pathname.match(/^\/api\/nasim\/([12])\/(start|verify|password|profile|resume|stop|logout|forget)$/);
+   const nasim=url.pathname.match(/^\/api\/nasim\/([12])\/(start|verify|password|profile|resume|stop|logout|forget|events\/(?:connect|disconnect))$/);
    if(nasim){
     if(!vault.unlocked)throw error('vault_locked',423);const slot=Number(nasim[1]),session=nasimSessions.get(slot);let result;
     switch(nasim[2]){
+     case 'events/connect':return json({ok:true,...await session.connectSignals()});
+     case 'events/disconnect':session.disconnectSignals();return json({ok:true});
      case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
      case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
      case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;

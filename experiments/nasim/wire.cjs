@@ -9,13 +9,22 @@ function key(value) {
   return Buffer.from(value).subarray(0, 16);
 }
 function encrypt(value, secret) {
-  const k = key(secret), plain = msgpack.encode(value), iv = crypto.randomBytes(12);
+  const plain = msgpack.encode(value);
+  try { return encryptBytes(plain, secret); } finally { plain.fill(0); }
+}
+function encryptBytes(plain, secret) {
+  if (!(plain instanceof Uint8Array) || plain.byteLength > msgpack.MAX_BYTES) throw new Error('Invalid service payload');
+  const k = key(secret), iv = crypto.randomBytes(12);
   try {
     const cipher = crypto.createCipheriv('aes-128-gcm', k, iv);
     return Buffer.concat([iv, cipher.update(plain), cipher.final(), cipher.getAuthTag()]);
-  } finally { k.fill(0); plain.fill(0); }
+  } finally { k.fill(0); }
 }
 function decrypt(input, secret) {
+  const plain = decryptBytes(input, secret);
+  try { return msgpack.decode(plain); } finally { plain.fill(0); }
+}
+function decryptBytes(input, secret) {
   if (!(input instanceof Uint8Array) || input.byteLength < 28 || input.byteLength > msgpack.MAX_BYTES + 28) throw new Error('Invalid encrypted service response');
   const bytes = Buffer.from(input);
   if (bytes.length < 28 || bytes.length > msgpack.MAX_BYTES + 28) throw new Error('Invalid encrypted service response');
@@ -24,7 +33,7 @@ function decrypt(input, secret) {
     const cipher = crypto.createDecipheriv('aes-128-gcm', k, bytes.subarray(0, 12));
     cipher.setAuthTag(bytes.subarray(bytes.length - 16));
     plain = Buffer.concat([cipher.update(bytes.subarray(12, bytes.length - 16)), cipher.final()]);
-    return msgpack.decode(plain);
-  } finally { k.fill(0); plain?.fill(0); }
+    return plain;
+  } finally { k.fill(0); }
 }
-module.exports = {encrypt, decrypt};
+module.exports = {encrypt, decrypt, encryptBytes, decryptBytes};

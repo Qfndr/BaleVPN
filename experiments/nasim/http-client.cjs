@@ -3,7 +3,7 @@ const wire = require('./wire.cjs');
 const {MAX_BYTES} = require('./msgpack.cjs');
 const ROOT = 'https://core.gaplication.com';
 const PATHS = new Set(['/otp/sendByMobile', '/user/login', '/user/register', '/device/register',
-  '/twoFA/checkInLogin', '/mxb/user/status']);
+  '/twoFA/checkInLogin', '/mxb/user/status', '/message/get/config']);
 const TYPES = new Set(['inCorrectOTP', 'invalidPassword', 'unauthorized', 'unAuthorized',
   'notAuthorized', 'tooManyRequests', 'invalidToken', 'expiredToken', 'invalidVerifiedToken']);
 class ApiError extends Error {
@@ -36,7 +36,9 @@ class HttpClient {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);
     this.#pending = controller; let body;
     try {
-      body = wire.encrypt(value, token || this.#duid);
+      if(path==='/message/get/config'&&(!token||!clientId||!value||Object.keys(value).length))throw new ApiError('invalid_request');
+      // The current SSE worker requests config with headers and no body.
+      body = path==='/message/get/config'?undefined:wire.encrypt(value, token || this.#duid);
       const headers = {'accept-language':'fa','app-version':'web','api-version':'v2.8',duid:this.#duid,
         os:'web',project:'nasimrezvan','content-type':'application/octet-stream',
         origin:'https://web.nasimrezvan.com',referer:'https://web.nasimrezvan.com/'};

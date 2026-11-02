@@ -1,0 +1,72 @@
+{
+  "provider": "nasim",
+  "observedDate": "2026-11-02",
+  "sources": [
+    {
+      "url": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+      "bytes": 632103,
+      "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149"
+    },
+    {
+      "url": "https://web.nasimrezvan.com/assets/SSE.worker-B_oEmBu_.js",
+      "bytes": 93321,
+      "sha256": "0ced14127586594e01d8785ebd0f942981f4be9e4d5f6efcf8b5ae03cadc4860"
+    },
+    {
+      "url": "https://web.nasimrezvan.com/assets/Crypto.worker-D3fv1cc7.js",
+      "bytes": 24952,
+      "sha256": "fd35b0037761486725cd940a8c3a243477ffb9d6c5483108c15a0759cd3bd197"
+    }
+  ],
+  "eventTransport": {
+    "configPath": "POST https://core.gaplication.com/message/get/config",
+    "configBody": "absent, matching current web worker",
+    "configReply": "MessagePack in AES-128-GCM",
+    "streamPath": "GET approved-SSEServerAddress/message/get",
+    "streamReply": "SSE id/event/data frames, base64 AES-128-GCM JSON messages",
+    "httpsRequired": true,
+    "approvedDomainRoots": [
+      "gaplication.com",
+      "gap.im",
+      "nasimrezvan.com"
+    ]
+  },
+  "callTransport": {
+    "endpoint": "POST https://api.gaplication.com/",
+    "apiVersion": "v2.5",
+    "topic": "u/receiverUserId/selfUserId",
+    "body": "AES-128-GCM encrypted JSON msgGroupCall envelope",
+    "methods": [
+      "callRequest",
+      "offer",
+      "answer",
+      "ice",
+      "accept",
+      "reject",
+      "bye",
+      "busy"
+    ]
+  },
+  "implemented": [
+    "fragment-safe bounded event decoder",
+    "account-owned event lifecycle and explicit receive-events UI",
+    "ordinary messages filtered without storage/display/logging",
+    "call signal shapes for two-party audio",
+    "no automatic call answering or redial",
+    "stream destination validation before sending token",
+    "stale response and closed-account event cancellation"
+  ],
+  "offlineNodeTestsPassed": 90,
+  "browserFixturePassed": true,
+  "officialCryptoWorkerRawJsonInterop": true,
+  "fullOfficialSseWorkerExecuted": false,
+  "liveAuthenticatedSseTested": false,
+  "liveCallTested": false,
+  "initialCleanSessionBootstrapImplemented": false,
+  "cleanSessionBehavior": "stop visibly with stream_sync_required; do not automatically load chat history",
+  "nativeMediaCarrierImplemented": false,
+  "selectedRelayVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false,
+  "productionProviderEnabled": false
+}

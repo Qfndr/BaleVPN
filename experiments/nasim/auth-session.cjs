@@ -1,5 +1,6 @@
 const {HttpClient, ApiError, duid} = require('./http-client.cjs');
 const {countries} = require('../providers/phone.cjs');
+const {SignalingConnection}=require('./signaling-connection.cjs');
 function id(value) {
   if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 1)) throw new ApiError('invalid_auth_response');
   if (typeof value === 'bigint' && value < 1n) throw new ApiError('invalid_auth_response');
@@ -23,9 +24,14 @@ class AuthSession {
   #error=null;
   #signedIn=false;
   #selfConfirmed=false;
+  #signals;
+  #signalAbort;
+  #signalEpoch=0;
+  #openSignals;
 
-  constructor({deviceId=duid(), createClient=options=>new HttpClient(options)}={}) {
+  constructor({deviceId=duid(), createClient=options=>new HttpClient(options),createSignaling=SignalingConnection.open}={}) {
     this.#deviceId=deviceId;this.#create=createClient;
+    this.#openSignals=createSignaling;
     // Validate the device profile without opening a connection.
     new HttpClient({deviceId}).close();
   }
@@ -125,21 +131,49 @@ class AuthSession {
       this.#phone=record.loginPhone;this.#signedIn=false;this.#selfConfirmed=false;this.#stage='restoring';return this.#resume(guard);
     });
   }
-  async resume() { return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');this.#signedIn=false;this.#selfConfirmed=false;this.#stage='restoring';return this.#resume(guard);}); }
+  async resume() { return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');this.#clearSignals();this.#signedIn=false;this.#selfConfirmed=false;this.#stage='restoring';return this.#resume(guard);}); }
   async logout() {
     return this.#run(async guard=>{
       if(!this.#record)throw new ApiError('not_authenticated');
+      this.#clearSignals();
       await this.#transport().logout({token:this.#record.token});guard();this.#clear();return {loggedOut:true};
     });
   }
+  #clearSignals(){this.#signalEpoch++;this.#signalAbort?.abort();this.#signalAbort=null;this.#signals?.close();this.#signals=null;}
+  async connectSignals({onEvent=()=>{}}={}){
+    return this.#run(async guard=>{
+      if(!this.#signedIn||!this.#record)throw new ApiError('not_authenticated');
+      if(typeof onEvent!=='function')throw new ApiError('invalid_request');
+      if(this.#signals?.state.phase==='connected')throw new ApiError('account_busy');
+      this.#clearSignals();const sequence=this.#signalEpoch,abort=new AbortController();this.#signalAbort=abort;
+      const buffered=[];let installed=false,channel;
+      const check=()=>{guard();if(sequence!==this.#signalEpoch||abort.signal.aborted||!this.#signedIn)throw new ApiError('closed');};
+      try{
+        channel=await this.#openSignals({...this.#record},{signal:abort.signal,onEvent:event=>{
+          check();if(!installed){if(buffered.length>=64)throw new ApiError('too_many_events');buffered.push(event);return;}
+          return onEvent(event);
+        }});
+        check();this.#signals=channel;installed=true;
+        for(const event of buffered){check();await onEvent(event);}
+        check();return {eventsConnected:channel.state.phase==='connected'};
+      }catch(error){channel?.close();if(this.#signals===channel)this.#signals=null;
+        if(sequence===this.#signalEpoch)this.#clearSignals();
+        if(error instanceof ApiError&&error.reason==='not_authorized'){this.#signedIn=false;this.#selfConfirmed=false;}
+        throw error;
+      }
+    });
+  }
+  disconnectSignals(){this.#clearSignals();}
+  get signalConnection(){if(!this.#signedIn||this.#signals?.state.phase!=='connected')throw new ApiError('event_stream_not_connected');return this.#signals;}
   exportSession() { if(!this.#record||!this.#signedIn)throw new ApiError('session_not_ready');return {...this.#record}; }
-  #clear() { this.#client?.close();this.#client=null;this.#record=null;this.#pending=null;this.#verified=null;this.#phone='';this.#hint='';this.#signedIn=false;this.#selfConfirmed=false;this.#stage='idle'; }
-  stop() { if(this.#busy)throw new ApiError('account_busy');this.#client?.close();this.#client=null;this.#signedIn=false;this.#selfConfirmed=false; }
+  #clear() { this.#clearSignals();this.#client?.close();this.#client=null;this.#record=null;this.#pending=null;this.#verified=null;this.#phone='';this.#hint='';this.#signedIn=false;this.#selfConfirmed=false;this.#stage='idle'; }
+  stop() { if(this.#busy)throw new ApiError('account_busy');this.#clearSignals();this.#client?.close();this.#client=null;this.#signedIn=false;this.#selfConfirmed=false; }
   close() { this.#epoch++;this.#clear(); }
-  get state() { return {provider:'nasim',stage:this.#stage,busy:this.#busy,connected:this.#signedIn,
+  get state() { if(this.#signals?.state.reason==='not_authorized'){this.#signedIn=false;this.#selfConfirmed=false;}
+    return {provider:'nasim',stage:this.#stage,busy:this.#busy,connected:this.#signedIn,
     signedIn:this.#signedIn,hasSession:!!this.#record,userId:this.#record?.userId||null,
     clientId:this.#record?.clientId||null,maskedPhone:this.#phone?'•••• '+this.#phone.slice(-4):'',
     retryAfter:Math.max(0,Math.ceil((this.#retryAt-Date.now())/1000)),hint:this.#hint,error:this.#error,
-    selfConfirmed:this.#selfConfirmed,providerVerified:false,callReady:false}; }
+    selfConfirmed:this.#selfConfirmed,events:this.#signals?.state||{phase:this.#signalAbort&&!this.#signalAbort.signal.aborted?'connecting':'idle'},providerVerified:false,callReady:false}; }
 }
 module.exports = {AuthSession};

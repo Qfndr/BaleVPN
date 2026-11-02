@@ -42,11 +42,15 @@ function fakeBridgeFactory(){let index=0;return async()=>{
  };
 };}
 class FakeNasimAuth extends FakeAuth{
- get state(){const state=super.state;return {...state,provider:'nasim',connected:state.signedIn,callReady:false};}
+ get state(){const state=super.state;return {...state,provider:'nasim',connected:state.signedIn,events:this.eventsState||{phase:'idle'},callReady:false};}
  async start(phone){this.calls.push({slot:this.slot,action:'nasim-start',phone});this.stage='code';return {codeRequested:true};}
  async verify(code){assert.equal(code,'12345');this.calls.push({slot:this.slot,action:'nasim-verify'});this.record={provider:'nasim',
   userId:'nasim-'+this.slot,clientId:'client-'+this.slot,token:'fixture-nasim-secret-token-'+this.slot,deviceId:'web.fixture-nasim-device-'+this.slot,loginPhone:'+989120000001'};
   this.stage='authenticated';return {authenticated:true};}
  async restore(record){this.calls.push({slot:this.slot,action:'nasim-restore'});this.record=record;this.stage='authenticated';return {authenticated:true};}
+ async connectSignals(){assert.equal(this.stage,'authenticated');this.eventsState={phase:'connected',callEvents:0};return {eventsConnected:true};}
+ disconnectSignals(){this.eventsState={phase:'closed'};}
+ stop(){this.disconnectSignals();super.stop();}
+ close(){this.disconnectSignals();super.close();}
 }
 module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,fakeBridgeFactory};

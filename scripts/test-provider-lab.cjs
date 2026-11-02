@@ -27,10 +27,15 @@ test('Nasim and iGap HTTP accounts stay namespaced through sign-in, encrypted st
  }
  let state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.nasim.length,2);
  assert.ok(state.providerAccounts.igap.every(a=>a.signedIn));assert.ok(state.providerAccounts.nasim.every(a=>a.signedIn));
+ assert.equal((await request('/api/nasim/1/events/connect',{})).status,200);
+ state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.nasim[0].events.phase,'connected');
+ assert.equal(state.capabilities.nasim.tunnelReady,false);assert.equal(state.capabilities.nasim.liveCallVerified,false);
+ assert.equal((await request('/api/igap/1/events/connect',{})).status,404);
  for(const provider of ['igap','nasim'])for(const slot of [1,2]){const file=await fs.readFile(path.join(dir,provider,slot+'.json'),'utf8');assert.ok(!file.includes('fixture-secret'));assert.ok(!file.includes('fixture-nasim-secret'));}
  assert.equal((await request('/api/nasim/1/call/dial',{targetSlot:2})).status,404);
  await request('/api/nasim/1/forget',{});state=await(await request('/api/state')).json();
  assert.ok(state.accounts.every(a=>a.signedIn));assert.equal(state.providerAccounts.nasim[0].hasSession,false);assert.equal(state.providerAccounts.nasim[1].signedIn,true);
+ assert.equal(state.providerAccounts.nasim[0].events.phase,'closed');
  await request('/api/vault/lock',{});state=await(await request('/api/state')).json();
  assert.ok(Object.values(state.providerAccounts).flat().every(a=>!a.signedIn));
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});await request('/api/nasim/2/resume',{});

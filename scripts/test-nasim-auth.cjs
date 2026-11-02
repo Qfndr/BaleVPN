@@ -98,3 +98,27 @@ test('an uncertain OTP request still enforces the resend delay without claiming 
   await assert.rejects(session.start(phone),/timeout/);assert.equal(session.state.stage,'idle');assert.equal(session.state.signedIn,false);
   assert.ok(session.state.retryAfter>=89);await assert.rejects(session.start(phone),/cooldown/);assert.equal(count,1);
 });
+
+test('authenticated signaling has account ownership, delivers early events only after installation and closes on stop',async()=>{
+  const f=fixture();await f.session.start(phone);await f.session.verify('12345');const record=f.session.exportSession();
+  const events=[],channel={state:{phase:'connected',reason:null},closed:0,close(){this.closed++;this.state.phase='closed';}};
+  let opened=0;
+  const session=new AuthSession({createClient:()=>({request:async()=>({active:false}),close(){}}),
+    createSignaling:async(saved,{onEvent})=>{opened++;assert.equal(saved.provider,'nasim');assert.equal(saved.token,record.token);await onEvent({type:'config',callUUID:'fixture-call'});return channel;}});
+  await assert.rejects(session.connectSignals(),/not_authenticated/);assert.equal(opened,0);
+  await session.restore(record);await session.connectSignals({onEvent:event=>{assert.equal(session.signalConnection,channel);events.push(event);}});
+  assert.equal(events.length,1);assert.equal(session.state.events.phase,'connected');assert.equal(session.state.callReady,false);
+  assert.ok(!JSON.stringify(session.state).includes(record.token));
+  session.stop();assert.equal(channel.closed,1);assert.throws(()=>session.signalConnection,/event_stream_not_connected/);
+});
+
+test('closing an account during signal setup disposes a late connection and cannot deliver or resurrect old events',async()=>{
+  const f=fixture();await f.session.start(phone);await f.session.verify('12345');const record=f.session.exportSession();
+  let finish,wrapped;const pending=new Promise(resolve=>{finish=resolve;});
+  const channel={state:{phase:'connected'},closed:0,close(){this.closed++;this.state.phase='closed';}};
+  const session=new AuthSession({createClient:()=>({request:async()=>({active:false}),close(){}}),
+    createSignaling:async(saved,options)=>{wrapped=options.onEvent;return pending;}});
+  await session.restore(record);let events=0;const opening=session.connectSignals({onEvent:()=>events++});session.close();
+  finish(channel);await assert.rejects(opening,/closed/);assert.throws(()=>wrapped({type:'config'}),/closed/);
+  assert.equal(events,0);assert.equal(channel.closed,1);assert.equal(session.state.stage,'idle');assert.equal(session.state.hasSession,false);
+});
