@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "productionBaleModified": false,
+  "source": {
+    "url": "https://web.eitaa.com/crypto.worker-BvnnVP9w.js",
+    "bytes": 70662,
+    "sha256": "c4bd9ad27612c3459d895933072a236d229b4715ebb4a13523e8c8751f976339",
+    "wholeWorkerExecuted": false
+  },
+  "offlineOfficialHelperParity": {
+    "passed": true,
+    "groups": 2,
+    "groupBits": 2048,
+    "checks": ["public SHA-256 commitment", "native/shared modular exponentiation agreement", "shared key bytes", "signed fingerprint", "leading-zero minimal encoding"],
+    "networkUsed": false,
+    "accountUsed": false,
+    "callPlaced": false
+  },
+  "componentTests": {"passed": 8, "failed": 0, "skipped": 0},
+  "nodeRegression": {"passed": 187, "failed": 0, "skipped": 0},
+  "security": {"primeBits": 2048, "primeAndQChecked": true, "checksPerCandidate": 64, "maximumPendingValidations": 4, "maximumCachedPublicPrimeHashes": 8, "strictPublicRange": "2^1984 < value < p - 2^1984", "privateNativeArithmetic": true, "oneUse": true, "independentTunnelIdentityStillRequired": true},
+  "liveCallVerified": false,
+  "mediaCarrierImplemented": false,
+  "providerRelayVerified": false,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "releasePublished": false
+}

@@ -4,6 +4,11 @@ This component is isolated from production Bale. Eitaa is still marked as
 a two-account login laboratory in the local provider panel. Media and tunnels
 remain unavailable; real login is unverified.
 
+The isolated [call-key component](call-key.md) now implements native DH setup,
+safe-group/public-value validation and the observed commitment/fingerprint
+format. It passes offline parity with selected official crypto-worker helpers;
+it is not yet connected to live signaling or a provider relay carrier.
+
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker
 is `https://web.eitaa.com/mtproto.worker-CJJzYEpd.js`, SHA-256
