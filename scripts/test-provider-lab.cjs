@@ -1,8 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {startLab}=require('../experiments/providers/lab.cjs');
-const {FakeAuth}=require('./provider-lab-fixture.cjs');
+const {FakeCallAuth}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,sessionFactory:slot=>new FakeAuth(slot,calls)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true});}
 }
@@ -17,6 +17,27 @@ test('loopback HTTP management rejects missing nonce, cross-origin writes, rebin
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
  for(const route of ['/api/eitaa/1/start','/api/rubika/1/start','/api/bale/1/start','/api/igap/3/start'])assert.equal((await request(route,{phone:'09120000001'})).status,404);
  assert.equal(calls.length,0);
+}));
+
+test('HTTP call flow allows only two signed-in local accounts and returns no room credentials',()=>fixture(async({request,calls})=>{
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ const call=(slot,action,body={})=>request('/api/igap/'+slot+'/call/'+action,body);
+ assert.equal((await call(1,'dial',{targetSlot:2})).status,400);
+ for(const slot of [1,2]){await request('/api/igap/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/igap/'+slot+'/verify',{code:'12345'});}
+ assert.equal((await call(1,'dial',{targetSlot:1})).status,400);
+ assert.equal((await call(1,'dial',{targetSlot:'2'})).status,400);
+ assert.equal((await call(1,'dial',{targetSlot:2})).status,200);
+ let state=await(await request('/api/state')).json();assert.deepEqual(state.accounts.map(a=>a.call.phase),['outgoing','incoming']);
+ assert.equal((await call(1,'dial',{targetSlot:2})).status,409);
+ assert.equal((await call(2,'ring')).status,200);
+ assert.equal((await call(2,'join')).status,200);
+ assert.equal((await call(1,'join')).status,200);
+ const publicState=await(await request('/api/state')).text();assert.ok(!publicState.includes('fixture.payload.signature'));assert.ok(!publicState.includes('fixture-secret-token'));
+ state=JSON.parse(publicState);assert.ok(state.accounts.every(a=>a.call.phase==='joined'&&a.call.credentialReady&&!a.call.tunnelReady));
+ assert.equal((await call(1,'reset')).status,409,'an active call must be left explicitly');
+ assert.equal((await call(2,'leave')).status,200);
+ state=await(await request('/api/state')).json();assert.ok(state.accounts.every(a=>a.call.phase==='ended'&&!a.call.credentialReady));
+ assert.deepEqual(calls.filter(c=>typeof c.action==='number').map(c=>c.action),[913,915,916,914,914,918]);
 }));
 test('local login endpoints isolate accounts, persist sealed sessions and restore without OTP or public secret output',()=>fixture(async({request,dir,calls})=>{
  const password='fixture-passphrase-123';assert.equal((await request('/api/vault/unlock',{password})).status,200);

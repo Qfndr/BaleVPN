@@ -1,0 +1,63 @@
+{
+  "provider": "igap",
+  "observedDate": "2026-11-02",
+  "sources": [
+    {
+      "url": "https://web.igap.net/assets/OutgoingCallRinging-BCqlPxe6.js",
+      "sha256": "8ed853b2d22776b80f0c7e8cd55bda766bfbe92fd328871e859b8cb08b70debc",
+      "bytes": 2592
+    },
+    {
+      "url": "https://web.igap.net/assets/IncomingCallRinging-DtkKIsJi.js",
+      "sha256": "03541d33dcc540285fb77876724547e2773da819a6d17e03ff0dab9560a593dd",
+      "bytes": 3219
+    },
+    {
+      "url": "https://web.igap.net/assets/CallHall-CUjUw6-Z.js",
+      "sha256": "4859537b6bd8f66768543f818e44d08fe1bba8bde040ea38396eebcf137a2e29",
+      "bytes": 12273
+    },
+    {
+      "url": "https://web.igap.net/assets/signaling-service-DvJlvXcw.js",
+      "sha256": "2129aad259a4d21c16dc6501e75caa8d4ae621284ae3117920d741484db460f4",
+      "bytes": 762
+    },
+    {
+      "url": "https://web.igap.net/assets/CallEngine-D5ybhatj.js",
+      "sha256": "0f42455443331cd85db95adb3adfaea7d186f00f0db12c1f3c6db1890b71bdbf",
+      "bytes": 469570
+    },
+    {
+      "url": "https://web.igap.net/assets/HandleSignalingCallOfferResponse-C6E7iaBn.js",
+      "sha256": "dabb49daba1bd347244dbe2740811a889a98519fc1e2f9b8ef65463489a8bb1c",
+      "bytes": 554
+    },
+    {
+      "url": "https://web.igap.net/assets/HandleSignalingCallJoinRoomResponse-Hl80Sx8g.js",
+      "sha256": "8553d801eaa14e800399b617cf490be8ebae8550a5e478ea966b157dfa97b6b6",
+      "bytes": 311
+    },
+    {
+      "url": "https://web.igap.net/assets/HandleSignalingCallLeaveRoom-UzheygUb.js",
+      "sha256": "98ca330e3e572cf6e2feeeb50ae165d9ab142de0c1b7325b2074c5745aaecdf6",
+      "bytes": 386
+    }
+  ],
+  "implemented": [
+    "account-bound create/offer/ringing/join/leave lifecycle",
+    "explicit same-panel two-account call test UI",
+    "correlated join credentials retained only in process memory",
+    "no automatic call or request retries",
+    "connection-change and late-response credential invalidation"
+  ],
+  "unverified": [
+    "actual authenticated service calls",
+    "whether a repeated caller join is accepted after service-issued token push",
+    "actual selected media relay",
+    "binary RTP forwarding and QUIC interoperability",
+    "operator billing and international outage behavior"
+  ],
+  "liveCallTested": false,
+  "productionProviderEnabled": false,
+  "billingVerified": false
+}

@@ -12,4 +12,25 @@ class FakeAuth{
  close(){this.record=null;this.stage='idle';}
  async logout(){this.close();return {loggedOut:true};}
 }
-module.exports={FakeAuth};
+// Two-party server fixture, including pushes delivered to the other account.
+// It exercises the real CallSession/HTTP/UI without contacting iGap.
+const {wire:w}=require('../experiments/igap/signaling.cjs');
+const peers=new WeakMap();
+class FakeCallAuth extends FakeAuth{
+ constructor(slot,calls,onPush=()=>{}){
+  super(slot,calls);this.onPush=onPush;
+  if(!peers.has(calls))peers.set(calls,new Map());peers.get(calls).set(slot,this);
+  this.connection={request:async(action,body)=>{
+   const fields=w.parse(body),id=BigInt(slot),room=501n;let payload=Buffer.alloc(0);
+   calls.push({slot,action});
+   if(action===913)payload=w.field(2,room,0);
+   else if(action===915){const target=peers.get(calls).get(Number(w.one(fields,2,0)));payload=Buffer.concat([w.field(2,id,0),w.field(3,room,0)]);await target.onPush(w.frame(30915,payload));}
+   else if(action===916)payload=w.field(2,id,0);
+   else if(action===914){payload=Buffer.concat([w.string(2,'fixture.payload.signature',100),w.field(3,id,0)]);await peers.get(calls).get(3-slot)?.onPush(w.frame(30914,w.field(3,id,0)));}
+   else if(action===918){payload=w.field(2,id,0);await peers.get(calls).get(3-slot)?.onPush(w.frame(30918,payload));}
+   else throw new Error('Unexpected fixture call');
+   return {action:action+30000,fields:w.parse(payload)};
+  }};
+ }
+}
+module.exports={FakeAuth,FakeCallAuth};
