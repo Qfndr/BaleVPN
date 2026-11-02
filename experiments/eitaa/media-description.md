@@ -82,6 +82,8 @@ $env:BALEVPN_EITAA_ADAPTER_NODE = (Get-Command node.exe).Source
 cd lktunnel-rust
 cargo test --release --locked -p lktunnel --lib real_turn_dtls_rtp_quic_survives_eitaa_json_projection -- --ignored
 # Full core suite including this explicitly configured fixture:
+cargo build --offline --locked --release -p lktunnel --example eitaa_relay_bridge
+$env:BALEVPN_EITAA_BRIDGE = (Resolve-Path target/release/examples/eitaa_relay_bridge.exe).Path
 cargo test --release --locked -p lktunnel --lib -- --include-ignored --test-threads=4
 ```
 

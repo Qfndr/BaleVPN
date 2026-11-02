@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "scope": "Normal Eitaa native helper and call/media composition",
+  "normalHelperImplemented": true,
+  "providerFixedAtCompileTime": true,
+  "sharedHelperImplementationWithNasim": true,
+  "sharedIpcParserWithSeparateProviderBindings": true,
+  "protocol": 2,
+  "platformBuiltAndTested": "Windows x64",
+  "nodeRegression": {
+    "passed": 260,
+    "failed": 0,
+    "skipped": 0,
+    "eitaaIpcTests": 12,
+    "mediaTests": 10
+  },
+  "officialRelayProjection": {
+    "fixtures": 4,
+    "passed": true,
+    "sourceSha256": "877c5cf4317887f7144a682b18a6c01fe443206d1e12e0fb81a13df740049c40",
+    "onlyPureProjectorExecuted": true,
+    "networkUsed": false
+  },
+  "rustLibraryRegression": {
+    "passed": 60,
+    "failed": 0,
+    "ignored": 0
+  },
+  "normalExampleRegression": {
+    "eitaaPassed": 4,
+    "nasimPassed": 4,
+    "failed": 0,
+    "ignored": 0
+  },
+  "composedNativeFixture": {
+    "actualNormalEitaaHelpers": true,
+    "actualCallAndMediaOwners": true,
+    "syntheticAccountRpcAndEvents": true,
+    "encryptedSdpSignaling": true,
+    "realLoopbackTurnDtlsSrtpRtp": true,
+    "independentPinnedQuic": true,
+    "bothRolesReady": true,
+    "serverLocalProxyReadyCorrectlyFalse": true,
+    "clientSocksReady": true,
+    "privateTargetRefused": true,
+    "ssrfExceptionEnabled": false,
+    "cleanChildStop": true
+  },
+  "earlierCarrierEchoBytes": 262144,
+  "serverReadinessBugAlsoFixedInExperimentalNasim": true,
+  "productionPacketLibraryModified": false,
+  "productionBaleModified": false,
+  "runningProviderLabRestarted": false,
+  "providerLabCallUiIntegrated": false,
+  "persistentMediaIdentityIntegrated": false,
+  "liveLoginVerified": false,
+  "liveProviderCallVerified": false,
+  "liveProviderRelayVerified": false,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "newProductApplicationBuilt": false,
+  "releasePublished": false,
+  "testedWindowsHelperSha256": {
+    "eitaa": "7f06354ad4c115c4d25ddf76dc0ae19f37f189c64fd031ee1665883f06af2c08",
+    "nasim": "42ebd279d6857d29e35fd1301a6f02ad21819389c26a89d3f9c85406d93238e0"
+  }
+}

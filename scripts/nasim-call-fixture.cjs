@@ -30,7 +30,7 @@ function fixture({autoConfig=true,open,sendHook}={}){
     async setAnswer(answer){assert.equal(answer.type,'answer');this.ops.push({op:'setAnswer'});
      const other=natives.find(n=>n.publicCertificate===this.options.trustedCertificates[0]);
      if(!other||other.options.trustedCertificates[0]!==certificate)throw Object.assign(Error('fixture wrong pin'),{reason:'invalid_pairing'});
-     for(const peer of [this,other])peer.latest={phase:'connected',mediaConnected:true,peerAuthenticated:true,proxyReady:true,relayPair:true};
+     for(const peer of [this,other])peer.latest={phase:'connected',mediaConnected:true,peerAuthenticated:true,proxyReady:peer.options.role==='client',relayPair:true};
     },async addCandidate(candidate){this.ops.push({op:'candidate',candidate});},
     close(){this.ops.push({op:'close'});this.latest={phase:'closed'};}};
    natives.push(bridge);return bridge;

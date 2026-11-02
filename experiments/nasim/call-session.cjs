@@ -53,11 +53,13 @@ class CallSession {
   this.#timer=setInterval(()=>{
    try{this.#context();const media=this.#bridge?.state;
     if(media&&['failed','closed'].includes(media.phase))throw error(SAFE.has(media.reason)?media.reason:'transport_closed',true);
-    if(this.#negotiated&&this.#localAccepted&&this.#remoteAccepted&&media?.proxyReady)this.#phase='connected';
+    if(this.#negotiated&&this.#localAccepted&&this.#remoteAccepted&&this.#mediaReady(media))this.#phase='connected';
     if(this.#deadline&&this.#phase!=='connected'&&Date.now()>this.#deadline)throw error('call_timeout',true);
    }catch(e){this.#finish('uncertain',e instanceof CallError?e.reason:'call_connection_changed',true);}
   },1000);this.#timer.unref();
  }
+ #mediaReady(media){return media?.mediaConnected===true&&media.relayPair===true&&media.peerAuthenticated===true&&
+  (this.#options?.role==='server'?media.phase==='connected':media.proxyReady===true);}
  #finish(phase,reason=null,disconnect=false){
   this.#epoch++;if(this.#call){this.#retired.add(this.#call);while(this.#retired.size>128)this.#retired.delete(this.#retired.values().next().value);}
   clearInterval(this.#timer);this.#timer=null;this.#bridge?.close();this.#bridge=null;this.#own=null;this.#trusted=[];
@@ -215,7 +217,7 @@ class CallSession {
  reset(){this.#finish('idle',null,true);this.#peer=null;this.#direction=null;}
  get state(){
   const media=this.#bridge?.state||null;
-  const phase=this.#phase==='negotiating'&&this.#negotiated&&this.#localAccepted&&this.#remoteAccepted&&media?.proxyReady?'connected':this.#phase;
+  const phase=this.#phase==='negotiating'&&this.#negotiated&&this.#localAccepted&&this.#remoteAccepted&&this.#mediaReady(media)?'connected':this.#phase;
   return {provider:'nasim',phase,busy:this.#working||this.#queue.length>0,direction:this.#direction||null,peerId:this.#peer||null,callUUID:this.#call||null,
    selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,

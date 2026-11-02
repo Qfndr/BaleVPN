@@ -93,7 +93,7 @@ impl Drop for Process {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "Requires BALEVPN_NASIM_BRIDGE pointing to the built normal helper"]
+#[ignore = "Requires the matching BALEVPN_NASIM_BRIDGE or BALEVPN_EITAA_BRIDGE normal helper"]
 async fn two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection() {
     use std::{
         net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -123,7 +123,7 @@ async fn two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection() {
             }
         }
     }
-    let executable = std::env::var_os("BALEVPN_NASIM_BRIDGE")
+    let executable = std::env::var_os(BRIDGE_ENV)
         .expect("Build the helper and set BALEVPN_NASIM_BRIDGE first");
     let conn = Arc::new(tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap());
     let port = conn.local_addr().unwrap().port();
@@ -149,7 +149,7 @@ async fn two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection() {
     let b_cert = b.until("prepared", false)["publicCertificate"].clone();
     assert_ne!(a_cert, b_cert);
     let configuration = |role: &str, certificate: Value| {
-        json!({"command":"configure","provider":"nasim","role":role,
+        json!({"command":"configure","provider":PROVIDER,"role":role,
         "trustedCertificates":[certificate],"socksPort":0,"throughput":false,
         "iceServers":[{"urls":[format!("turn:127.0.0.1:{port}")],"username":"fixture","credential":"fixture-relay-password"}]})
     };

@@ -1,8 +1,9 @@
 # Eitaa service and call research
 
 This component is isolated from production Bale. Eitaa is still marked as
-a two-account login laboratory in the local provider panel. Media and tunnels
-remain unavailable; real login is unverified.
+a two-account login laboratory in the local provider panel. Media/tunnels are
+not offered by that panel; private local media verification is described below.
+Real login is unverified.
 
 The isolated [call-key component](call-key.md) now implements native DH setup,
 safe-group/public-value validation and the observed commitment/fingerprint
@@ -17,7 +18,7 @@ live call control and verified relay routing remain.
 The [single-audio SDP adapter](media-description.md) now passes eight official
 parser/projector fixtures and a real native local TURN/DTLS/SRTP/RTP/QUIC test
 with a 256 KiB exact echo through encrypted Eitaa-shaped descriptions. Live
-provider call control, a provider-specific bridge and route/billing tests remain.
+provider call control and route/billing tests remain.
 
 The [private call RPC client and codec](call-rpc.md) now support ten reviewed
 methods and their complete 495-constructor dependency closure. Mixed message/call
@@ -29,8 +30,15 @@ The [private account-bound call controller](call-session.md) now composes these
 pieces with explicit dial/accept/end, optional bounded polling, immutable
 account/call binding and cancellation. Twenty-one lifecycle tests and the real
 local native-carrier fixture pass through that controller. The current complete
-regression is 236 Node tests and 59 Rust tests. Live account/service acceptance,
-target resolution, the provider-specific bridge and lab/product UI remain.
+regression at that checkpoint was 236 Node tests and 59 Rust tests.
+
+The [normal Eitaa native helper and media owner](native-media.md) now configure
+call-bound TURN, exchange encrypted native offers/answers and check independent
+QUIC pairing. The composed normal-helper test found and fixed a server/client
+readiness distinction, also corrected for Nasim. Current regression: 260 Node,
+60 Rust library and eight normal example tests; four official TURN-projection
+fixtures also pass. Live account/service acceptance, target resolution,
+persistent media identity, reconnect and lab/product UI remain.
 
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker

@@ -6,9 +6,9 @@ const {protocol}=require('../experiments/eitaa/call-client.cjs'),{CallSession}=r
 const f=require('./eitaa-call-fixtures.cjs');
 const clone=v=>codec.decode(codec.object(v));
 function account(id){let signed=true;const record={provider:'eitaa',userId:String(id),imei:(id===101?'0123456789abcde':'fedcba987654321')+'__web',token:'fixture-token-'+id};return {record,get state(){return {provider:'eitaa',signedIn:signed,selfConfirmed:signed,userId:record.userId};},exportSession(){return {...record};},stop(){signed=false;}};}
-function service(){
+function service({connections=[f.connection]}={}){
  const queues=new Map([[101,[]],[202,[]]]),cursors=new Map([[101,10],[202,10]]),calls=[],clients=[];let call,nextCallId=f.peer.id;
- function active(forId){return {_:'phoneCall',...call.base,g_a_or_b:forId===call.base.admin_id?call.gb:call.ga,key_fingerprint:call.fingerprint,connections:[f.connection],start_date:f.state.date};}
+ function active(forId){return {_:'phoneCall',...call.base,g_a_or_b:forId===call.base.admin_id?call.gb:call.ga,key_fingerprint:call.fingerprint,connections,start_date:f.state.date};}
  const api={queues,calls,clients,override:null,clone,get call(){return call;},
   createClient(options){const self=Number(options.token.split('-').at(-1));const client={closed:false,close(){this.closed=true;},async request(method,input){if(this.closed)throw Object.assign(Error('fixture closed'),{reason:'closed'});calls.push({self,method});if(api.override){const value=await api.override({self,method,input,client});if(value!==undefined)return value;}
    if(method==='updates.getState')return {...f.state,pts:cursors.get(self),seq:cursors.get(self)};
@@ -28,9 +28,9 @@ function service(){
  };return api;
 }
 async function pair(t,options={}){
- const api=service(),aAccount=account(101),bAccount=account(202),aSignals=[],bSignals=[],aSecure=[],bSecure=[];
- const a=new CallSession(aAccount,{allowedPeers:['202'],createClient:o=>api.createClient(o),onSecure:async v=>{aSecure.push(v);await options.onASecure?.(v);},onSignal:async(v,context)=>{aSignals.push(v);await options.onASignal?.(v,context);}});
- const b=new CallSession(bAccount,{allowedPeers:['101'],createClient:o=>api.createClient(o),onSecure:async v=>{bSecure.push(v);await options.onBSecure?.(v);},onSignal:async(v,context)=>{bSignals.push(v);await options.onBSignal?.(v,context);}});
+ const api=service(options),aAccount=account(101),bAccount=account(202),aSignals=[],bSignals=[],aSecure=[],bSecure=[];
+ const a=new CallSession(aAccount,{allowedPeers:['202'],createClient:o=>api.createClient(o),onSecure:async v=>{aSecure.push(v);await options.onASecure?.(v);},onSignal:async(v,context)=>{aSignals.push(v);await options.onASignal?.(v,context);},onEnd:()=>options.onAEnd?.()});
+ const b=new CallSession(bAccount,{allowedPeers:['101'],createClient:o=>api.createClient(o),onSecure:async v=>{bSecure.push(v);await options.onBSecure?.(v);},onSignal:async(v,context)=>{bSignals.push(v);await options.onBSignal?.(v,context);},onEnd:()=>options.onBEnd?.()});
  t.after(()=>{a.close();b.close();});await a.start();await b.start();
  return {api,a,b,aAccount,bAccount,aSignals,bSignals,aSecure,bSecure,async negotiate(){await a.dial({userId:'202',accessHash:-22n});await b.pollOnce();await b.accept();await a.pollOnce();await b.pollOnce();}};
 }

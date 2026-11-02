@@ -8,6 +8,7 @@ test('two account controllers require explicit incoming acceptance, then bind th
   await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
   assert.deepEqual(f.sent.map(x=>x.signal.type),['callRequest','accept','offer','answer']);
   assert.equal(f.natives[0].options.role,'client');assert.equal(f.natives[1].options.role,'server');
+  assert.equal(f.natives[0].state.proxyReady,true);assert.equal(f.natives[1].state.proxyReady,false);
   assert.ok(f.natives[1].ops.some(x=>x.op==='offer'));assert.ok(f.natives[0].ops.some(x=>x.op==='answer'));
   const state=JSON.stringify([a.state,b.state]);for(const secret of ['fixture-private-password','fixture-private-user','ice-pwd','fingerprint','iceServers'])assert.ok(!state.includes(secret));
   assert.equal(a.state.billingVerified,false);assert.equal(a.state.liveCallVerified,false);

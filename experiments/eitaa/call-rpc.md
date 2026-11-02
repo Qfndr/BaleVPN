@@ -47,7 +47,8 @@ The private client also exposes explicit `updates.getState` and
 retains final/intermediate cursors, call events and other updates. It does not
 itself implement a scheduling loop, cursor commit or call-ID binding. The
 [separate call controller](call-session.md) now implements those responsibilities;
-the provider-specific media-helper adapter is still outstanding. A full history
+the [separate media owner](native-media.md) now composes the provider-specific
+helper for local verification; live service acceptance remains. A full history
 response exceeding current bounds
 fails explicitly; no messages or call events are silently skipped. These private
 objects contain account/message metadata and must never be sent to public

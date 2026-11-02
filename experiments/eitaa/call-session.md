@@ -81,11 +81,11 @@ seconds and canceled by stop, so a stalled media hook does not permanently hold
 the call queue. The queue is limited to 32 jobs / 256 KiB, and external ingested
 events are round-tripped through the bounded private TL codec before queuing.
 
-This seam still needs the Eitaa-specific relay/configuration and native-helper
-adapter. A successful signaling handshake reports `keyNegotiated`, **not**
+The [separate media owner](native-media.md) now implements Eitaa relay/configuration
+and normal-helper adaptation. A successful signaling handshake reports `keyNegotiated`, **not**
 `mediaConnected`, `peerAuthenticated`, `proxyReady`, provider routing or billing.
-Those state fields remain false here until a separate verified media integration
-exists. The core public state contains no token, access hash, DH key, TURN
+Those fields remain false in this signaling-only state; consumers read the
+separate media owner's role-specific readiness. The core public state contains no token, access hash, DH key, TURN
 credential, SDP or raw error response.
 
 ## Verification
@@ -118,5 +118,7 @@ claimed by these results.
 node --test scripts/test-eitaa-call-session.cjs
 $env:BALEVPN_EITAA_ADAPTER_NODE = (Get-Command node.exe).Source
 cd lktunnel-rust
+cargo build --offline --locked --release -p lktunnel --example eitaa_relay_bridge
+$env:BALEVPN_EITAA_BRIDGE = (Resolve-Path target/release/examples/eitaa_relay_bridge.exe).Path
 cargo test --offline --locked --release -p lktunnel --lib -- --include-ignored --test-threads=4
 ```

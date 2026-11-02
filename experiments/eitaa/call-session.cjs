@@ -109,7 +109,7 @@ class CallSession{
  async #secure(call,key,guard){
   try{guard();this.#cipher=new SignalingCipher({key,isOutgoing:this.#outgoing});}finally{key.fill(0);}
   this.#dh?.close();this.#dh=null;this.#commitment?.fill(0);this.#commitment=null;this.#call=call;this.#phase='secure';this.#deadline=0;this.#startedAt=Date.now();
-  await this.#notify('onSecure',{direction:this.#outgoing?'outgoing':'incoming',callId:String(call.id),connections:call.connections},guard);
+  await this.#notify('onSecure',{direction:this.#outgoing?'outgoing':'incoming',callId:String(call.id),selfId:this.#self,peerId:String(this.#peer),connections:call.connections},guard);
   for(const bytes of this.#early){try{await this.#deliver(bytes,guard);}finally{bytes.fill(0);}}this.#early=[];this.#earlyBytes=0;
  }
  async #accepted(call,guard){

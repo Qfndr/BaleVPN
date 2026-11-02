@@ -7,10 +7,13 @@ struct EitaaAdapter {
 }
 impl EitaaAdapter {
     fn start() -> Self {
+        Self::with_script("../../scripts/eitaa-media-fixture-adapter.cjs")
+    }
+    fn with_script(relative: &str) -> Self {
         let executable = std::env::var_os("BALEVPN_EITAA_ADAPTER_NODE")
             .expect("explicit Node executable required for this opt-in fixture");
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../scripts/eitaa-media-fixture-adapter.cjs");
+            .join(relative);
         let mut command = std::process::Command::new(executable);
         command.arg(script).stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null());
@@ -66,6 +69,34 @@ impl EitaaAdapter {
             _ => panic!("invalid fixture phase"),
         }.expect("invalid private SDP")
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires BALEVPN_EITAA_ADAPTER_NODE and normal BALEVPN_EITAA_BRIDGE helper"]
+async fn actual_eitaa_call_media_owns_normal_helpers_and_preserves_proxy_target_filter() {
+    use std::io::Write;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    assert!(std::env::var_os("BALEVPN_EITAA_BRIDGE").is_some(), "explicit normal Eitaa helper required");
+    let mut fixture = EitaaAdapter::with_script("../../scripts/eitaa-native-call-fixture.cjs");
+    let (relay, config) = relay().await;
+    let port: u16 = config.urls[0].rsplit(':').next().unwrap().parse().unwrap();
+    serde_json::to_writer(&mut fixture.input, &serde_json::json!({"command":"connect","turnPort":port})).unwrap();
+    fixture.input.write_all(b"\n").unwrap();fixture.input.flush().unwrap();
+    let result=fixture.read();assert_eq!(result["event"],"connected","normal helper integration failed");
+    for key in ["client","server"] {
+        assert_eq!(result[key]["provider"],"eitaa");assert_eq!(result[key]["phase"],"connected");
+        for flag in ["relayPair","mediaConnected","peerAuthenticated","ready"] {assert_eq!(result[key][flag],true);}
+        assert_eq!(result[key]["providerPathVerified"],false);assert_eq!(result[key]["billingVerified"],false);
+    }
+    assert_eq!(result["client"]["proxyReady"],true);assert_eq!(result["server"]["proxyReady"],false);assert_eq!(result["server"]["serverReady"],true);
+    let address=result["client"]["socksAddress"].as_str().unwrap();assert!(address.starts_with("127.0.0.1:"));
+    let mut socket=tokio::net::TcpStream::connect(address).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5),async {
+        socket.write_all(&[5,1,0]).await.unwrap();let mut method=[0;2];socket.read_exact(&mut method).await.unwrap();assert_eq!(method,[5,0]);
+        socket.write_all(&[5,1,0,1,127,0,0,1,0,80]).await.unwrap();let mut reply=[0;10];socket.read_exact(&mut reply).await.unwrap();assert_eq!(reply[1],2);
+    }).await.unwrap();drop(socket);
+    fixture.input.write_all(b"{\"command\":\"stop\"}\n").unwrap();fixture.input.flush().unwrap();assert_eq!(fixture.read()["event"],"stopped");
+    relay.close().await.unwrap();
 }
 impl Drop for EitaaAdapter {
     fn drop(&mut self) { let _ = self.child.kill(); let _ = self.child.wait(); }
