@@ -1,0 +1,75 @@
+{
+  "provider": "nasim",
+  "observedDate": "2026-11-02",
+  "webVersion": "6.1.1",
+  "sources": [
+    {
+      "url": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+      "bytes": 632103,
+      "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149"
+    },
+    {
+      "url": "https://web.nasimrezvan.com/assets/Auth-CQcf1U8S.js",
+      "bytes": 26561,
+      "sha256": "6784ea33855df3e015c8c968420dd74c0c7c37d163194293ba49039e0de6745e"
+    },
+    {
+      "url": "https://web.nasimrezvan.com/assets/Crypto.worker-D3fv1cc7.js",
+      "bytes": 24952,
+      "sha256": "fd35b0037761486725cd940a8c3a243477ffb9d6c5483108c15a0759cd3bd197"
+    },
+    {
+      "url": "https://web.nasimrezvan.com/assets/CountrySelect-gZeptblG.js",
+      "bytes": 13875,
+      "sha256": "2987a95c7691340fc51cde64219e00f4236f66659620ef96a6d5cc56bb551336"
+    }
+  ],
+  "wireFormat": {
+    "apiRoot": "https://core.gaplication.com",
+    "apiVersion": "v2.8",
+    "serialization": "MessagePack without records",
+    "cipher": "AES-128-GCM",
+    "ivBytes": 12,
+    "tagBytes": 16,
+    "serviceKeyDerivation": "first 16 UTF-8 bytes of account token, or duid before login",
+    "httpsRequired": true,
+    "endToEndTunnelEncryption": false
+  },
+  "authPaths": {
+    "sendCode": "/otp/sendByMobile",
+    "login": "/user/login",
+    "registerDevice": "/device/register",
+    "registerUser": "/user/register",
+    "twoFactor": "/twoFA/checkInLogin",
+    "restoreProbe": "/mxb/user/status",
+    "logout": "PUT https://core.gap.im/v1/user/logout.json"
+  },
+  "officialWorkerOfflineInterop": {
+    "passed": true,
+    "fixtures": 5,
+    "directions": 2,
+    "legacyCbcReply": true,
+    "realAccounts": false,
+    "serviceRequests": 0
+  },
+  "anonymousStatusProbe": {
+    "httpStatus": 401,
+    "encryptedRoundTripVerified": false,
+    "authenticated": false,
+    "otpSubmitted": false,
+    "changesAccountState": false
+  },
+  "localLoginUiImplemented": true,
+  "isolatedAccountsPerProvider": 2,
+  "sessionVaultEncrypted": true,
+  "resendDelaySeconds": 90,
+  "protectedRestoreDoesNotNecessarilyReturnSelfId": true,
+  "registerDeviceRetriesAutomatically": false,
+  "liveLoginTested": false,
+  "internationalSmsDeliveryTested": false,
+  "liveCallTested": false,
+  "nativeCarrierImplemented": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false,
+  "productionProviderEnabled": false
+}

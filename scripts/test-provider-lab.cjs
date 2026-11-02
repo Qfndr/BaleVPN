@@ -1,8 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {startLab}=require('../experiments/providers/lab.cjs');
-const {FakeCallAuth,fakeBridgeFactory}=require('./provider-lab-fixture.cjs');
+const {FakeCallAuth,FakeNasimAuth,fakeBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[];const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key});}finally{await lab.close();await fs.rm(dir,{recursive:true,force:true});}
 }
@@ -17,6 +17,26 @@ test('loopback HTTP management rejects missing nonce, cross-origin writes, rebin
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
  for(const route of ['/api/eitaa/1/start','/api/rubika/1/start','/api/bale/1/start','/api/igap/3/start'])assert.equal((await request(route,{phone:'09120000001'})).status,404);
  assert.equal(calls.length,0);
+}));
+
+test('Nasim and iGap HTTP accounts stay namespaced through sign-in, encrypted storage, local removal, lock and restore',()=>fixture(async({request,dir,calls})=>{
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ for(const provider of ['igap','nasim'])for(const slot of [1,2]){
+  assert.equal((await request('/api/'+provider+'/'+slot+'/start',{country:'IR',phone:'09120000001'})).status,200);
+  assert.equal((await request('/api/'+provider+'/'+slot+'/verify',{code:'12345'})).status,200);
+ }
+ let state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.nasim.length,2);
+ assert.ok(state.providerAccounts.igap.every(a=>a.signedIn));assert.ok(state.providerAccounts.nasim.every(a=>a.signedIn));
+ for(const provider of ['igap','nasim'])for(const slot of [1,2]){const file=await fs.readFile(path.join(dir,provider,slot+'.json'),'utf8');assert.ok(!file.includes('fixture-secret'));assert.ok(!file.includes('fixture-nasim-secret'));}
+ assert.equal((await request('/api/nasim/1/call/dial',{targetSlot:2})).status,404);
+ await request('/api/nasim/1/forget',{});state=await(await request('/api/state')).json();
+ assert.ok(state.accounts.every(a=>a.signedIn));assert.equal(state.providerAccounts.nasim[0].hasSession,false);assert.equal(state.providerAccounts.nasim[1].signedIn,true);
+ await request('/api/vault/lock',{});state=await(await request('/api/state')).json();
+ assert.ok(Object.values(state.providerAccounts).flat().every(a=>!a.signedIn));
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});await request('/api/nasim/2/resume',{});
+ state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.nasim[1].signedIn,true);
+ assert.equal(calls.filter(c=>c.action==='nasim-start').length,2);assert.equal(calls.at(-1).action,'nasim-restore');
+ const publicState=JSON.stringify(state);assert.ok(!publicState.includes('fixture-nasim-secret-token'));assert.ok(!publicState.includes('09120000001'));
 }));
 
 test('media endpoints require joined accounts, keep native tokens private and stop both sides when the vault locks',()=>fixture(async({request})=>{

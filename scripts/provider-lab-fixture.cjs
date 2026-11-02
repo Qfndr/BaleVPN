@@ -41,4 +41,12 @@ function fakeBridgeFactory(){let index=0;return async()=>{
   close(){this.state={phase:'closed',role:this.state.role};}
  };
 };}
-module.exports={FakeAuth,FakeCallAuth,fakeBridgeFactory};
+class FakeNasimAuth extends FakeAuth{
+ get state(){const state=super.state;return {...state,provider:'nasim',connected:state.signedIn,callReady:false};}
+ async start(phone){this.calls.push({slot:this.slot,action:'nasim-start',phone});this.stage='code';return {codeRequested:true};}
+ async verify(code){assert.equal(code,'12345');this.calls.push({slot:this.slot,action:'nasim-verify'});this.record={provider:'nasim',
+  userId:'nasim-'+this.slot,clientId:'client-'+this.slot,token:'fixture-nasim-secret-token-'+this.slot,deviceId:'web.fixture-nasim-device-'+this.slot,loginPhone:'+989120000001'};
+  this.stage='authenticated';return {authenticated:true};}
+ async restore(record){this.calls.push({slot:this.slot,action:'nasim-restore'});this.record=record;this.stage='authenticated';return {authenticated:true};}
+}
+module.exports={FakeAuth,FakeCallAuth,FakeNasimAuth,fakeBridgeFactory};
