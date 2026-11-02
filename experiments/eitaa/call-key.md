@@ -44,6 +44,9 @@ constructor. Two local peer setups and derivations took approximately 6 ms in
 one development smoke check; this is not a throughput benchmark or a promise
 about Eitaa's actual group. Custom-group setup also has generic OpenSSL checks.
 There is no per-packet work or production Bale overhead from this component.
+Both native setup paths now explicitly pad short public integers to 256 bytes
+before validation and commitment. The signaling integration test exposed this
+rare native-output case; a dedicated regression checks it deterministically.
 
 Each instance is one-use: invalid input consumes the pending exchange, success
 releases the native private handle, and close removes the remaining references

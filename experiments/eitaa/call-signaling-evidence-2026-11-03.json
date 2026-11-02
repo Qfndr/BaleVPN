@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "scope": "Private encrypted WebRTC call signaling; no live call or production provider enabled",
+  "source": {"url": "https://web.eitaa.com/appDialogsManager-CtDWV_rQ.js", "bytes": 2554999, "sha256": "877c5cf4317887f7144a682b18a6c01fe443206d1e12e0fb81a13df740049c40", "wholeUiExecuted": false},
+  "observedImplementation": {"callerCalleeController": true, "protocolLayer": 92, "libraryVersion": "4.0.0", "webRtc": true, "encryptedSignaling": true, "messages": ["InitialSetup", "Candidates"], "sourceP2pDefaultMustBeOverriddenForTunnelGoal": true},
+  "offlineOfficialParity": {"passed": true, "byteIdenticalPackets": 24, "keyLengths": [248, 255, 256], "bothDirectionsDecrypted": true, "counterWrapRejected": true, "networkUsed": false, "accountUsed": false},
+  "componentTests": {"passed": 9, "failed": 0, "skipped": 0},
+  "nodeRegression": {"passed": 197, "failed": 0, "skipped": 0},
+  "limits": {"maximumPayloadBytes": 49152, "replayWindowEntries": 4096, "replayWindowBytes": 16384, "jsonDepth": 12, "jsonNodes": 4096, "candidateCount": 64},
+  "nativeDhIntegration": {"passed": true, "shortNativePublicValuePaddingFixed": true, "paddingRegressionTestAdded": true},
+  "independentTunnelAuthenticationStillRequired": true,
+  "productionBaleModified": false,
+  "liveLoginVerified": false,
+  "liveCallVerified": false,
+  "mediaCarrierImplemented": false,
+  "providerRelayVerified": false,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "releasePublished": false
+}

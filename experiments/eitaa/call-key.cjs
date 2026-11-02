@@ -23,6 +23,7 @@ async function validateGroup(prime,generator){
  return {prime:p,generator};
 }
 function validatePublic(value,p){const v=bytes(value,SIZE),n=integer(v),prime=integer(p);if(n<=MIN||n>=prime-MIN)throw new KeyError('unsafe_public_key');return v;}
+function nativePublic(value,p){const v=bytes(value,1,SIZE),padded=Buffer.alloc(SIZE);v.copy(padded,SIZE-v.length);return validatePublic(padded,p);}
 function publicCommitment(value){return crypto.createHash('sha256').update(bytes(value,SIZE)).digest();}
 // The pinned Eitaa helper hashes the minimal big-endian shared integer, not
 // an assumed 256-byte padded buffer. Keep that compatibility explicit.
@@ -39,13 +40,13 @@ class CallKeyExchange{
    if(params.generator===2&&this.#prime.equals(known)){
     // The built-in validated group avoids repeating the generic OpenSSL group
     // check on each call. Private generation stays inside the native engine.
-    this.#dh=crypto.getDiffieHellman('modp14');this.#public=validatePublic(this.#dh.generateKeys(),this.#prime);return;
+    this.#dh=crypto.getDiffieHellman('modp14');this.#public=nativePublic(this.#dh.generateKeys(),this.#prime);return;
    }
    const upper=fixed(integer(this.#prime)-1n),lower=Buffer.alloc(SIZE);lower[SIZE-1]=2;
    for(let i=0;i<128;i++){secret=crypto.randomBytes(SIZE);if(Buffer.compare(secret,lower)>=0&&Buffer.compare(secret,upper)<0)break;secret.fill(0);secret=null;}
    if(!secret)throw new KeyError('entropy_failed');
    this.#dh=crypto.createDiffieHellman(this.#prime,params.generator);if(this.#dh.verifyError)throw new KeyError('invalid_group');
-   this.#dh.setPrivateKey(secret);const publicValue=this.#dh.generateKeys(),padded=Buffer.alloc(SIZE);if(publicValue.length>SIZE)throw new KeyError('invalid_public_key');publicValue.copy(padded,SIZE-publicValue.length);this.#public=validatePublic(padded,this.#prime);
+   this.#dh.setPrivateKey(secret);this.#public=nativePublic(this.#dh.generateKeys(),this.#prime);
   }catch(e){this.close();if(e instanceof KeyError)throw e;throw new KeyError('key_generation_failed');}finally{secret?.fill(0);}
  }
  static async create({prime,generator,signal}={}){

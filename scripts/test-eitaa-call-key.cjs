@@ -3,6 +3,11 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=re
 const {CallKeyExchange,validateGroup,keyFingerprint,publicCommitment}=require('../experiments/eitaa/call-key.cjs');
 const prime=crypto.getDiffieHellman('modp14').getPrime(),parameters={prime,generator:2};
 const fixed=n=>Buffer.from(n.toString(16).padStart(512,'0'),'hex');
+test('native short public integers are padded to the official 256-byte wire form before validation and commitment',async()=>{
+ const original=crypto.getDiffieHellman,short=Buffer.alloc(255,0xa5);let instance;
+ try{crypto.getDiffieHellman=()=>({generateKeys:()=>Buffer.from(short)});instance=await CallKeyExchange.create(parameters);assert.equal(instance.publicValue.length,256);assert.equal(instance.publicValue[0],0);assert.ok(instance.publicValue.subarray(1).equals(short));assert.deepEqual(instance.commitment,publicCommitment(Buffer.concat([Buffer.from([0]),short])));}
+ finally{crypto.getDiffieHellman=original;instance?.close();}
+});
 test('native independent call peers derive the same private key and verify public commitment/fingerprint',async()=>{
  const [a,b]=await Promise.all([CallKeyExchange.create(parameters),CallKeyExchange.create(parameters)]);
  try{assert.equal(a.publicValue.length,256);assert.equal(a.commitment.length,32);assert.notDeepEqual(a.publicValue,b.publicValue);assert.equal(JSON.stringify(a),'{}');

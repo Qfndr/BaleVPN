@@ -18,6 +18,7 @@
     "callPlaced": false
   },
   "componentTests": {"passed": 8, "failed": 0, "skipped": 0},
+  "subsequentSignalingIntegration": {"shortNativePublicValuePaddingFixed": true, "dedicatedRegressionPassed": true, "callKeyTestsNow": 9, "completeNodeSuitePassed": 197},
   "nodeRegression": {"passed": 187, "failed": 0, "skipped": 0},
   "security": {"primeBits": 2048, "primeAndQChecked": true, "checksPerCandidate": 64, "maximumPendingValidations": 4, "maximumCachedPublicPrimeHashes": 8, "strictPublicRange": "2^1984 < value < p - 2^1984", "privateNativeArithmetic": true, "oneUse": true, "independentTunnelIdentityStillRequired": true},
   "liveCallVerified": false,

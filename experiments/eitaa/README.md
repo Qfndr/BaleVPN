@@ -9,6 +9,11 @@ safe-group/public-value validation and the observed commitment/fingerprint
 format. It passes offline parity with selected official crypto-worker helpers;
 it is not yet connected to live signaling or a provider relay carrier.
 
+The actual web call controller was subsequently located in the larger official
+dialogs chunk. The [private encrypted signaling codec](call-signaling.md) now
+matches 24 official packet fixtures and supports bounded replay protection;
+actual call RPC/events, SDP/media adaptation and verified relay routing remain.
+
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker
 is `https://web.eitaa.com/mtproto.worker-CJJzYEpd.js`, SHA-256
