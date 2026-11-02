@@ -39,6 +39,7 @@ pub mod tun;
 
 pub mod security;
 pub mod carrier;
+pub mod peer_media;
 #[cfg(test)]
 mod recovery_tests;
 
