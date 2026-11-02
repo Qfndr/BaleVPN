@@ -40,13 +40,15 @@ transport overrides are refused. DH public fields are 256 bytes, commitments
 request validation; the existing DH and signaling modules provide the separate
 cryptographic checks. Neither a request flag nor a returned TURN declaration
 proves that media actually uses a provider relay. The native nominated route and
-independent QUIC identity still have to be verified by the future call controller.
+independent QUIC identity still have to be verified by the future media integration.
 
 The private client also exposes explicit `updates.getState` and
 `updates.getDifference` requests. The latter fixes `pts_total_limit` to 256 and
 retains final/intermediate cursors, call events and other updates. It does not
-yet implement a long-poll/scheduling loop, cursor commit, call-ID binding or event
-delivery to the media adapter. A full history response exceeding current bounds
+itself implement a scheduling loop, cursor commit or call-ID binding. The
+[separate call controller](call-session.md) now implements those responsibilities;
+the provider-specific media-helper adapter is still outstanding. A full history
+response exceeding current bounds
 fails explicitly; no messages or call events are silently skipped. These private
 objects contain account/message metadata and must never be sent to public
 HTTP state, UI diagnostics, logs or persisted as plaintext.

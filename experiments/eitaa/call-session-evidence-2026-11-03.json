@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "scope": "Private account-bound call lifecycle and composed local native-media fixture",
+  "nodeRegression": {"passed": 236, "failed": 0, "skipped": 0, "lifecycleTests": 21},
+  "rustRegression": {"passed": 59, "failed": 0, "ignored": 0, "explicitLocalNodeFixtureEnabled": true},
+  "lifecycle": {"callerAndCallee": true, "explicitAllowedPeers": true, "retainedAccountBinding": true, "callIdAndAccessHashBinding": true, "actualNativeDh": true, "commitmentAndFingerprintVerification": true, "authenticatedBidirectionalSignaling": true, "boundedEarlySignals": true, "epochCancellation": true, "boundedOptionalPolling": true, "noAutomaticDialAcceptOrRetry": true, "cursorCommitAfterSuccessfulBatch": true, "stalledCallbackCancellationTested": true},
+  "retainedSessionFixture": {"realAuthSessionAndHttpCodecs": true, "syntheticServiceResponses": true, "extraOtpOrSignInRequests": 0},
+  "localNativeFixture": {"platform": "Windows", "actualCallControllers": true, "syntheticAccountRpcAndEvents": true, "encryptedActualNativeSdpProjection": true, "actualLoopbackTurnDtlsSrtpRtp": true, "typedRelayPairBothSides": true, "independentPinnedQuic": true, "echoBytes": 262144, "echoEqual": true, "localTurnConfigSeparateFromSyntheticCall": true},
+  "liveProviderRequestSent": false,
+  "liveCallVerified": false,
+  "providerLabCallUiConnected": false,
+  "providerSpecificProductionBridgeImplemented": false,
+  "liveProviderRelayRouteVerified": false,
+  "billingVerified": false,
+  "internationalOutageVerified": false,
+  "productionBaleModified": false,
+  "productionApplicationRebuilt": false,
+  "releasePublished": false
+}

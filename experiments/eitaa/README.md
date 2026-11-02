@@ -23,7 +23,14 @@ The [private call RPC client and codec](call-rpc.md) now support ten reviewed
 methods and their complete 495-constructor dependency closure. Mixed message/call
 updates, legacy constructor IDs and exact 64-bit IDs are covered. Ten request
 and nine response fixtures match the official serializer. This is not yet wired
-to a live account call controller or offered as a working Eitaa tunnel.
+to live accounts or offered as a working Eitaa tunnel.
+
+The [private account-bound call controller](call-session.md) now composes these
+pieces with explicit dial/accept/end, optional bounded polling, immutable
+account/call binding and cancellation. Twenty-one lifecycle tests and the real
+local native-carrier fixture pass through that controller. The current complete
+regression is 236 Node tests and 59 Rust tests. Live account/service acceptance,
+target resolution, the provider-specific bridge and lab/product UI remain.
 
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker

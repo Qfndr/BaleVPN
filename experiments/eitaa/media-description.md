@@ -50,7 +50,8 @@ The opt-in Rust test `real_turn_dtls_rtp_quic_survives_eitaa_json_projection`
 creates an actual local TURN server and two native DTLS/SRTP/RTP carriers with
 independent pinned QUIC identities. Its private Node subprocess:
 
-1. Establishes fixture DH keys and the Eitaa signaling ciphers.
+1. Establishes fixture account calls using the real private caller/callee
+   controllers, DH validation and Eitaa signaling ciphers.
 2. Projects the actual native offer into setup/candidate messages, encrypts and
    decrypts them in caller/callee roles, then reconstructs the remote offer.
 3. Repeats the inverse direction for the actual answer.
@@ -63,10 +64,13 @@ Carrier teardown clears readiness; private subprocess replies are bounded and
 time-limited and the subprocess is reaped on drop. The test never sends an OTP
 or a provider RPC, and no external destination or SSRF exception is enabled.
 
+The current fixture composes the [call controllers](call-session.md) with the
+carrier; its account RPC/events are synthetic and its TURN server is local.
+
 This uses the actual carrier engine inside a Rust test, **not** a packaged
 Eitaa-specific helper or a live Eitaa call. The production Bale path is unchanged;
-the only Rust entry added is inside `cfg(test)`. A provider-specific controller
-and bridge integration remain to be completed. Current test execution was on
+the only Rust entry added is inside `cfg(test)`. Live account call control and
+provider-specific bridge integration remain to be completed. Current test execution was on
 Windows; Linux/macOS execution is not claimed.
 
 ```powershell
