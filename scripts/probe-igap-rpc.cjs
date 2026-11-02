@@ -1,0 +1,2 @@
+if(process.argv.length!==3||process.argv[2]!=='--connect'){console.error('Opt-in unauthenticated configuration read: node scripts/probe-igap-rpc.cjs --connect');process.exitCode=2;}
+else require('../experiments/igap/rpc-connection.cjs').probe().then(r=>{console.log(JSON.stringify(r,null,2));if(!r.ok)process.exitCode=1;}).catch(e=>{console.log(JSON.stringify({ok:false,reason:e.reason||'probe_failed',major:e.major,minor:e.minor,authenticated:false,otpSubmitted:false,providerVerified:false},null,2));process.exitCode=1;});

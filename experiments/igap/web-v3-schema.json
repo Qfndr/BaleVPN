@@ -1,0 +1,1589 @@
+{
+  "sourceUrl": "https://web.igap.net/assets/index-DZubuBfV.js",
+  "sourceSha256": "03b1e36585a9fd71a2d7615448ff8c36db4d171d5f0e0d46858429ea06ce7013",
+  "format": "factual-protobuf-interface-descriptors",
+  "files": [
+    {
+      "file": "ConnectionSecuring.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "ConnectionSecuringResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "public_key",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "symmetric_key_length",
+              "number": 3,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "heartbeat_interval",
+              "number": 4,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "primary_node_name",
+              "number": 5,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "secondary_chunk_size",
+              "number": 6,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "ConnectionSymmetricKey",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "symmetric_key",
+              "number": 2,
+              "type": 12,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "version",
+              "number": 3,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "ConnectionSymmetricKeyResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "status",
+              "number": 2,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.ConnectionSymmetricKeyResponse.Status"
+            },
+            {
+              "name": "symmetric_method",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "symmetric_iv_size",
+              "number": 4,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "security_issue",
+              "number": 5,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [
+            {
+              "name": "Status",
+              "values": {
+                "REJECTED": 0,
+                "ACCEPTED": 1
+              }
+            }
+          ],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "Error.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "ErrorResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "major_code",
+              "number": 2,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "minor_code",
+              "number": 3,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "wait",
+              "number": 4,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "message",
+              "number": 5,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "request_action_id",
+              "number": 6,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "Global.proto",
+      "package": "proto",
+      "messages": [],
+      "enums": [
+        {
+          "name": "Device",
+          "values": {
+            "UNKNOWN_DEVICE": 0,
+            "PC": 1,
+            "TABLET": 2,
+            "MOBILE": 3
+          }
+        },
+        {
+          "name": "Platform",
+          "values": {
+            "UNKNOWN_PLATFORM": 0,
+            "ANDROID": 1,
+            "IOS": 2,
+            "MAC_OS": 3,
+            "WINDOWS": 4,
+            "LINUX": 5,
+            "BLACK_BERRY": 6
+          }
+        },
+        {
+          "name": "Language",
+          "values": {
+            "EN_US": 0,
+            "FA_IR": 1
+          }
+        },
+        {
+          "name": "SignalingCallType",
+          "values": {
+            "VOICE_CALL": 0,
+            "VIDEO_CALL": 1
+          }
+        },
+        {
+          "name": "SignalingCallInitialMethod",
+          "values": {
+            "PEER_CALL": 0,
+            "GROUP_CALL": 1,
+            "LINK_CALL": 2
+          }
+        }
+      ]
+    },
+    {
+      "file": "Heartbeat.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "Heartbeat",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "HeartbeatResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "InfoConfig.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "InfoConfig",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "InfoConfigResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "caption_length_max",
+              "number": 6,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "message_length_max",
+              "number": 7,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "base_url",
+              "number": 12,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "show_advertising",
+              "number": 13,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "advertise",
+              "number": 15,
+              "type": 11,
+              "label": 3,
+              "typeName": ".proto.InfoConfigResponse.Advertise"
+            },
+            {
+              "name": "pin_count_limit",
+              "number": 16,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "file_version",
+              "number": 17,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "register_resend_delay",
+              "number": 18,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "temporary_tab",
+              "number": 19,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.TemporaryTab"
+            },
+            {
+              "name": "call_configs",
+              "number": 20,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Call"
+            }
+          ],
+          "enums": [
+            {
+              "name": "Debugger",
+              "values": {
+                "CRASHLYTICS": 0,
+                "SENTRY": 1
+              }
+            },
+            {
+              "name": "DefaultTab",
+              "values": {
+                "CONTACT": 0,
+                "CALL": 1,
+                "CHAT": 2,
+                "ILAND": 3,
+                "SETTING": 4
+              }
+            }
+          ],
+          "nested": [
+            {
+              "name": "Advertise",
+              "fields": [
+                {
+                  "name": "public_url",
+                  "number": 1,
+                  "type": 9,
+                  "label": 1,
+                  "typeName": ""
+                },
+                {
+                  "name": "discovery_page_id",
+                  "number": 2,
+                  "type": 5,
+                  "label": 1,
+                  "typeName": ""
+                }
+              ],
+              "enums": [],
+              "nested": []
+            }
+          ]
+        },
+        {
+          "name": "MicroService",
+          "fields": [
+            {
+              "name": "name",
+              "number": 1,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "type",
+              "number": 2,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.MicroService.ConnectionType"
+            }
+          ],
+          "enums": [
+            {
+              "name": "ConnectionType",
+              "values": {
+                "HTTPS": 0,
+                "SOCKET": 1
+              }
+            }
+          ],
+          "nested": []
+        },
+        {
+          "name": "Call",
+          "fields": [
+            {
+              "name": "max_group_call_participants",
+              "number": 1,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "TemporaryTab",
+          "fields": [
+            {
+              "name": "tab_type",
+              "number": 1,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "tab_badge",
+              "number": 2,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.TemporaryTab.TabBadge"
+            }
+          ],
+          "enums": [],
+          "nested": [
+            {
+              "name": "TabBadge",
+              "fields": [
+                {
+                  "name": "badge_type",
+                  "number": 1,
+                  "type": 13,
+                  "label": 1,
+                  "typeName": ""
+                },
+                {
+                  "name": "text_color",
+                  "number": 2,
+                  "type": 9,
+                  "label": 1,
+                  "typeName": ""
+                },
+                {
+                  "name": "shape_color",
+                  "number": 3,
+                  "type": 9,
+                  "label": 1,
+                  "typeName": ""
+                }
+              ],
+              "enums": [],
+              "nested": []
+            }
+          ]
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "InfoTime.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "InfoTime",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "InfoTimeResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "timestamp",
+              "number": 2,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "Request.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "Request",
+          "fields": [
+            {
+              "name": "id",
+              "number": 1,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "Response.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "Response",
+          "fields": [
+            {
+              "name": "id",
+              "number": 1,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "timestamp",
+              "number": 2,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallAddContact.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallAddContact",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "signaling_room_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "contact_user_ids",
+              "number": 3,
+              "type": 4,
+              "label": 3,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallAddContactResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "offered_user_ids",
+              "number": 2,
+              "type": 4,
+              "label": 3,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallCreateRoom.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallCreateRoom",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "type",
+              "number": 2,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.SignalingCallType"
+            },
+            {
+              "name": "initial_method",
+              "number": 3,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.SignalingCallInitialMethod"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallCreateRoomResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "signaling_room_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "link",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallJoinRoom.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallJoinRoom",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "signaling_room_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallJoinRoomResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "joined_user_id",
+              "number": 3,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallLeaveRoom.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallLeaveRoom",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "terminate_call",
+              "number": 2,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallLeaveRoomResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "left_user_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallOffer.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallOffer",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "receiver_user_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "signaling_room_id",
+              "number": 3,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallOfferResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "sender_user_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "signaling_room_id",
+              "number": 3,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "active_participant_user_ids",
+              "number": 4,
+              "type": 4,
+              "label": 3,
+              "typeName": ""
+            },
+            {
+              "name": "type",
+              "number": 5,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.SignalingCallType"
+            },
+            {
+              "name": "link",
+              "number": 6,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "creator_user_id",
+              "number": 7,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "initial_method",
+              "number": 8,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.SignalingCallInitialMethod"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "SignalingCallRinging.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "SignalingCallRinging",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "SignalingCallRingingResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "receiver_user_id",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserLogin.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserLogin",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_name",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_id",
+              "number": 4,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_build_version",
+              "number": 5,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_version",
+              "number": 6,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "platform",
+              "number": 7,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Platform"
+            },
+            {
+              "name": "platform_version",
+              "number": 8,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "device",
+              "number": 9,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Device"
+            },
+            {
+              "name": "device_name",
+              "number": 10,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "language",
+              "number": 11,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Language"
+            },
+            {
+              "name": "symmetric_key",
+              "number": 12,
+              "type": 12,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserLoginResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "deprecated_client",
+              "number": 2,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "secondary_node_name",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "update_available",
+              "number": 4,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "chat_delete_message_for_both_period",
+              "number": 5,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "wallet_active",
+              "number": 6,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "mpl_active",
+              "number": 7,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "wallet_agreement_accepted",
+              "number": 8,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "access_token",
+              "number": 9,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "contact_hash",
+              "number": 10,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "role",
+              "number": 11,
+              "type": 5,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "need_fcm_token",
+              "number": 12,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "contact_list_version",
+              "number": 13,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "user_id",
+              "number": 14,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "direct_register_token",
+              "number": 15,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_build_version",
+              "number": 16,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserRegister.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserRegister",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "phone_number",
+              "number": 2,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "country_code",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "preference_method",
+              "number": 4,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.UserRegister.PreferenceMethod"
+            },
+            {
+              "name": "app_id",
+              "number": 5,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [
+            {
+              "name": "PreferenceMethod",
+              "values": {
+                "VERIFY_CODE_AUTO": 0,
+                "VERIFY_CODE_SMS": 1,
+                "VERIFY_CODE_CALL": 2
+              }
+            }
+          ],
+          "nested": []
+        },
+        {
+          "name": "UserRegisterResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "username",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "user_id",
+              "number": 3,
+              "type": 4,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "author_hash",
+              "number": 4,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "method",
+              "number": 5,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.UserRegisterResponse.Method"
+            },
+            {
+              "name": "resend_delay",
+              "number": 6,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "sms_number",
+              "number": 7,
+              "type": 4,
+              "label": 3,
+              "typeName": ""
+            },
+            {
+              "name": "verify_code_regex",
+              "number": 8,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "verify_code_digit_count",
+              "number": 9,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "call_method_supported",
+              "number": 10,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [
+            {
+              "name": "Method",
+              "values": {
+                "VERIFY_CODE_SMS": 0,
+                "VERIFY_CODE_SOCKET": 1,
+                "VERIFY_CODE_SMS_SOCKET": 2,
+                "VERIFY_CODE_CALL": 3
+              }
+            }
+          ],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserVerify.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserVerify",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "code",
+              "number": 2,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "username",
+              "number": 3,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "phone_hash",
+              "number": 4,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_name",
+              "number": 5,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_id",
+              "number": 6,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_build_version",
+              "number": 7,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_version",
+              "number": 8,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "platform",
+              "number": 9,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Platform"
+            },
+            {
+              "name": "platform_version",
+              "number": 10,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "device",
+              "number": 11,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Device"
+            },
+            {
+              "name": "device_name",
+              "number": 12,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "language",
+              "number": 13,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Language"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserVerifyResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "new_user",
+              "number": 3,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    },
+    {
+      "file": "UserVerifyNewDevice.proto",
+      "package": "proto",
+      "messages": [
+        {
+          "name": "UserVerifyNewDevice",
+          "fields": [
+            {
+              "name": "request",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Request"
+            },
+            {
+              "name": "token",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "language",
+              "number": 3,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Language"
+            }
+          ],
+          "enums": [],
+          "nested": []
+        },
+        {
+          "name": "UserVerifyNewDeviceResponse",
+          "fields": [
+            {
+              "name": "response",
+              "number": 1,
+              "type": 11,
+              "label": 1,
+              "typeName": ".proto.Response"
+            },
+            {
+              "name": "app_name",
+              "number": 2,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_id",
+              "number": 3,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_build_version",
+              "number": 4,
+              "type": 13,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "app_version",
+              "number": 5,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "platform",
+              "number": 6,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Platform"
+            },
+            {
+              "name": "platform_version",
+              "number": 7,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "device",
+              "number": 8,
+              "type": 14,
+              "label": 1,
+              "typeName": ".proto.Device"
+            },
+            {
+              "name": "device_name",
+              "number": 9,
+              "type": 9,
+              "label": 1,
+              "typeName": ""
+            },
+            {
+              "name": "two_step_verification",
+              "number": 10,
+              "type": 8,
+              "label": 1,
+              "typeName": ""
+            }
+          ],
+          "enums": [],
+          "nested": []
+        }
+      ],
+      "enums": []
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "observedDate": "2026-11-02",
+  "goalComplete": false,
+  "productionBaleModified": false,
+  "providers": [
+    {
+      "id": "igap",
+      "android": {
+        "versionCode": 10559,
+        "versionName": "5.4.0.Build559",
+        "compileSdkVersion": 37,
+        "package": "net.iGap"
+      },
+      "sources": [
+        {
+          "kind": "apk",
+          "url": "https://file.igap.net/igap.apk",
+          "finalUrl": "https://file.igap.net/igap.apk",
+          "bytes": 84166429,
+          "sha256": "53606f41c718093323697cfc3f42ad12a44f86a996d87d0f36034ba919e5a327"
+        },
+        {
+          "kind": "javascript",
+          "url": "https://web.igap.net/assets/index-DZubuBfV.js",
+          "finalUrl": "https://web.igap.net/assets/index-DZubuBfV.js",
+          "bytes": 1596338,
+          "sha256": "03b1e36585a9fd71a2d7615448ff8c36db4d171d5f0e0d46858429ea06ce7013"
+        }
+      ],
+      "apkCallLibraryEvidence": [
+        "lib/arm64-v8a/libjingle_peerconnection_so.so",
+        "lib/arm64-v8a/liblkjingle_peerconnection_so.so"
+      ],
+      "androidInstalledOrExecuted": false,
+      "webCallArchitecture": "LiveKit room RPCs over encrypted WebSocket",
+      "authenticatedLoginTested": false,
+      "liveCallTested": false,
+      "realCarrierIntegrityTested": false,
+      "productionProviderEnabled": false
+    },
+    {
+      "id": "eitaa",
+      "android": {
+        "versionCode": 26379,
+        "versionName": "7.1.8",
+        "compileSdkVersion": 35,
+        "package": "ir.eitaa.messenger"
+      },
+      "sources": [
+        {
+          "kind": "apk",
+          "url": "https://eitaa.com/app/apk",
+          "finalUrl": "https://eitaa.com/app/apk",
+          "bytes": 64890780,
+          "sha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb"
+        },
+        {
+          "kind": "javascript",
+          "url": "https://web.eitaa.com/index-tZPoBcpJ.js",
+          "finalUrl": "https://web.eitaa.com/index-tZPoBcpJ.js",
+          "bytes": 570008,
+          "sha256": "d79d7f9d6eb1079f0a41d8bfe4e7b5fe0d9df96cfd809904bca6ff903272a42f"
+        }
+      ],
+      "apkCallLibraryEvidence": [
+        "lib/arm64-v8a/libtmessages.49.so",
+        "lib/armeabi-v7a/libtmessages.49.so"
+      ],
+      "androidInstalledOrExecuted": false,
+      "webCallArchitecture": "MTProto phone methods and DH; live media not verified",
+      "authenticatedLoginTested": false,
+      "liveCallTested": false,
+      "realCarrierIntegrityTested": false,
+      "productionProviderEnabled": false
+    },
+    {
+      "id": "nasim",
+      "android": {
+        "versionCode": 929,
+        "versionName": "12.8.2",
+        "compileSdkVersion": 36,
+        "package": "com.gapafzar.nasimrezvan"
+      },
+      "sources": [
+        {
+          "kind": "apk",
+          "url": "https://get.nasimrezvan.com/",
+          "finalUrl": "https://get.nasimrezvan.com/",
+          "bytes": 82730519,
+          "sha256": "7774111b97a06df6cfba73bcefc39c882653c783fa7b2f5aa0dcf507203afd7c"
+        },
+        {
+          "kind": "javascript",
+          "url": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+          "finalUrl": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+          "bytes": 632103,
+          "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149"
+        }
+      ],
+      "apkCallLibraryEvidence": [
+        "lib/arm64-v8a/libjingle_peerconnection_so.so",
+        "lib/armeabi-v7a/libjingle_peerconnection_so.so"
+      ],
+      "androidInstalledOrExecuted": false,
+      "webCallArchitecture": "Gap msgGroupCall JSON with WebRTC SDP/ICE and STUN/TURN",
+      "authenticatedLoginTested": false,
+      "liveCallTested": false,
+      "realCarrierIntegrityTested": false,
+      "productionProviderEnabled": false
+    }
+  ],
+  "igapSecureHandshake": {
+    "ok": true,
+    "cipher": "AES-256-CBC",
+    "ivSize": 16,
+    "phase": "secured",
+    "applicationMessagesSent": 1,
+    "authenticated": false,
+    "otpSubmitted": false,
+    "liveCallTested": false,
+    "providerVerified": false
+  },
+  "igapEncryptedRpc": {
+    "ok": true,
+    "encryptedRoundTrip": true,
+    "action": 30506,
+    "cipher": "AES-256-CBC",
+    "maxGroupParticipants": 30,
+    "authenticated": false,
+    "otpSubmitted": false,
+    "liveCallTested": false,
+    "providerVerified": false
+  },
+  "testAccountsAvailable": {
+    "igap": 2,
+    "eitaa": 2,
+    "nasim": 2
+  },
+  "remainingGates": [
+    "isolated authenticated account sessions",
+    "real calls between two accounts on each service",
+    "selected relay versus direct route verification",
+    "byte-preserving carrier on real infrastructure",
+    "mutually authenticated QUIC and SOCKS integration",
+    "failure recovery and account isolation tests",
+    "cross-provider modern UI and persistence",
+    "Windows and Linux packaged end-to-end checks"
+  ]
+}

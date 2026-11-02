@@ -1,0 +1,2 @@
+if(process.argv.length!==3||process.argv[2]!=='--connect'){console.error('Opt-in unauthenticated key exchange: node scripts/probe-igap-secure.cjs --connect');process.exitCode=2;}
+else require('../experiments/igap/secure-connection.cjs').probe().then(r=>{console.log(JSON.stringify(r,null,2));if(!r.ok)process.exitCode=1;}).catch(()=>{console.error('Connection-security probe failed');process.exitCode=1;});

@@ -41,4 +41,5 @@ function decodeResponse(bytes){if(!(bytes instanceof Uint8Array)||bytes.length<2
 // Safe report: never include SDP, ICE addresses/credentials, peer IDs or tokens.
 function capabilities(config){return {voice:!!config.voice,video:!!config.video,stun:config.iceServers.some(s=>/^stuns?:/i.test(s.urls)),turn:config.iceServers.some(s=>/^turns?:/i.test(s.urls)),providerVerified:false};}
 function inspectGreeting(bytes){if(!(bytes instanceof Uint8Array)||bytes.length<2||bytes.length>MAX_FRAME)fail();const b=Buffer.from(bytes);if(b.readUInt16LE()!==30001)fail();const fields=parse(b.subarray(2)),key=str(fields,2,8192);return {action:30001,publicKeyPresent:key.includes('BEGIN PUBLIC KEY'),symmetricKeyLength:number(fields,3),heartbeatSeconds:number(fields,4),providerVerified:false};}
-module.exports={encodeRequest,decodeResponse,capabilities,inspectGreeting,MAX_FRAME};
+// Internal helpers for the isolated v3 connection experiment; not a production API.
+module.exports={encodeRequest,decodeResponse,capabilities,inspectGreeting,MAX_FRAME,wire:{uint,varint,field,string,frame,parse,one,str,number}};

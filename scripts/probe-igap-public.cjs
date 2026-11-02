@@ -1,6 +1,7 @@
 // Read one public server greeting; never send a payload or access account data.
 const {inspectGreeting}=require('../experiments/igap/signaling.cjs');
 async function probe(){
+ if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new Error('TLS verification is required');
  if(typeof WebSocket!=='function')throw new Error('Node.js 22+ is required');
  return new Promise(resolve=>{let settled=false;const socket=new WebSocket('wss://secure.igap.net/hybrid/');socket.binaryType='arraybuffer';
   const finish=result=>{if(settled)return;settled=true;clearTimeout(timer);socket.close();resolve({endpoint:'wss://secure.igap.net/hybrid/',...result,applicationMessagesSent:0,otpSubmitted:false,authenticated:false,providerVerified:false});};
