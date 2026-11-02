@@ -1,0 +1,62 @@
+{
+  "provider": "rubika",
+  "observedDate": "2026-11-03",
+  "stage": "service framing and bounded HTTP methods; not an account state machine or tunnel",
+  "officialSource": {
+    "url": "https://web.rubika.ir/main-es2015.6421623571994c9dd619.js",
+    "sha256": "47b302b9166ed8c9138f9d959e9107c53dcb78c9447f8281715f657b68080acb",
+    "webClientVersion": "4.4.34",
+    "currentOfficialHtmlStillReferencesPinnedBundle": true,
+    "fullBundleRedownloadedForThisMilestone": false,
+    "officialGeneratedRsaBits": 1024,
+    "experimentalGeneratedRsaBits": 2048,
+    "actualServerAcceptanceOfStrongerKeyTested": false
+  },
+  "wire": {
+    "serviceFraming": "AES-256-CBC with fixed zero IV, base64 ciphertext and per-session derived key",
+    "authenticatedVersion": "6",
+    "anonymousDiscoveryVersion": "4",
+    "authReply": "RSA-OAEP with SHA-1 compatibility parameter",
+    "requestSignature": "RSA-SHA256 over base64 ciphertext text",
+    "separateTemporarySessionPerClient": true,
+    "cryptographicRandomTemporarySessions": true,
+    "globalAuthMemoization": false,
+    "independentEndToEndTunnelProtection": false
+  },
+  "http": {
+    "anonymousDiscoveryEndpoint": "https://getdcmess.iranlms.ir/",
+    "approvedApiDomainRoot": "iranlms.ir",
+    "httpsVerificationRequired": true,
+    "redirectsOrAutomaticRetries": false,
+    "automaticDeviceRegistration": false,
+    "apiPlaintextSuccessAccepted": false,
+    "allowedMethods": ["sendCode", "signIn", "registerDevice", "getUserInfo", "logout"],
+    "anonymousActualDiscoverySucceeded": true,
+    "anonymousActualDiscoveryRequests": 1,
+    "otpSubmittedByResearchTools": false
+  },
+  "tests": {
+    "newWireHttpNodeTestsPassed": 12,
+    "fullNodeSuitePassed": 132,
+    "fullNodeSuiteFailed": 0,
+    "fullNodeSuiteSkipped": 0,
+    "offlineOfficialCryptoHelpersExecuted": true,
+    "angularEntryAndRuntimeExecuted": false,
+    "cbcFixturesBothDirections": 4,
+    "rsaOaepAuthBothDirections": true,
+    "rsaSha256SignatureMatches": true,
+    "publicKeyEncodingMatches": true,
+    "perAccountAuthTransformMatches": true,
+    "officialCryptoTestApplicationExternalRequests": 0,
+    "officialCryptoTestActualProviderRequests": 0
+  },
+  "authStateMachineImplemented": false,
+  "realSmsOrInternationalNumberTested": false,
+  "actualAccountLoginOrRestoreTested": false,
+  "actualAuthenticatedEncryptedServiceRoundTripTested": false,
+  "actualMessengerCallTested": false,
+  "providerRelayOwnershipVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageTested": false,
+  "productionIntegrationComplete": false
+}
