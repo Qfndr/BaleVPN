@@ -1,0 +1,1356 @@
+{
+  "provider": "eitaa",
+  "sourceSha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+  "layer": 135,
+  "methods": [
+    {
+      "id": -1502141361,
+      "method": "auth.sendCode",
+      "params": [
+        {
+          "name": "phone_number",
+          "type": "string"
+        },
+        {
+          "name": "api_id",
+          "type": "int"
+        },
+        {
+          "name": "api_hash",
+          "type": "string"
+        },
+        {
+          "name": "settings",
+          "type": "CodeSettings"
+        }
+      ],
+      "type": "auth.SentCode"
+    },
+    {
+      "id": -1126886015,
+      "method": "auth.signIn",
+      "params": [
+        {
+          "name": "phone_number",
+          "type": "string"
+        },
+        {
+          "name": "phone_code_hash",
+          "type": "string"
+        },
+        {
+          "name": "phone_code",
+          "type": "string"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": -1987323361,
+      "method": "auth.checkPassword2",
+      "params": [
+        {
+          "name": "password_hash",
+          "type": "bytes"
+        },
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "phone_code",
+          "type": "flags.0?string"
+        },
+        {
+          "name": "phone_number",
+          "type": "flags.1?string"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": 1418342645,
+      "method": "account.getPassword",
+      "params": [],
+      "type": "account.Password"
+    },
+    {
+      "id": 3612004724,
+      "method": "account.getPasswordLayer68",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "phone_code",
+          "type": "flags.0?string"
+        },
+        {
+          "name": "phone_number",
+          "type": "flags.1?string"
+        }
+      ],
+      "type": "account.Password"
+    },
+    {
+      "id": 227648840,
+      "method": "users.getUsers",
+      "params": [
+        {
+          "name": "id",
+          "type": "Vector<InputUser>"
+        }
+      ],
+      "type": "Vector<User>"
+    },
+    {
+      "id": 1461180992,
+      "method": "auth.logOut",
+      "params": [],
+      "type": "Bool"
+    },
+    {
+      "id": -599448727,
+      "method": "eitaaRefreshToken",
+      "params": [
+        {
+          "name": "app_info",
+          "type": "EitaaAppInfo"
+        }
+      ],
+      "type": "EitaaRefreshToken"
+    }
+  ],
+  "constructors": [
+    {
+      "id": -902187961,
+      "predicate": "account.password2",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "has_recovery",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "has_secure_values",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "current_salt",
+          "type": "bytes"
+        },
+        {
+          "name": "new_salt",
+          "type": "bytes"
+        },
+        {
+          "name": "new_secure_salt",
+          "type": "bytes"
+        },
+        {
+          "name": "secure_random",
+          "type": "bytes"
+        },
+        {
+          "name": "hint",
+          "type": "string"
+        },
+        {
+          "name": "email_unconfirmed_pattern",
+          "type": "string"
+        }
+      ],
+      "type": "account.Password2"
+    },
+    {
+      "id": -994444869,
+      "predicate": "error",
+      "params": [
+        {
+          "name": "code",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "type": "Error"
+    },
+    {
+      "id": -404,
+      "predicate": "eitta_error",
+      "params": [
+        {
+          "name": "code",
+          "type": "int"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "type": "Error"
+    },
+    {
+      "id": 880243653,
+      "predicate": "pong",
+      "params": [
+        {
+          "name": "msg_id",
+          "type": "long"
+        },
+        {
+          "name": "ping_id",
+          "type": "long"
+        }
+      ],
+      "type": "Pong"
+    },
+    {
+      "id": -601545863,
+      "predicate": "eitaa_updates_expire_token",
+      "params": [],
+      "type": "EitaaUpdatesExpireToken"
+    },
+    {
+      "id": -601545867,
+      "predicate": "eitaa_token_updating",
+      "params": [],
+      "type": "EitaaTokenUpdating"
+    },
+    {
+      "id": 1577067778,
+      "predicate": "auth.sentCode",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "type",
+          "type": "auth.SentCodeType"
+        },
+        {
+          "name": "phone_code_hash",
+          "type": "string"
+        },
+        {
+          "name": "next_type",
+          "type": "flags.1?auth.CodeType"
+        },
+        {
+          "name": "timeout",
+          "type": "flags.2?int"
+        }
+      ],
+      "type": "auth.SentCode"
+    },
+    {
+      "id": -557924733,
+      "predicate": "codeSettings",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "allow_flashcall",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "current_number",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "allow_app_hash",
+          "type": "flags.4?true"
+        }
+      ],
+      "type": "CodeSettings"
+    },
+    {
+      "id": -855308010,
+      "predicate": "auth.authorization",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "token",
+          "type": "string"
+        },
+        {
+          "name": "user",
+          "type": "User"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": 1148485274,
+      "predicate": "auth.authorizationSignUpRequired",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "terms_of_service",
+          "type": "flags.0?help.TermsOfService"
+        }
+      ],
+      "type": "auth.Authorization"
+    },
+    {
+      "id": 408623183,
+      "predicate": "account.password",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "has_recovery",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "has_secure_values",
+          "type": "flags.1?true"
+        },
+        {
+          "name": "has_password",
+          "type": "flags.2?true"
+        },
+        {
+          "name": "current_algo",
+          "type": "flags.2?PasswordKdfAlgo"
+        },
+        {
+          "name": "srp_B",
+          "type": "flags.2?bytes"
+        },
+        {
+          "name": "srp_id",
+          "type": "flags.2?long"
+        },
+        {
+          "name": "hint",
+          "type": "flags.3?string"
+        },
+        {
+          "name": "email_unconfirmed_pattern",
+          "type": "flags.4?string"
+        },
+        {
+          "name": "new_algo",
+          "type": "PasswordKdfAlgo"
+        },
+        {
+          "name": "new_secure_algo",
+          "type": "SecurePasswordKdfAlgo"
+        },
+        {
+          "name": "secure_random",
+          "type": "bytes"
+        },
+        {
+          "name": "pending_reset_date",
+          "type": "flags.5?int"
+        }
+      ],
+      "type": "account.Password"
+    },
+    {
+      "id": 1587643126,
+      "predicate": "account.noPassword",
+      "params": [
+        {
+          "name": "new_salt",
+          "type": "bytes"
+        },
+        {
+          "name": "new_secure_salt",
+          "type": "bytes"
+        },
+        {
+          "name": "secure_random",
+          "type": "bytes"
+        },
+        {
+          "name": "email_unconfirmed_pattern",
+          "type": "string"
+        }
+      ],
+      "type": "account.Password"
+    },
+    {
+      "id": -742634630,
+      "predicate": "userEmpty",
+      "params": [
+        {
+          "name": "id",
+          "type": "long"
+        }
+      ],
+      "type": "User"
+    },
+    {
+      "id": -321753653,
+      "predicate": "user",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "flags2",
+          "type": "#"
+        },
+        {
+          "name": "eFlags",
+          "type": "#"
+        },
+        {
+          "name": "self",
+          "type": "flags.10?true"
+        },
+        {
+          "name": "contact",
+          "type": "flags.11?true"
+        },
+        {
+          "name": "mutual_contact",
+          "type": "flags.12?true"
+        },
+        {
+          "name": "deleted",
+          "type": "flags.13?true"
+        },
+        {
+          "name": "bot",
+          "type": "flags.14?true"
+        },
+        {
+          "name": "bot_chat_history",
+          "type": "flags.15?true"
+        },
+        {
+          "name": "bot_nochats",
+          "type": "flags.16?true"
+        },
+        {
+          "name": "verified",
+          "type": "flags.17?true"
+        },
+        {
+          "name": "restricted",
+          "type": "flags.18?true"
+        },
+        {
+          "name": "min",
+          "type": "flags.20?true"
+        },
+        {
+          "name": "bot_inline_geo",
+          "type": "flags.21?true"
+        },
+        {
+          "name": "support",
+          "type": "flags.23?true"
+        },
+        {
+          "name": "scam",
+          "type": "flags.24?true"
+        },
+        {
+          "name": "apply_min_photo",
+          "type": "flags.25?true"
+        },
+        {
+          "name": "fake",
+          "type": "flags.26?true"
+        },
+        {
+          "name": "id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "flags.0?long"
+        },
+        {
+          "name": "first_name",
+          "type": "flags.1?string"
+        },
+        {
+          "name": "last_name",
+          "type": "flags.2?string"
+        },
+        {
+          "name": "username",
+          "type": "flags.3?string"
+        },
+        {
+          "name": "phone",
+          "type": "flags.4?string"
+        },
+        {
+          "name": "photo",
+          "type": "flags.5?UserProfilePhoto"
+        },
+        {
+          "name": "status",
+          "type": "flags.6?UserStatus"
+        },
+        {
+          "name": "bot_info_version",
+          "type": "flags.14?int"
+        },
+        {
+          "name": "restriction_reason",
+          "type": "flags.18?Vector<RestrictionReason>"
+        },
+        {
+          "name": "bot_inline_placeholder",
+          "type": "flags.19?string"
+        },
+        {
+          "name": "lang_code",
+          "type": "flags.22?string"
+        },
+        {
+          "name": "miniApp",
+          "type": "eFlags.0?true"
+        },
+        {
+          "name": "badge_name",
+          "type": "eFlags.1?string"
+        },
+        {
+          "name": "badge_red_color",
+          "type": "eFlags.2?true"
+        },
+        {
+          "name": "miniAppGeo",
+          "type": "eFlags.4?true"
+        },
+        {
+          "name": "bot_active_users",
+          "type": "flags2.12?int"
+        }
+      ],
+      "type": "User"
+    },
+    {
+      "id": -1182234929,
+      "predicate": "inputUserEmpty",
+      "params": [],
+      "type": "InputUser"
+    },
+    {
+      "id": -138301121,
+      "predicate": "inputUserSelf",
+      "params": [],
+      "type": "InputUser"
+    },
+    {
+      "id": -233744186,
+      "predicate": "inputUser",
+      "params": [
+        {
+          "name": "user_id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "long"
+        }
+      ],
+      "type": "InputUser"
+    },
+    {
+      "id": 497305826,
+      "predicate": "inputUserFromMessage",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPeer"
+        },
+        {
+          "name": "msg_id",
+          "type": "int"
+        },
+        {
+          "name": "user_id",
+          "type": "long"
+        }
+      ],
+      "type": "InputUser"
+    },
+    {
+      "id": -1132882121,
+      "predicate": "boolFalse",
+      "params": [],
+      "type": "Bool"
+    },
+    {
+      "id": -1720552011,
+      "predicate": "boolTrue",
+      "params": [],
+      "type": "Bool"
+    },
+    {
+      "id": -1519642063,
+      "predicate": "eitaa_updates_token",
+      "params": [
+        {
+          "name": "token",
+          "type": "string"
+        },
+        {
+          "name": "expire",
+          "type": "int"
+        },
+        {
+          "name": "date",
+          "type": "int"
+        }
+      ],
+      "type": "EitaaUpdatesToken"
+    },
+    {
+      "id": 1635347945,
+      "predicate": "eitaaAppInfo",
+      "params": [
+        {
+          "name": "build_version",
+          "type": "int"
+        },
+        {
+          "name": "device_model",
+          "type": "string"
+        },
+        {
+          "name": "system_version",
+          "type": "string"
+        },
+        {
+          "name": "app_version",
+          "type": "string"
+        },
+        {
+          "name": "lang_code",
+          "type": "string"
+        },
+        {
+          "name": "sign",
+          "type": "string"
+        }
+      ],
+      "type": "EitaaAppInfo"
+    },
+    {
+      "id": 1035688326,
+      "predicate": "auth.sentCodeTypeApp",
+      "params": [
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": -1073693790,
+      "predicate": "auth.sentCodeTypeSms",
+      "params": [
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": 1398007207,
+      "predicate": "auth.sentCodeTypeCall",
+      "params": [
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": -1425815847,
+      "predicate": "auth.sentCodeTypeFlashCall",
+      "params": [
+        {
+          "name": "pattern",
+          "type": "string"
+        }
+      ],
+      "type": "auth.SentCodeType"
+    },
+    {
+      "id": 1923290508,
+      "predicate": "auth.codeTypeSms",
+      "params": [],
+      "type": "auth.CodeType"
+    },
+    {
+      "id": 1948046307,
+      "predicate": "auth.codeTypeCall",
+      "params": [],
+      "type": "auth.CodeType"
+    },
+    {
+      "id": 577556219,
+      "predicate": "auth.codeTypeFlashCall",
+      "params": [],
+      "type": "auth.CodeType"
+    },
+    {
+      "id": 2013922064,
+      "predicate": "help.termsOfService",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "popup",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "id",
+          "type": "DataJSON"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        },
+        {
+          "name": "entities",
+          "type": "Vector<MessageEntity>"
+        },
+        {
+          "name": "min_age_confirm",
+          "type": "flags.1?int"
+        }
+      ],
+      "type": "help.TermsOfService"
+    },
+    {
+      "id": -732254058,
+      "predicate": "passwordKdfAlgoUnknown",
+      "params": [],
+      "type": "PasswordKdfAlgo"
+    },
+    {
+      "id": 982592842,
+      "predicate": "passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow",
+      "params": [
+        {
+          "name": "salt1",
+          "type": "bytes"
+        },
+        {
+          "name": "salt2",
+          "type": "bytes"
+        },
+        {
+          "name": "g",
+          "type": "int"
+        },
+        {
+          "name": "p",
+          "type": "bytes"
+        }
+      ],
+      "type": "PasswordKdfAlgo"
+    },
+    {
+      "id": 4883767,
+      "predicate": "securePasswordKdfAlgoUnknown",
+      "params": [],
+      "type": "SecurePasswordKdfAlgo"
+    },
+    {
+      "id": -1141711456,
+      "predicate": "securePasswordKdfAlgoPBKDF2HMACSHA512iter100000",
+      "params": [
+        {
+          "name": "salt",
+          "type": "bytes"
+        }
+      ],
+      "type": "SecurePasswordKdfAlgo"
+    },
+    {
+      "id": -2042159726,
+      "predicate": "securePasswordKdfAlgoSHA512",
+      "params": [
+        {
+          "name": "salt",
+          "type": "bytes"
+        }
+      ],
+      "type": "SecurePasswordKdfAlgo"
+    },
+    {
+      "id": 1326562017,
+      "predicate": "userProfilePhotoEmpty",
+      "params": [],
+      "type": "UserProfilePhoto"
+    },
+    {
+      "id": 1775479590,
+      "predicate": "userProfilePhoto",
+      "params": [
+        {
+          "name": "flags",
+          "type": "#"
+        },
+        {
+          "name": "has_video",
+          "type": "flags.0?true"
+        },
+        {
+          "name": "photo_id",
+          "type": "long"
+        },
+        {
+          "name": "photo_small",
+          "type": "FileLocation"
+        },
+        {
+          "name": "photo_big",
+          "type": "FileLocation"
+        },
+        {
+          "name": "dc_id",
+          "type": "int"
+        }
+      ],
+      "type": "UserProfilePhoto"
+    },
+    {
+      "id": 164646985,
+      "predicate": "userStatusEmpty",
+      "params": [],
+      "type": "UserStatus"
+    },
+    {
+      "id": -306628279,
+      "predicate": "userStatusOnline",
+      "params": [
+        {
+          "name": "expires",
+          "type": "int"
+        }
+      ],
+      "type": "UserStatus"
+    },
+    {
+      "id": 9203775,
+      "predicate": "userStatusOffline",
+      "params": [
+        {
+          "name": "was_online",
+          "type": "int"
+        }
+      ],
+      "type": "UserStatus"
+    },
+    {
+      "id": -496024847,
+      "predicate": "userStatusRecently",
+      "params": [],
+      "type": "UserStatus"
+    },
+    {
+      "id": 129960444,
+      "predicate": "userStatusLastWeek",
+      "params": [],
+      "type": "UserStatus"
+    },
+    {
+      "id": 2011940674,
+      "predicate": "userStatusLastMonth",
+      "params": [],
+      "type": "UserStatus"
+    },
+    {
+      "id": -797791052,
+      "predicate": "restrictionReason",
+      "params": [
+        {
+          "name": "platform",
+          "type": "string"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "name": "text",
+          "type": "string"
+        }
+      ],
+      "type": "RestrictionReason"
+    },
+    {
+      "id": 2134579434,
+      "predicate": "inputPeerEmpty",
+      "params": [],
+      "type": "InputPeer"
+    },
+    {
+      "id": 2107670217,
+      "predicate": "inputPeerSelf",
+      "params": [],
+      "type": "InputPeer"
+    },
+    {
+      "id": 900291769,
+      "predicate": "inputPeerChat",
+      "params": [
+        {
+          "name": "chat_id",
+          "type": "long"
+        }
+      ],
+      "type": "InputPeer"
+    },
+    {
+      "id": -571955892,
+      "predicate": "inputPeerUser",
+      "params": [
+        {
+          "name": "user_id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "long"
+        }
+      ],
+      "type": "InputPeer"
+    },
+    {
+      "id": 666680316,
+      "predicate": "inputPeerChannel",
+      "params": [
+        {
+          "name": "channel_id",
+          "type": "long"
+        },
+        {
+          "name": "access_hash",
+          "type": "long"
+        }
+      ],
+      "type": "InputPeer"
+    },
+    {
+      "id": -1468331492,
+      "predicate": "inputPeerUserFromMessage",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPeer"
+        },
+        {
+          "name": "msg_id",
+          "type": "int"
+        },
+        {
+          "name": "user_id",
+          "type": "long"
+        }
+      ],
+      "type": "InputPeer"
+    },
+    {
+      "id": -1121318848,
+      "predicate": "inputPeerChannelFromMessage",
+      "params": [
+        {
+          "name": "peer",
+          "type": "InputPeer"
+        },
+        {
+          "name": "msg_id",
+          "type": "int"
+        },
+        {
+          "name": "channel_id",
+          "type": "long"
+        }
+      ],
+      "type": "InputPeer"
+    },
+    {
+      "id": 2104790276,
+      "predicate": "dataJSON",
+      "params": [
+        {
+          "name": "data",
+          "type": "string"
+        }
+      ],
+      "type": "DataJSON"
+    },
+    {
+      "id": -1148011883,
+      "predicate": "messageEntityUnknown",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -100378723,
+      "predicate": "messageEntityMention",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1868782349,
+      "predicate": "messageEntityHashtag",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1827637959,
+      "predicate": "messageEntityBotCommand",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1859134776,
+      "predicate": "messageEntityUrl",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1692693954,
+      "predicate": "messageEntityEmail",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -1117713463,
+      "predicate": "messageEntityBold",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -2106619040,
+      "predicate": "messageEntityItalic",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 681706865,
+      "predicate": "messageEntityCode",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1938967520,
+      "predicate": "messageEntityPre",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        },
+        {
+          "name": "language",
+          "type": "string"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1990644519,
+      "predicate": "messageEntityTextUrl",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        },
+        {
+          "name": "url",
+          "type": "string"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -595914432,
+      "predicate": "messageEntityMentionName",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        },
+        {
+          "name": "user_id",
+          "type": "long"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 546203849,
+      "predicate": "inputMessageEntityMentionName",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        },
+        {
+          "name": "user_id",
+          "type": "InputUser"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -1687559349,
+      "predicate": "messageEntityPhone",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1280209983,
+      "predicate": "messageEntityCashtag",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -1672577397,
+      "predicate": "messageEntityUnderline",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -1090087980,
+      "predicate": "messageEntityStrike",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 34469328,
+      "predicate": "messageEntityBlockquote",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": 1981704948,
+      "predicate": "messageEntityBankCard",
+      "params": [
+        {
+          "name": "offset",
+          "type": "int"
+        },
+        {
+          "name": "length",
+          "type": "int"
+        }
+      ],
+      "type": "MessageEntity"
+    },
+    {
+      "id": -1132476723,
+      "predicate": "fileLocationToBeDeprecated",
+      "params": [
+        {
+          "name": "volume_id",
+          "type": "long"
+        },
+        {
+          "name": "local_id",
+          "type": "int"
+        }
+      ],
+      "type": "FileLocation"
+    },
+    {
+      "id": 1406570614,
+      "predicate": "fileLocation",
+      "params": [
+        {
+          "name": "dc_id",
+          "type": "int"
+        },
+        {
+          "name": "volume_id",
+          "type": "long"
+        },
+        {
+          "name": "local_id",
+          "type": "int"
+        },
+        {
+          "name": "secret",
+          "type": "long"
+        }
+      ],
+      "type": "FileLocation"
+    }
+  ],
+  "responseAliases": {
+    "EitaaRefreshToken": "EitaaUpdatesToken"
+  },
+  "liveLoginVerified": false
+}

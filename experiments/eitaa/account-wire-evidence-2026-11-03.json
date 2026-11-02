@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-03",
+  "provider": "eitaa",
+  "scope": "Private account RPC and strict TL decoding; no public lab route enabled",
+  "productionBaleModified": false,
+  "sourceSha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+  "authSchema": {"methods": 8, "constructors": 73, "dependencyClosureVerifiedAgainstPinnedSource": true},
+  "offlineOfficialParity": {"envelopes": 4, "pings": 4, "accountRequests": 8, "privateAccountResponses": 4, "legacySaltedPasswordHashes": 3, "passed": true},
+  "nodeRegression": {"passed": 166, "failed": 0, "skipped": 0, "eitaaTests": 20},
+  "checks": ["stable independent account devices and tokens", "self reads without fresh login", "unknown flags and result type rejection", "bounded vectors and nesting", "late-reply cancellation", "error metadata whitelist", "no token refresh or OTP retry loop", "pong is not a service-issued code hash"],
+  "liveOtpSent": false,
+  "liveAccountUsed": false,
+  "remaining": ["auth state machine", "sealed record persistence and restore controller", "local account forms", "actual OTP/hash behavior", "live password and restore", "call control", "provider relay carrier", "throughput and billing", "international outage behavior"],
+  "releasePublished": false
+}

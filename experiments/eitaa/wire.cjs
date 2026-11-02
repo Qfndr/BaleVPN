@@ -20,6 +20,7 @@ class Reader{
  constructor(value){this.#buffer=bytes(value);if(!this.#buffer.length||this.#buffer.length%4)throw new WireError('invalid_frame');}
  #take(n){if(!Number.isInteger(n)||n<0||this.#offset+n>this.#buffer.length)throw new WireError('truncated_frame');const b=this.#buffer.subarray(this.#offset,this.#offset+n);this.#offset+=n;return b;}
  int(){return this.#take(4).readInt32LE();}
+ peekInt(){if(this.#offset+4>this.#buffer.length)throw new WireError('truncated_frame');return this.#buffer.readInt32LE(this.#offset);}
  long(){return this.#take(8).readBigInt64LE();}
  bytes(max=MAX){const first=this.#take(1)[0];if(first===255)throw new WireError('invalid_length');let n=first,prefix=1;if(first===254){n=this.#take(3).readUIntLE(0,3);prefix=4;if(n<254)throw new WireError('invalid_length');}if(n>max)throw new WireError('payload_too_large');const value=Buffer.from(this.#take(n));const padding=this.#take((4-(prefix+n)%4)%4);if(padding.some(n=>n!==0))throw new WireError('invalid_padding');return value;}
  string(max=4096){try{return new TextDecoder('utf-8',{fatal:true}).decode(this.bytes(max));}catch(e){if(e instanceof WireError)throw e;throw new WireError('invalid_utf8');}}
