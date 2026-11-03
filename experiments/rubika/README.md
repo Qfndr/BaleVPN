@@ -75,7 +75,7 @@ blocked. It verifies four CBC fixtures in both directions, RSA-OAEP auth in both
 directions, identical RSA-SHA256 signatures, auth transform and public-key field.
 No real account or service request is involved. The full Node regression suite
 passed 146 tests without skips, including 25 Rubika wire/HTTP/auth tests.
-The browser suite passed with offline provider fixtures in FA/EN and widths
+The earlier browser suite passed with offline provider fixtures in FA/EN and widths
 320–1440px. Real network login, SMS and calls are not included in those results.
 
 ## Private call RPC boundary
@@ -120,3 +120,51 @@ bundle does not establish an available voice-call implementation. No Rubika medi
 route, foreign-VPS transport, sustained throughput, billing discount or outage
 behavior is claimed. Neither the live lab nor a production binary was restarted
 or rebuilt for this private protocol change.
+
+## Account-bound update reader
+
+Further bounded APK inspection establishes an eighth private method, `getUpdate`:
+`NotificationUtils.getUpdate` creates the fieldless `GetUpdateInput`, and
+`NetworkHelperImpl.getUpdate` serializes it with the literal `getUpdate` method
+and `GetUpdateOutput` type. `GetUpdateOutput.update_data` points to
+`MessengerUpdateObject`. `CoreMainClassImpl.handleMessengerNotification` routes
+its `call_updates` to the account's notification center and `call_signal_data`
+to that account's call signal processor. `CallProxy` distinguishes New/Edit/Delete;
+Edit and Delete are matched to the current call ID. These are compiled-client
+observations; no server response has been obtained with a real account.
+
+`call-client.cjs` now wraps the HTTP transport with a confirmed Rubika account.
+Explicit `start()` verifies matching RSA keys of at least 2048 bits and discovers
+the provider API. Each operation rechecks the exact self ID and retained auth/key
+binding, including after awaited network I/O. Close cancels the owned transport;
+late replies cannot establish readiness. It neither signs in nor registers a
+device, and never stops the owning auth session. Concurrent calls are refused,
+input objects are snapshotted, and service failures never trigger retries.
+
+`call-updates.cjs` projects only bounded call fields. It requires the exact self
+`user_guid` in `getUpdate.update_data` as a **local fail-closed policy**; that
+field's presence in every live response is not yet verified. Per-call replies
+must match the requested call ID and any nested PhoneCall ID. Partial Edit and
+Delete records stay partial, not fabricated full snapshots. This reader does not
+merge edits or infer caller/receiver roles; those belong in the pending controller.
+Java long connection IDs are preserved as exact decimal strings, with unsafe
+numeric JSON representations rejected. Endpoint syntax is checked without
+connecting to an address. Tg/WebRTC is preserved as a type, not treated as proof
+of a provider relay route. Unrelated chat/message data is discarded.
+
+The returned call key, TURN credentials and signaling buffers are **private**;
+only safe readiness/error metadata belongs in UI state. `ready` means transport
+prepared, **never an established call or proxy**. `mediaReady` remains false.
+Raw base64-decoded signaling still needs the correct native protocol/decryption;
+this does not make it safe to interpret as plaintext SDP or Eitaa signaling.
+
+```powershell
+node --test scripts/test-rubika-call-client.cjs
+```
+
+Current regression: **296 provider Node tests passed, 0 failed, 0 skipped**,
+including 48 Rubika tests. The 17 new tests cover account isolation, account/key
+changes, late completion, cancellation, mutation during pending I/O, update/self
+and nested call-ID mismatches, partial updates, exact numeric IDs, bounded signal
+batches, private error redaction and the real HTTP crypto pipeline against an
+offline service fixture. No real account, live call or tariff test is included.

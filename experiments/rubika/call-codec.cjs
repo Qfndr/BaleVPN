@@ -1,6 +1,7 @@
 // Private experimental RPC boundary, derived from Android 4.1.1 call models.
 // This does not implement its native media protocol or assert Web API support.
 const METHODS=Object.freeze(['requestCall','receivedCall','acceptCall','discardCall','sendSignalingData','getSignalingData','callStarted']);
+const PROTECTED_METHODS=Object.freeze([...METHODS,'getUpdate']);
 const VERSIONS=Object.freeze(['2.4.4','2.7.7','5.0.0','6.0.0','7.0.0','8.0.0','9.0.0']);
 // Local memory bounds, not advertised provider limits.
 const MAX_SIGNAL=48*1024,MAX_BATCH=256;
@@ -22,7 +23,8 @@ function decodeSignal(value){
 function encodeSignal(bytes){if(!Buffer.isBuffer(bytes)||!bytes.length||bytes.length>MAX_SIGNAL)fail();return bytes.toString('base64');}
 function validateInput(method,v){
  const layers=['min_layer','max_layer','library_versions'];let valid=false;
- if(method==='requestCall')valid=exact(v,['call_type','user_guid',...layers])&&v.call_type==='Voice'&&id(v.user_guid)&&profile(v);
+ if(method==='getUpdate')valid=exact(v,[]);
+ else if(method==='requestCall')valid=exact(v,['call_type','user_guid',...layers])&&v.call_type==='Voice'&&id(v.user_guid)&&profile(v);
  else if(method==='acceptCall')valid=exact(v,['call_id',...layers])&&id(v.call_id)&&profile(v);
  else if(['receivedCall','getSignalingData','callStarted'].includes(method))valid=exact(v,['call_id'])&&id(v.call_id);
  else if(method==='discardCall')valid=exact(v,['call_id','duration','reason'])&&id(v.call_id)&&Number.isInteger(v.duration)&&v.duration>=0&&v.duration<=2147483647&&['Missed','Disconnect','Hangup','Busy'].includes(v.reason);
@@ -38,4 +40,4 @@ function decodeSignalBatch(value){
  try{for(const item of value.data_list){const bytes=decodeSignal(item);result.push(bytes);total+=bytes.length;if(total>MAX_SIGNAL)fail();}return result;}
  catch(error){for(const bytes of result)bytes.fill(0);throw error;}
 }
-module.exports={METHODS,VERSIONS,MAX_SIGNAL,MAX_BATCH,CallCodecError,validateInput,encodeSignal,decodeSignal,decodeSignalBatch};
+module.exports={METHODS,PROTECTED_METHODS,VERSIONS,MAX_SIGNAL,MAX_BATCH,CallCodecError,validateInput,encodeSignal,decodeSignal,decodeSignalBatch};
