@@ -27,8 +27,9 @@ fixed IV and legacy OAEP hash are compatibility behavior, not new end-to-end
 tunnel protection. HTTPS validation stays mandatory; a future tunnel requires
 its own authenticated encryption and approved peer identity.
 
-`http-client.cjs` allows only `sendCode`, `signIn`, `registerDevice`, `getUserInfo`
-and `logout`. It does not invoke them automatically. Anonymous `getDCs` discovery
+`http-client.cjs` allows `sendCode`, `signIn`, `registerDevice`, `getUserInfo`,
+`logout` and the seven private experimental call methods documented below.
+It does not invoke them automatically. Anonymous `getDCs` discovery
 is a separate version-4 plaintext request to a fixed HTTPS provider endpoint.
 Every discovered API URL must be HTTPS under `iranlms.ir`, with no URL user info,
 query, fragment, custom path or nonstandard port. Only validated URLs can receive
@@ -77,7 +78,45 @@ passed 146 tests without skips, including 25 Rubika wire/HTTP/auth tests.
 The browser suite passed with offline provider fixtures in FA/EN and widths
 320–1440px. Real network login, SMS and calls are not included in those results.
 
-Voice-call support remains a separate research task: native APK declarations
-include WebRTC/relay fields, but the current main web bundle does not establish
-an available voice-call implementation. No Rubika media route, foreign-VPS
-transport, sustained throughput, billing discount or outage behavior is claimed.
+## Private call RPC boundary
+
+Bounded, nonexecuting inspection of the official Android 4.1.1 APK now links
+`CallUtils` inputs to `NetworkHelperImpl`'s literal RPC names and typed output
+models. The SHA-256-pinned observations and limitations are recorded in
+[call-protocol-evidence-2026-11-03.json](call-protocol-evidence-2026-11-03.json).
+This establishes compiled client behavior, not server acceptance of these
+methods with our Web session. No raw APK or third-party source is committed.
+
+`call-codec.cjs` validates only `requestCall`, `receivedCall`, `acceptCall`,
+`discardCall`, **`sendSignalingData`**, `getSignalingData` and `callStarted`.
+Calls require signed, encrypted account requests. Normal voice requests exclude
+phone/SIP/call-out fields. Protocol layers and reviewed native library versions
+must be supplied explicitly; no unverified layer defaults are invented. The
+observed version list excludes Eitaa's `4.0.0`; Eitaa native media interoperability
+must not be assumed. `PhoneCall.key` is converted to bytes by the Android client,
+not base64-decoded like its signaling strings. It remains private service data,
+not proof of provider-blind end-to-end security.
+
+Opaque signaling has strict canonical outbound base64, bounded Android-compatible
+inbound ASCII whitespace handling, and ordered bounded `data_list` decoding.
+The 48 KiB payload/batch-byte and 256-entry bounds are **local safety policies**,
+not measured provider limits. There is no automatic dialing, answering, polling,
+retrying, native protocol negotiation or public call endpoint in this change.
+
+```powershell
+node --test scripts/test-rubika-wire.cjs scripts/test-rubika-http.cjs scripts/test-rubika-auth.cjs scripts/test-rubika-call.cjs
+python scripts/test-dex-call-references.py
+# Offline, explicit class selection; never installs or runs the APK:
+python scripts/inspect-dex-call-references.py PATH-TO-OFFICIAL.apk --class-prefix 'Lir/aaap/messengercore/CallUtils;' --class-prefix 'Lir/aaap/messengercore/network/NetworkHelperImpl;' --output LOCAL-REFERENCES.json
+```
+
+The extractor is a bounded **linear reference reader**, not a decompiler or a
+control/data-flow proof. It accepts standard DEX 035/037–040 with 112-byte headers;
+DEX 041 containers and optimized/unknown instructions are refused. Synthetic tests
+cover malformed tables, instructions, payload alignment, LEB128 and code bounds.
+
+Voice-call media support remains a separate research task. The current main web
+bundle does not establish an available voice-call implementation. No Rubika media
+route, foreign-VPS transport, sustained throughput, billing discount or outage
+behavior is claimed. Neither the live lab nor a production binary was restarted
+or rebuilt for this private protocol change.

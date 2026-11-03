@@ -1,9 +1,10 @@
 // Fixed Rubika service methods, no retries or redirects, no public raw errors.
 // Discovery is anonymous; account auth/private keys never go to the DC service.
 const wire=require('./wire.cjs');
+const calls=require('./call-codec.cjs');
 const DISCOVERY='https://getdcmess.iranlms.ir/';
 const DEFAULT='https://messengerg2c1.iranlms.ir/';
-const METHODS=new Set(['sendCode','signIn','registerDevice','getUserInfo','logout']);
+const METHODS=new Set(['sendCode','signIn','registerDevice','getUserInfo','logout',...calls.METHODS]);
 const UNAUTH=new Set(['sendCode','signIn']);
 const CODES=new Set(['INVALID_AUTH','INVALID_INPUT','NOT_REGISTERED','TOO_REQUESTS','ACCESS_DENIED']);
 class ApiError extends Error{constructor(reason,status,serviceCode){super('Rubika API '+reason);this.reason=reason;if(status!==undefined)this.statusCode=status;if(CODES.has(serviceCode))this.serviceCode=serviceCode;}}
@@ -16,6 +17,7 @@ function object(value){return value&&typeof value==='object'&&!Array.isArray(val
 function exact(value,fields){return object(value)&&Object.keys(value).every(k=>fields.includes(k));}
 function text(value,max){return typeof value==='string'&&value.length>0&&Buffer.byteLength(value)<=max&&!/[\0\r\n]/.test(value);}
 function input(method,value){
+ if(calls.METHODS.includes(method)){try{return calls.validateInput(method,value);}catch{throw new ApiError('invalid_request');}}
  const phone=v=>typeof v==='string'&&/^[1-9]\d{6,14}$/.test(v);
  if(method==='sendCode'){
   if(!exact(value,['phone_number','send_type','pass_key'])||!phone(value.phone_number)||value.send_type!=='SMS'||value.pass_key!==undefined&&!text(value.pass_key,256))throw new ApiError('invalid_request');
