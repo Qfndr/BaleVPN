@@ -8,7 +8,7 @@ class CallError extends Error{constructor(reason){super('Rubika call '+reason);t
 const fail=reason=>{throw new CallError(reason);};
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const SAFE=new Set(['not_authenticated','invalid_account_binding','account_binding_changed','not_authorized','rate_limited','registration_required',
- 'service_rejected','timeout','network_error','http_error','invalid_dc_server','invalid_dc_response','invalid_response',
+ 'invalid_update_server','update_stream_timeout','update_stream_failed','update_stream_closed','invalid_update_stream','update_stream_rejected','update_queue_full','service_rejected','timeout','network_error','http_error','invalid_dc_server','invalid_dc_response','invalid_response',
  'invalid_encrypted_response','response_too_large','tls_verification_disabled','invalid_call_response','call_identity_mismatch',
  'unsupported_call_protocol','update_account_mismatch','call_operation_failed']);
 const LOCAL=new Set(['call_not_started','call_already_started','call_not_listening','call_not_ringing','call_not_accepted','call_peer_not_allowed']);

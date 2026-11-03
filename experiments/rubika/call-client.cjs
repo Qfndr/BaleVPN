@@ -2,6 +2,7 @@
 // polling or device registration. Incoming data remains private to the caller.
 'use strict';
 const {diagnostic}=require('./call-diagnostic.cjs');
+const {StreamError}=require('./socket-updates.cjs');
 const crypto=require('node:crypto'),{HttpClient,ApiError}=require('./http-client.cjs');
 const codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
 const SAFE=new Set(['closed','account_busy','invalid_request','invalid_credentials','not_authorized','rate_limited',
@@ -30,7 +31,7 @@ class CallClient{
   try{this.#guard(epoch);const result=await action(()=>this.#guard(epoch));this.#guard(epoch);return result;}
   catch(e){
    if(this.#closed||epoch!==this.#epoch)throw new ApiError('closed');
-   const reason=e instanceof ApiError&&SAFE.has(e.reason)||e instanceof updates.UpdateError&&UPDATE_ERRORS.has(e.reason)?e.reason:
+   const reason=e instanceof StreamError?e.reason:e instanceof ApiError&&SAFE.has(e.reason)||e instanceof updates.UpdateError&&UPDATE_ERRORS.has(e.reason)?e.reason:
     ['not_authenticated','invalid_account_binding','account_binding_changed','call_not_started','call_already_started'].includes(e?.reason)?e.reason:'call_operation_failed';
    const detail=diagnostic({...e,operation});this.#error={reason,...detail};
    if(!['invalid_request','call_not_started','call_already_started'].includes(reason))this.#retire();
@@ -46,7 +47,7 @@ class CallClient{
     !crypto.createPublicKey(privateKey).export({type:'spki',format:'der'}).equals(publicKey.export({type:'spki',format:'der'})))fail('invalid_account_binding');
   }catch{fail('invalid_account_binding');}
   this.#binding={provider:'rubika',userId:record.userId,auth:record.auth,privateKey:record.privateKey,publicKey:record.publicKey};
-  this.#client=this.#create({language:this.#lang});await this.#client.discover();guard();this.#ready=true;return {ready:true,mediaReady:false};
+  this.#client=this.#create({language:this.#lang});await this.#client.discover();guard();if(typeof this.#client.startUpdates==='function')await this.#client.startUpdates({...this.#binding});guard();this.#ready=true;return {ready:true,mediaReady:false};
  });}
  request(method,value={}){
   // Snapshot before awaiting discovery/network or allowing external mutation.

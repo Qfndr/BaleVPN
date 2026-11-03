@@ -12,9 +12,12 @@ test('initial Nasim SSE cursor follows the first official group-page message ID 
 });
 test('empty account cursor is explicit and cannot trigger pagination or manufactured timestamps',async()=>{
  assert.equal(await initialCursor(session,{fetchImpl:async()=>Response.json({data:{groups:[]}})}),'0');
+ assert.equal(await initialCursor(session,{fetchImpl:async()=>Response.json({data:{groups:[{}, {lastMessage:null}]}})}),'0');
+ assert.equal(await initialCursor(session,{fetchImpl:async()=>new Response('{"data":{"groups":[{}, {"lastMessage":{"messageID":9007199254740993}}]}}')}),'9007199254740993');
+ assert.equal(await initialCursor(session,{fetchImpl:async()=>Response.json({data:{groups:[{lastMessage:{messageID:'90'}},{lastMessage:{messageID:'100'}}]}})}),'100');
 });
 test('cursor decoding rejects unsafe numeric IDs, malformed/enormous pages and invalid private ciphertext',async()=>{
- for(const value of [{data:{groups:[{lastMessage:{messageID:9007199254740992}}]}},{data:{groups:[{lastMessage:{messageID:'private'}}]}},{data:{groups:Array(257).fill({})}},{data:{groups:[{}]}},{status:'error',data:{groups:[]}}])await assert.rejects(initialCursor(session,{fetchImpl:async()=>Response.json(value)}),/invalid_cursor_response/);
+ for(const value of [{data:{groups:[{lastMessage:{messageID:1e100}}]}},{data:{groups:[{lastMessage:{messageID:'private'}}]}},{data:{groups:Array(257).fill({})}},{data:{groups:[{lastMessage:{messageID:1.5}}]}},{status:'error',data:{groups:[]}}])await assert.rejects(initialCursor(session,{fetchImpl:async()=>Response.json(value)}),/invalid_cursor_response/);
  await assert.rejects(initialCursor(session,{fetchImpl:async()=>new Response('private-bad-ciphertext')}),/invalid_cursor_response/);
  await assert.rejects(initialCursor(session,{fetchImpl:async()=>new Response('x',{headers:{'content-length':String(256*1024+1)}})}),/response_too_large/);
 });

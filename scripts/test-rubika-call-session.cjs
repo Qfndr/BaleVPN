@@ -136,7 +136,7 @@ test('the typed update reader preserves Video for filtering while outgoing voice
 test('real account-bound client, HTTP signing and service encryption carry the full offline call lifecycle',async()=>{
  const wire=require('../experiments/rubika/wire.cjs'),{CallClient}=require('../experiments/rubika/call-client.cjs'),{HttpClient}=require('../experiments/rubika/http-client.cjs');
  const identity=await wire.createIdentity(),methods=[];
- const f=fixture({options:{createClient:account=>new CallClient(account,{createClient:options=>new HttpClient({...options,fetchImpl:async(url,options)=>{
+ const f=fixture({options:{createClient:account=>new CallClient(account,{createClient:options=>new HttpClient({...options,updatesFactory:null,fetchImpl:async(url,options)=>{
   const envelope=JSON.parse(options.body);
   if(envelope.method==='getDCs'){methods.push('getDCs');return new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}}));}
   assert.equal(require('node:crypto').verify('RSA-SHA256',Buffer.from(envelope.data_enc),identity.publicKey,Buffer.from(envelope.sign,'base64')),true);

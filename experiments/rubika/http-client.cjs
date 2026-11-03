@@ -2,6 +2,7 @@
 // Discovery is anonymous; account auth/private keys never go to the DC service.
 const wire=require('./wire.cjs');
 const calls=require('./call-codec.cjs');
+const {SocketUpdates,socketEndpoint}=require('./socket-updates.cjs');
 const DISCOVERY='https://getdcmess.iranlms.ir/';
 const DEFAULT='https://messengerg2c1.iranlms.ir/';
 const METHODS=new Set(['sendCode','signIn','registerDevice','getUserInfo','logout',...calls.PROTECTED_METHODS]);
@@ -55,10 +56,10 @@ async function bounded(response){
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks,size)));}catch{throw new ApiError('invalid_response');}
 }
 class HttpClient {
- #fetch;#session;#server=DEFAULT;#pending;#closed=false;#lang;
- constructor({fetchImpl=globalThis.fetch,temporarySession=wire.temporarySession(),language='fa'}={}){
+ #fetch;#session;#server=DEFAULT;#pending;#closed=false;#lang;#socketServer='wss://jsocket5.iranlms.ir:80/';#updates;#updatesFactory;#updatesAbort;#updateBinding;
+ constructor({fetchImpl=globalThis.fetch,temporarySession=wire.temporarySession(),language='fa',updatesFactory=SocketUpdates.open}={}){
   const key=wire.serviceKey(temporarySession);key.fill(0);if(!['fa','en'].includes(language))throw new ApiError('invalid_request');
-  this.#fetch=fetchImpl;this.#session=temporarySession;this.#lang=language;
+  if(updatesFactory!==null&&typeof updatesFactory!=='function')throw new ApiError('invalid_request');this.#updatesFactory=updatesFactory;this.#fetch=fetchImpl;this.#session=temporarySession;this.#lang=language;
  }
  get temporarySession(){return this.#session;}
  #client(){return {app_name:'Main',app_version:'4.4.34',platform:'Web',package:'web.rubika.ir',lang_code:this.#lang};}
@@ -83,13 +84,18 @@ class HttpClient {
   const response=await this.#post(DISCOVERY,{api_version:'4',method:'getDCs',client:this.#client()},{timeout,json:true});
   const result=serviceResult(response);
   if(!Array.isArray(result.default_api_urls)||!result.default_api_urls.length||result.default_api_urls.length>16)throw new ApiError('invalid_dc_response');
-  const servers=result.default_api_urls.map(endpoint);if(this.#closed)throw new ApiError('closed');this.#server=servers[0];return {apiServerSelected:true};
+  const servers=result.default_api_urls.map(endpoint);if(result.default_sockets!==undefined){if(!Array.isArray(result.default_sockets)||!result.default_sockets.length||result.default_sockets.length>16)throw new ApiError('invalid_dc_response');try{this.#socketServer=result.default_sockets.map(socketEndpoint)[0];}catch{throw new ApiError('invalid_dc_response');}}if(this.#closed)throw new ApiError('closed');this.#server=servers[0];return {apiServerSelected:true};
+ }
+ async startUpdates(credentials){
+  if(this.#closed)throw new ApiError('closed');if(this.#updates||this.#updatesAbort||this.#pending)throw new ApiError('account_busy');if(!this.#updatesFactory)return;
+  const binding={provider:credentials?.provider,userId:credentials?.userId,auth:credentials?.auth};this.#updatesAbort=new AbortController();try{const channel=await this.#updatesFactory(binding,{url:this.#socketServer,signal:this.#updatesAbort.signal});if(this.#closed){channel.close();throw new ApiError('closed');}this.#updates=channel;this.#updateBinding=binding;}catch(e){this.#updatesAbort=null;throw e;}
  }
  async request(method,value={}, {credentials,timeout}={}){
   if(this.#closed)throw new ApiError('closed');if(this.#pending)throw new ApiError('account_busy');
   if(!METHODS.has(method))throw new ApiError('invalid_request');input(method,value);
   const unauth=UNAUTH.has(method);
   if(unauth&&credentials!==undefined||!unauth&&(!credentials||credentials.provider!=='rubika'))throw new ApiError('invalid_credentials');
+  if(method==='getUpdate'&&this.#updates){if(['provider','userId','auth'].some(k=>credentials[k]!==this.#updateBinding[k]))throw new ApiError('invalid_credentials');return this.#updates.read();}
   const session=unauth?this.#session:credentials.auth;
   let data;try{data=wire.encrypt({method,input:value,client:this.#client()},session);}catch{throw new ApiError('invalid_credentials');}
   const body={api_version:'6',data_enc:data};
@@ -103,6 +109,6 @@ class HttpClient {
   let decoded;try{decoded=wire.decrypt(response.data_enc,session);}catch{throw new ApiError('invalid_encrypted_response');}
   return serviceResult(decoded,['registerDevice','logout'].includes(method));
  }
- close(){this.#closed=true;this.#pending?.abort();this.#session=null;}
+ close(){this.#closed=true;this.#pending?.abort();this.#updatesAbort?.abort();this.#updatesAbort=null;this.#updates?.close();this.#updates=null;this.#updateBinding=null;this.#session=null;}
 }
 module.exports={HttpClient,ApiError,endpoint,DISCOVERY};

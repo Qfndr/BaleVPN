@@ -137,7 +137,7 @@ test('start verifies strong RSA ownership once and rejects a mismatched or weak 
 });
 test('real HTTP transport signs getUpdate and returns only authenticated call data from an encrypted offline service',async()=>{
  const f=await fixture();let sent=0;
- const client=new CallClient(f.account,{createClient:options=>new (require('../experiments/rubika/http-client.cjs').HttpClient)({...options,fetchImpl:async(url,o)=>{
+ const client=new CallClient(f.account,{createClient:options=>new (require('../experiments/rubika/http-client.cjs').HttpClient)({...options,updatesFactory:null,fetchImpl:async(url,o)=>{
   sent++;const body=JSON.parse(o.body);
   if(body.method==='getDCs')return new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}}));
   assert.equal(crypto.verify('RSA-SHA256',Buffer.from(body.data_enc),f.record.publicKey,Buffer.from(body.sign,'base64')),true);
@@ -145,4 +145,11 @@ test('real HTTP transport signs getUpdate and returns only authenticated call da
   return new Response(JSON.stringify({data_enc:wire.encrypt({status:'OK',data:{update_data:{user_guid:selfId,call_updates:[callUpdate()]}}},f.record.auth)}));
  }})});
  await client.start();const reply=await client.request('getUpdate');assert.equal(reply.call_updates[0].call_id,callId);assert.equal(sent,2);client.close();f.client.close();
+});
+
+test('the Web notification path drains authenticated socket updates without sending HTTP getUpdate',async()=>{
+ const f=await fixture(),{SocketUpdates}=require('../experiments/rubika/socket-updates.cjs');let requests=0,socket;
+ class FakeSocket extends EventTarget{constructor(){super();socket=this;queueMicrotask(()=>this.dispatchEvent(new Event('open')));}send(value){if(JSON.parse(value).method==='handShake')queueMicrotask(()=>this.dispatchEvent(new MessageEvent('message',{data:'{}'})));}close(){}}
+ const client=new CallClient(f.account,{createClient:options=>new (require('../experiments/rubika/http-client.cjs').HttpClient)({...options,updatesFactory:(record,settings)=>SocketUpdates.open(record,{...settings,WebSocketImpl:FakeSocket}),fetchImpl:async()=>{requests++;return Response.json({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/'],default_sockets:['wss://jsocket5.iranlms.ir:80']}});}})});
+ try{await client.start();socket.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({type:'messenger',data_enc:wire.encrypt({call_updates:[callUpdate()]},f.record.auth)})}));const reply=await client.request('getUpdate');assert.equal(reply.call_updates[0].call_id,callId);assert.equal(requests,1);assert.equal((await client.request('getUpdate')).call_updates.length,0);}finally{client.close();f.client.close();}
 });

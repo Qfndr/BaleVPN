@@ -55,6 +55,12 @@ test('closing cancels outstanding I/O, prevents late discovery selection and rej
  await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),/closed/);
 });
 
+test('socket update reads cannot be rebound to another account on the same HTTP client',async()=>{
+ let reads=0,closed=false;const record={provider:'rubika',userId:guid,auth};
+ const client=new HttpClient({updatesFactory:async()=>({read(){reads++;return {update_data:{user_guid:guid}};},close(){closed=true;}}),fetchImpl:async()=>{throw Error('Unexpected HTTP polling');}});
+ await client.startUpdates(record);await assert.rejects(client.request('getUpdate',{}, {credentials:{...record,auth:tmp}}),/invalid_credentials/);assert.equal(reads,0);await client.request('getUpdate',{}, {credentials:record});assert.equal(reads,1);client.close();assert.equal(closed,true);
+});
+
 test('call diagnostics preserve short alphabetic status symbols without accepting raw messages or credentials',async()=>{
  for(const detail of ['METHOD_NOT_FOUND','private-response','123456','A'.repeat(41)]){
   const client=new HttpClient({fetchImpl:async()=>Response.json({status:'ERROR_ACTION',status_det:detail,message:'private-secret',data:{token:'private-token'}})});
