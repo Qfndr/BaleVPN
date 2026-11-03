@@ -20,6 +20,7 @@ const inputs={
  'phone.confirmCall':{peer,g_a:active.g_a_or_b,key_fingerprint:active.key_fingerprint,protocol:protocol()},
  'phone.receivedCall':{peer},'phone.discardCall':{peer,duration:5,reason:discarded.reason,connection_id:0n},
  'phone.sendSignalingData':{peer,data:Buffer.alloc(50,7)},'updates.getState':{},
- 'updates.getDifference':{pts:10,pts_total_limit:256,date:state.date,qts:-1}
+ 'updates.getDifference':{pts:10,pts_total_limit:256,date:state.date,qts:-1},
+ 'contacts.getContacts':{hash:0n},'contacts.resolveUsername':{username:'FixtureTarget'}
 };
 module.exports={peer,user,base,waiting,requested,accepted,active,discarded,state,connection,wrap,updates,inputs};

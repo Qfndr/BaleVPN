@@ -6,11 +6,11 @@ const {protocol}=require('../experiments/eitaa/call-client.cjs'),{CallSession}=r
 const f=require('./eitaa-call-fixtures.cjs');
 const clone=v=>codec.decode(codec.object(v));
 function account(id){let signed=true;const record={provider:'eitaa',userId:String(id),imei:(id===101?'0123456789abcde':'fedcba987654321')+'__web',token:'fixture-token-'+id};return {record,get state(){return {provider:'eitaa',signedIn:signed,selfConfirmed:signed,userId:record.userId};},exportSession(){return {...record};},stop(){signed=false;}};}
-function service({connections=[f.connection]}={}){
- const queues=new Map([[101,[]],[202,[]]]),cursors=new Map([[101,10],[202,10]]),calls=[],clients=[];let call,nextCallId=f.peer.id;
+function service({connections=[f.connection],ids=[101,202],identifyToken=token=>Number(token.split('-').at(-1))}={}){
+ const queues=new Map(ids.map(id=>[id,[]])),cursors=new Map(ids.map(id=>[id,10])),calls=[],clients=[];let call,nextCallId=f.peer.id;
  function active(forId){return {_:'phoneCall',...call.base,g_a_or_b:forId===call.base.admin_id?call.gb:call.ga,key_fingerprint:call.fingerprint,connections,start_date:f.state.date};}
  const api={queues,calls,clients,override:null,clone,get call(){return call;},
-  createClient(options){const self=Number(options.token.split('-').at(-1));const client={closed:false,close(){this.closed=true;},async request(method,input){if(this.closed)throw Object.assign(Error('fixture closed'),{reason:'closed'});calls.push({self,method});if(api.override){const value=await api.override({self,method,input,client});if(value!==undefined)return value;}
+  createClient(options){const self=identifyToken(options.token);const client={closed:false,close(){this.closed=true;},async request(method,input){if(this.closed)throw Object.assign(Error('fixture closed'),{reason:'closed'});calls.push({self,method});if(api.override){const value=await api.override({self,method,input,client});if(value!==undefined)return value;}
    if(method==='updates.getState')return {...f.state,pts:cursors.get(self),seq:cursors.get(self)};
    if(method==='messages.getDhConfig')return {_:'messages.dhConfig',g:2,p:crypto.getDiffieHellman('modp14').getPrime(),version:1,random:crypto.randomBytes(256)};
    if(method==='phone.requestCall'){

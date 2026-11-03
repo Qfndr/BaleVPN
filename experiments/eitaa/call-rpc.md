@@ -4,10 +4,10 @@ The selected call API now has a bounded authenticated HTTPS/TL client, separate
 from login and from production Bale. It does **not** yet dial or answer through
 the provider laboratory. No real account or provider call was used in this step.
 
-`call-schema.json` is the dependency closure of ten methods from the same pinned
+`call-schema.json` is the dependency closure of twelve methods from the same pinned
 official worker recorded in [README.md](README.md): DH configuration, call
 configuration, request/accept/confirm/received/discard, encrypted signaling, update
-state and update differences. Its 495 constructors cover the full declared update
+state, update differences and two read-only contact/username lookups. Its 499 constructors cover the full declared update
 dependencies, including unrelated messages/media which can accompany a call.
 `call-wire.cjs` and account-only `auth-wire.cjs` share `tl-codec.cjs`; the account
 wrapper still cannot encode a call method. The codec retains its 64 KiB frame,
@@ -57,9 +57,9 @@ HTTP state, UI diagnostics, logs or persisted as plaintext.
 ## Verification
 
 Nine offline call tests cover actual TL envelopes, independent saved identities,
-relay-only request flags, all ten methods, mixed message/call event batches,
+relay-only request flags, all twelve methods, mixed message/call event batches,
 legacy constructor IDs, invalid input, uncertain/error replies and cancellation.
-The pinned official serializer agrees byte-for-byte on ten requests and nine
+The pinned official serializer agrees byte-for-byte on twelve requests and eleven
 responses; decoded synthetic responses also match. Only the pure serializer
 class is executed in an isolated VM, without worker startup, telemetry, session
 access or network. Schema extraction uses literal parsing and a SHA-256 gate.

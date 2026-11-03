@@ -1,9 +1,8 @@
 # Eitaa service and call research
 
 This component is isolated from production Bale. Eitaa is still marked as
-a two-account login laboratory in the local provider panel. Media/tunnels are
-not offered by that panel; private local media verification is described below.
-Real login is unverified.
+a two-account login and explicit call/media laboratory in the local provider
+panel. Real login, provider calls/relay and tariffs remain unverified.
 
 The isolated [call-key component](call-key.md) now implements native DH setup,
 safe-group/public-value validation and the observed commitment/fingerprint
@@ -20,8 +19,8 @@ parser/projector fixtures and a real native local TURN/DTLS/SRTP/RTP/QUIC test
 with a 256 KiB exact echo through encrypted Eitaa-shaped descriptions. Live
 provider call control and route/billing tests remain.
 
-The [private call RPC client and codec](call-rpc.md) now support ten reviewed
-methods and their complete 495-constructor dependency closure. Mixed message/call
+The [private call RPC client and codec](call-rpc.md) now support twelve reviewed
+methods and their 499-constructor dependency closure. Mixed message/call
 updates, legacy constructor IDs and exact 64-bit IDs are covered. Ten request
 and nine response fixtures match the official serializer. This is not yet wired
 to live accounts or offered as a working Eitaa tunnel.
@@ -37,8 +36,16 @@ call-bound TURN, exchange encrypted native offers/answers and check independent
 QUIC pairing. The composed normal-helper test found and fixed a server/client
 readiness distinction, also corrected for Nasim. Current regression: 260 Node,
 60 Rust library and eight normal example tests; four official TURN-projection
-fixtures also pass. Live account/service acceptance, target resolution,
-persistent media identity, reconnect and lab/product UI remain.
+fixtures also pass. Live account/service acceptance, live target lookup,
+persistent media identity, reconnect and production UI remain.
+
+The [two-account call laboratory](call-lab.md) now adds private caller-relative
+target resolution and explicit prepare/dial/accept/end/reset UI. Current schema:
+12 methods / 499 constructors, with 12 official request and 11 response fixtures.
+273 Node tests, 60 Rust tests and the FA/EN/theme/responsive browser flow pass.
+Automatic review rejected restarting the existing lab, so its old startup
+snapshot is still running; see the [manual guide](../../docs/eitaa-call-lab-fa.md).
+Live provider checks and production app integration remain outstanding.
 
 The official web HTML was checked again on 2026-11-03. Its SHA-256 and main
 script reference were unchanged from the previous download. The pinned worker

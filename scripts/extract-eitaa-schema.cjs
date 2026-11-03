@@ -41,7 +41,7 @@ function authSchema(source){
  return {provider:'eitaa',sourceSha256:SHA,layer:all.layer,methods,constructors:[...constructors.values()],responseAliases,liveLoginVerified:false};
 }
 function callSchema(source){
- const all=table(source),names=['messages.getDhConfig','phone.getCallConfig','phone.requestCall','phone.acceptCall','phone.confirmCall','phone.receivedCall','phone.discardCall','phone.sendSignalingData','updates.getState','updates.getDifference'];
+ const all=table(source),names=['messages.getDhConfig','phone.getCallConfig','phone.requestCall','phone.acceptCall','phone.confirmCall','phone.receivedCall','phone.discardCall','phone.sendSignalingData','updates.getState','updates.getDifference','contacts.getContacts','contacts.resolveUsername'];
  const methods=names.map(name=>{const matches=all.API.methods.filter(m=>m.method===name);if(matches.length!==1)throw Error('Invalid call method');return matches[0];});
  const primitive=new Set(['#','int','long','double','string','bytes','true','int128','int256','int512','!X','Object']);
  const types=new Set(['Error','Pong','EitaaUpdatesExpireToken','EitaaTokenUpdating']),constructors=new Map();

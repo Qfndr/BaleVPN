@@ -9,7 +9,8 @@ const FIELDS={
  'phone.requestCall':['user_id','g_a_hash'],
  'phone.acceptCall':['peer','g_b'],'phone.confirmCall':['peer','g_a','key_fingerprint'],
  'phone.receivedCall':['peer'],'phone.discardCall':['peer','duration','reason'],
- 'phone.sendSignalingData':['peer','data'],'updates.getDifference':['pts','date','qts']
+ 'phone.sendSignalingData':['peer','data'],'updates.getDifference':['pts','date','qts'],
+ 'contacts.getContacts':[],'contacts.resolveUsername':['username']
 };
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
 const long=v=>typeof v==='bigint'&&v>=-(2n**63n)&&v<2n**63n;
@@ -28,6 +29,8 @@ function input(name,value){
   return {...value,random_id:crypto.randomBytes(4).readInt32LE(),protocol:protocol()};
  }
  if(name==='messages.getDhConfig')return {version:0,random_length:256};
+ if(name==='contacts.getContacts')return {hash:0n};
+ if(name==='contacts.resolveUsername'&&(typeof value.username!=='string'||!/^[A-Za-z][A-Za-z0-9_]{2,31}$/.test(value.username)))throw new ApiError('invalid_request');
  if(name==='phone.acceptCall'){if(!bytes(value.g_b,256))throw new ApiError('invalid_request');return {...value,protocol:protocol()};}
  if(name==='phone.confirmCall'){if(!bytes(value.g_a,256)||!long(value.key_fingerprint))throw new ApiError('invalid_request');return {...value,protocol:protocol()};}
  if(name==='phone.discardCall'){

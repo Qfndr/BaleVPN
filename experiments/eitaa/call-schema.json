@@ -186,6 +186,28 @@
         }
       ],
       "type": "updates.Difference"
+    },
+    {
+      "id": 1574346258,
+      "method": "contacts.getContacts",
+      "params": [
+        {
+          "name": "hash",
+          "type": "long"
+        }
+      ],
+      "type": "contacts.Contacts"
+    },
+    {
+      "id": -113456221,
+      "method": "contacts.resolveUsername",
+      "params": [
+        {
+          "name": "username",
+          "type": "string"
+        }
+      ],
+      "type": "contacts.ResolvedPeer"
     }
   ],
   "constructors": [
@@ -816,6 +838,46 @@
         }
       ],
       "type": "updates.Difference"
+    },
+    {
+      "id": -1219778094,
+      "predicate": "contacts.contactsNotModified",
+      "params": [],
+      "type": "contacts.Contacts"
+    },
+    {
+      "id": -353862078,
+      "predicate": "contacts.contacts",
+      "params": [
+        {
+          "name": "contacts",
+          "type": "Vector<Contact>"
+        },
+        {
+          "name": "users",
+          "type": "Vector<User>"
+        }
+      ],
+      "type": "contacts.Contacts"
+    },
+    {
+      "id": 2131196633,
+      "predicate": "contacts.resolvedPeer",
+      "params": [
+        {
+          "name": "peer",
+          "type": "Peer"
+        },
+        {
+          "name": "chats",
+          "type": "Vector<Chat>"
+        },
+        {
+          "name": "users",
+          "type": "Vector<User>"
+        }
+      ],
+      "type": "contacts.ResolvedPeer"
     },
     {
       "id": 1399245077,
@@ -4225,6 +4287,54 @@
       "type": "EncryptedMessage"
     },
     {
+      "id": 341499403,
+      "predicate": "contact",
+      "params": [
+        {
+          "name": "user_id",
+          "type": "long"
+        },
+        {
+          "name": "mutual",
+          "type": "Bool"
+        }
+      ],
+      "type": "Contact"
+    },
+    {
+      "id": 1498486562,
+      "predicate": "peerUser",
+      "params": [
+        {
+          "name": "user_id",
+          "type": "long"
+        }
+      ],
+      "type": "Peer"
+    },
+    {
+      "id": 918946202,
+      "predicate": "peerChat",
+      "params": [
+        {
+          "name": "chat_id",
+          "type": "long"
+        }
+      ],
+      "type": "Peer"
+    },
+    {
+      "id": -1566230754,
+      "predicate": "peerChannel",
+      "params": [
+        {
+          "name": "channel_id",
+          "type": "long"
+        }
+      ],
+      "type": "Peer"
+    },
+    {
       "id": -1655957568,
       "predicate": "phoneConnection",
       "params": [
@@ -4395,39 +4505,6 @@
         }
       ],
       "type": "RestrictionReason"
-    },
-    {
-      "id": 1498486562,
-      "predicate": "peerUser",
-      "params": [
-        {
-          "name": "user_id",
-          "type": "long"
-        }
-      ],
-      "type": "Peer"
-    },
-    {
-      "id": 918946202,
-      "predicate": "peerChat",
-      "params": [
-        {
-          "name": "chat_id",
-          "type": "long"
-        }
-      ],
-      "type": "Peer"
-    },
-    {
-      "id": -1566230754,
-      "predicate": "peerChannel",
-      "params": [
-        {
-          "name": "channel_id",
-          "type": "long"
-        }
-      ],
-      "type": "Peer"
     },
     {
       "id": 381645902,

@@ -6,7 +6,7 @@ const f=require('./eitaa-call-fixtures.cjs');
 const imei='0123456789abcde__web';
 function unpack(body){const r=new wire.Reader(body);assert.equal(r.int(),wire.IDS.eitaaObject);const value={token:r.string(),imei:r.string(),packed:r.bytes(),layer:r.int(),flags:r.int()};r.end();return value;}
 test('call schema includes complete update dependencies, exact long call IDs and bounded double primitives',()=>{
- const schema=require('../experiments/eitaa/call-schema.json');assert.equal(schema.methods.length,10);assert.equal(schema.constructors.length,495);
+ const schema=require('../experiments/eitaa/call-schema.json');assert.equal(schema.methods.length,12);assert.equal(schema.constructors.length,499);
  for(const value of [f.waiting,f.requested,f.accepted,f.active,f.discarded,f.state,f.wrap(f.active),f.updates([{_:'updatePhoneCall',phone_call:f.active},{_:'updatePhoneCallSignalingData',phone_call_id:f.peer.id,data:Buffer.alloc(50)}])])assert.deepEqual(codec.decode(codec.object(value)),value);
  const geo={_:'geoPoint',long:51.25,lat:35.75,access_hash:-3n};assert.deepEqual(codec.decode(codec.object(geo)),geo);
  for(const value of [NaN,Infinity,-Infinity])assert.throws(()=>new wire.Writer().double(value),{reason:'invalid_double'});
@@ -59,6 +59,8 @@ test('call API adds only reviewed defaults; signaling and updates use authentica
  ['phone.sendSignalingData',{peer:f.peer,data:Buffer.alloc(50,7)},f.inputs['phone.sendSignalingData'],{_:'boolTrue'}],
  ['phone.discardCall',{peer:f.peer,duration:5,reason:'phoneCallDiscardReasonHangup'},f.inputs['phone.discardCall'],f.updates([{_:'updatePhoneCall',phone_call:f.discarded}])],
  ['updates.getState',{}, {},f.state],
+ ['contacts.getContacts',{},f.inputs['contacts.getContacts'],{_:'contacts.contacts',contacts:[{_:'contact',user_id:202n,mutual:true}],users:[{_:'user',id:202n,access_hash:-22n}]}],
+ ['contacts.resolveUsername',{username:'FixtureTarget'},f.inputs['contacts.resolveUsername'],{_:'contacts.resolvedPeer',peer:{_:'peerUser',user_id:202n},chats:[],users:[{_:'user',id:202n,access_hash:-22n,username:'FixtureTarget'}]}],
  ['updates.getDifference',{pts:10,date:f.state.date,qts:-1},f.inputs['updates.getDifference'],{_:'updates.differenceEmpty',date:f.state.date,seq:2}]
  ];
  for(const [name,input,expected,reply]of cases){let n=0;const c=new CallClient({imei,token:'fixture-token',fetchImpl:async(_url,o)=>{n++;const v=unpack(o.body);assert.deepEqual(v.packed,codec.method(name,expected));assert.equal(v.token,'fixture-token');assert.equal(v.layer,135);assert.equal(v.flags,128);return new Response(codec.object(reply));}});const result=await c.request(name,input);assert.deepEqual(result,reply._==='boolTrue'?true:reply);assert.equal(n,1);c.close();}
@@ -67,6 +69,7 @@ test('unrelated API, malformed peers, weak payload sizes, protocol overrides and
  for(const options of [{imei,token:''},{imei,token:'secret\n'},{imei:'bad',token:'x'},{imei,token:'x',provider:'rubika'}])assert.throws(()=>new CallClient(options),{reason:'invalid_credentials'});
  let n=0;const c=new CallClient({imei,token:'fixture-token',fetchImpl:async()=>{n++;throw Error('unexpected request');}});
  const requests=[['auth.signIn',{}],['constructor',{}],['phone.requestCall',{user_id:f.user,g_a_hash:Buffer.alloc(31)}],['phone.requestCall',{user_id:{...f.user,access_hash:0n},g_a_hash:Buffer.alloc(32)}],['phone.requestCall',{user_id:f.user,g_a_hash:Buffer.alloc(32),protocol:{udp_p2p:true}}],['phone.acceptCall',{peer:f.peer,g_b:Buffer.alloc(255)}],['phone.confirmCall',{peer:f.peer,g_a:Buffer.alloc(256),key_fingerprint:1}],['phone.receivedCall',{peer:{...f.peer,id:-1n}}],['phone.receivedCall',{peer:{...f.peer,extra:true}}],['phone.sendSignalingData',{peer:f.peer,data:Buffer.alloc(20)}],['phone.sendSignalingData',{peer:f.peer,data:Buffer.alloc(48*1024+21)}],['phone.discardCall',{peer:f.peer,duration:-1,reason:'phoneCallDiscardReasonHangup'}],['phone.discardCall',{peer:f.peer,duration:0,reason:'__proto__'}],['updates.getDifference',{pts:1,date:1,qts:-2}],['messages.getDhConfig',{random_length:1}]];
+ requests.push(['contacts.importContacts',{contacts:[]}],['contacts.getContacts',{hash:0n}],['contacts.resolveUsername',{username:'@private'}],['contacts.resolveUsername',{username:'http://private.invalid'}]);
  for(const [name,input]of requests)await assert.rejects(c.request(name,input));assert.equal(n,0);c.close();
 });
 test('call failures expose bounded metadata without raw secrets and never refresh, redial or retry',async()=>{
