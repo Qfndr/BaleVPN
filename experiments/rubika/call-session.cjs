@@ -2,6 +2,7 @@
 // or connected-proxy state. All signaling here is opaque protocol ciphertext.
 'use strict';
 const {CallClient}=require('./call-client.cjs'),codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
+const {serviceKey}=require('./legacy-signal-cipher.cjs'),{relayServers}=require('./relay-config.cjs');
 class CallError extends Error{constructor(reason){super('Rubika call '+reason);this.reason=reason;}}
 const fail=reason=>{throw new CallError(reason);};
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
@@ -11,10 +12,12 @@ const SAFE=new Set(['not_authenticated','invalid_account_binding','account_bindi
  'unsupported_call_protocol','update_account_mismatch','call_operation_failed']);
 const LOCAL=new Set(['call_not_started','call_already_started','call_not_listening','call_not_ringing','call_not_accepted','call_peer_not_allowed']);
 const rank={Requested:0,Waiting:1,Accepted:2,Discarded:3};
+const MEDIA_FIELDS=new Set(['key','connections','protocol_layer','library_versions','other_participants']);
 class CallSession{
  #account;#create;#allowed;#profile;#now;#client;#binding;#self;#epoch=0;#busy=false;#closed=false;#ready=false;#timer;
  #phase='idle';#reason=null;#call;#peer;#outgoing=false;#acceptedLocally=false;#deadline=0;#acceptedAt=0;#times=new Map();#latest=0;
  #retired=new Set();#signals=[];#signalBytes=0;#ignored=0;
+ #mediaRevision=0;#leaseIssued=false;#mediaStarted=false;
  constructor(account,{allowedPeers=[],protocol,createClient=a=>new CallClient(a),now=Date.now}={}){
   if(!account||typeof createClient!=='function'||typeof now!=='function'||!Array.isArray(allowedPeers)||allowedPeers.length>32||
    allowedPeers.some(v=>!id(v))||new Set(allowedPeers).size!==allowedPeers.length)fail('invalid_call_options');
@@ -34,6 +37,7 @@ class CallSession{
  }
  #wipeSignals(){for(const bytes of this.#signals)bytes.fill(0);this.#signals=[];this.#signalBytes=0;}
  #clearCall(){
+  this.#mediaRevision++;this.#leaseIssued=false;this.#mediaStarted=false;
   if(this.#call)this.#retired.add(this.#call.call_id);
   this.#call=null;this.#peer=null;this.#outgoing=false;this.#acceptedLocally=false;this.#deadline=0;this.#acceptedAt=0;
   this.#times.clear();this.#latest=0;this.#wipeSignals();
@@ -91,13 +95,19 @@ class CallSession{
   // Refuse an ambiguous delta rather than overwrite retained state with every
   // default field emitted by a serializer. Null/absent values never invent data.
   if(!Array.isArray(fields))fail('missing_update_parameters');
+  const advancing=fields.includes('state')&&rank[update.call.state]>rank[this.#call.state]&&update.timestamp>=(this.#times.get('state')??-1);
   const next={...this.#call};let changed=false;
   for(const name of fields){
    if(name==='call_id'||!Object.hasOwn(update.call,name))continue;
    const value=update.call[name];
    const previous=this.#times.get(name)??-1;
-   if(update.timestamp<previous||update.timestamp===previous&&!(name==='state'&&rank[value]>rank[next.state]))continue;
+   if(update.timestamp<previous)continue;
+   if(update.timestamp===previous&&!(name==='state'&&advancing)&&!(!this.#leaseIssued&&advancing&&MEDIA_FIELDS.has(name))){
+    if(this.#leaseIssued&&MEDIA_FIELDS.has(name)&&JSON.stringify(next[name])!==JSON.stringify(value))fail('ambiguous_media_update');
+    continue;
+   }
    if(name==='state'&&rank[value]<rank[next.state]){this.#ignored++;continue;}
+   if(MEDIA_FIELDS.has(name)&&JSON.stringify(next[name])!==JSON.stringify(value))this.#mediaRevision++;
    next[name]=structuredClone(value);this.#times.set(name,update.timestamp);changed=true;
   }
   if(!changed)return;this.#latest=Math.max(this.#latest,update.timestamp);this.#call=next;
@@ -183,14 +193,39 @@ class CallSession{
   if(this.#closed)fail('closed');this.#tick();if(this.#phase!=='accepted')fail('call_not_accepted');
   const result=this.#signals;this.#signals=[];this.#signalBytes=0;return result;
  }
- // No private media/key export until its native protocol is actually supported.
+ // Private single-consumer handoff, never an HTTP/session-export object.
+ // Nonenumerable methods make accidental JSON logging produce {}.
+ issueLegacyMedia(){
+  this.#guard(this.#epoch);if(this.#phase!=='accepted')fail('call_not_accepted');
+  if(this.#leaseIssued)fail('media_lease_already_issued');
+  if(this.#profile.library_versions.length!==1||this.#profile.library_versions[0]!=='6.0.0'||this.#profile.min_layer>92||this.#profile.max_layer<92||
+   this.#call.protocol_layer!==92||!this.#call.library_versions?.includes('6.0.0'))fail('unsupported_media_profile');
+  let key;try{key=serviceKey(this.#call.key);relayServers(this.#call.connections);}catch{fail('invalid_media_parameters');}finally{key?.fill(0);}
+  const epoch=this.#epoch,revision=this.#mediaRevision,callId=this.#call.call_id;let consumed=false;
+  const check=()=>{this.#guard(epoch);if(this.#phase!=='accepted'||this.#call?.call_id!==callId||this.#mediaRevision!==revision)fail('media_lease_expired');};
+  this.#leaseIssued=true;
+  return Object.freeze(Object.defineProperties({}, {
+   assertCurrent:{value:check},
+   consumeContext:{value:()=>{check();if(consumed)fail('media_lease_consumed');consumed=true;
+    return {key:serviceKey(this.#call.key),libraryVersion:'6.0.0',protocolLayer:92,callId,selfId:this.#self,peerId:this.#peer,
+     direction:this.#outgoing?'outgoing':'incoming',connections:structuredClone(this.#call.connections)};
+   }},
+   send:{value:async bytes=>{check();const result=await this.sendOpaqueSignal(bytes);check();return result;}},
+   markStarted:{value:proof=>this.#run(async guard=>{
+    check();if(proof?.provider!=='rubika'||proof.callId!==callId||['ready','mediaConnected','relayPair','peerAuthenticated'].some(k=>proof[k]!==true))fail('media_not_ready');
+    if(this.#mediaStarted)return {started:true,alreadyStarted:true};
+    const reply=await this.#rpc('callStarted',{call_id:callId},guard);check();if(!reply||typeof reply!=='object'||Object.keys(reply).length)fail('invalid_call_response');
+    this.#mediaStarted=true;return {started:true};
+   })}
+  }));
+ }
  close(){if(this.#closed)return;this.#closed=true;this.#fail('closed');this.#phase='closed';}
  get state(){
   if(this.#ready&&!this.#closed)this.#tick();
   return {provider:'rubika',phase:this.#phase,ready:this.#ready,busy:this.#busy,reason:this.#reason,callId:this.#call?.call_id??null,
    peerId:this.#peer??null,direction:this.#call?(this.#outgoing?'outgoing':'incoming'):null,serviceState:this.#call?.state??null,
    serviceDuration:this.#call?.duration??null,
-   queuedSignals:this.#signals.length,ignoredEvents:this.#ignored,mediaReady:false,peerAuthenticated:false,providerVerified:false};
+   queuedSignals:this.#signals.length,ignoredEvents:this.#ignored,mediaStarted:this.#mediaStarted,mediaReady:false,peerAuthenticated:false,providerVerified:false};
  }
 }
 module.exports={CallSession,CallError};

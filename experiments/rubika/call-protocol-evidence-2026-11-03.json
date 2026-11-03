@@ -41,7 +41,7 @@
     "pushObjectFields": ["call_id", "data"]
   },
   "mediaKeyObservation": "VoIPService.processAcceptedCall references PhoneCall.key, String.getBytes and Utilities.computeSHA1; not a base64 signaling decode",
-  "localImplementation": {"voiceOnly": true, "signedAuthenticatedRequests": true, "honestWebClient": true, "automaticCallOrRetry": false, "experimentalMediaEngine": true, "accountMediaControllerWired": false, "productionUi": false},
+  "localImplementation": {"voiceOnly": true, "signedAuthenticatedRequests": true, "honestWebClient": true, "automaticCallOrRetry": false, "experimentalMediaEngine": true, "accountMediaControllerWired": true, "productionUi": false},
   "privateController": {
     "singleCallPerAccount": true,
     "explicitProtocolAndPeerAllowList": true,
@@ -70,7 +70,7 @@
     "upstreamGitBlobs": {"legacyInstance": "a0b792ed06fe58787d6abfc5428f8dd21f1fc0b8", "signalingEncryption": "7ad3304e9f60ac93f45516f14895722083dc35d2", "encryptedConnection": "81b528212f13081a5bbb271ac0897502f89f3758"},
     "offlineOracle": "Pinned official Eitaa legacy raw cipher, not Rubika native execution",
     "byteIdenticalOraclePackets": 6,
-    "mediaAdapterWired": "Local fixture only; accepted-account controller handoff remains pending"
+    "mediaAdapterWired": "Private account-bound controller and local helper fixture only; real accounts unverified"
   },
   "localNativeMedia": {
     "helper": "rubika_relay_bridge.exe",
@@ -86,11 +86,23 @@
     "accountAndRpcFixturesOnly": true,
     "baleTrafficPathModified": false,
     "liveLabRestarted": false,
-    "accountControllerWired": false,
+    "accountControllerWired": true,
     "providerPathVerified": false,
     "billingVerified": false
   },
-  "offlineValidation": {"providerNodeTestsPassed": 340, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 92, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "legacyCipherTestsPassed": 6, "rubikaMediaOwnerTestsPassed": 6, "rubikaNativeBridgeTestsPassed": 12, "rustLibraryTestsPassed": 62, "rustRubikaHelperTestsPassed": 4, "rustTestsIgnored": 0, "nativeInspectorTestsPassed": 8, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
+  "privateAccountMedia": {
+    "acceptedOnlySingleConsumerHandoff": true,
+    "accountCallKeyRelayProfileBinding": true,
+    "sameTimestampSecurityConflictAborts": true,
+    "independentQuicPinsRequired": true,
+    "callStartedOnlyAfterAuthenticatedMedia": true,
+    "callStartedAckRequiredForProxyReadiness": true,
+    "blindAckRetryOrRedial": false,
+    "authenticatedSignalRedeliveryDiscarded": true,
+    "normalHangupPreservesAuthSession": true,
+    "realAccountServiceTested": false
+  },
+  "offlineValidation": {"providerNodeTestsPassed": 355, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 107, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "accountMediaHandoffTestsPassed": 15, "legacyCipherTestsPassed": 6, "rubikaMediaOwnerTestsPassed": 6, "rubikaNativeBridgeTestsPassed": 12, "rustLibraryTestsPassed": 62, "rustRubikaHelperTestsPassed": 4, "rustTestsIgnored": 0, "nativeInspectorTestsPassed": 8, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
   "unverified": ["minimum API protocol layer and live negotiation", "Web-session acceptance of Android call methods", "live call lifecycle", "native media library interoperability", "key length and encoding on live service", "provider-carried relay route", "international number acceptance", "billing", "throughput", "outage behavior"],
   "releasePublished": false
 }

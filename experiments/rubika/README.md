@@ -308,7 +308,7 @@ A second test used two normal Rubika helper executables and the actual Node
 identities, while the normal SOCKS listener retained its private-target denial.
 Accepted-call contexts and signaling transport were synthetic, not provider RPC.
 
-Current regression: **340 provider Node tests passed, 0 failed, 0 skipped**,
+Local helper milestone: **340 provider Node tests passed, 0 failed, 0 skipped**,
 including 92 Rubika tests; **62 Rust library tests and 4 Rubika helper tests passed,
 0 failed, 0 ignored**. The unchanged Eitaa media path also passed its real normal
 helper and 256 KiB projected-media regressions after the shared-owner extraction.
@@ -328,6 +328,62 @@ node --test scripts/test-rubika-native.cjs scripts/test-rubika-call-media.cjs
 
 The fixture scripts have no provider socket, OTP or retained-account operation.
 The deployed lab was not restarted and the main application's Bale traffic path
-was not modified. The accepted-account controller still needs guarded key/profile
-handoff, lifecycle cancellation and media-driven `callStarted` handling before
-real-account media tests or UI enablement. No Rubika tunnel is advertised as live.
+was not modified. The private handoff below now joins accepted-call control and
+media, with live-account interoperation and UI integration still unverified.
+No Rubika tunnel is advertised as live.
+
+## Accepted-account media ownership
+
+`CallSession.issueLegacyMedia()` now issues one nonserializable, single-consumer
+handoff for an accepted call. Only an explicitly advertised 6.0.0 profile,
+negotiated layer 92, the returned 6.0.0 capability, exact 256-byte service key
+and valid WebRTC TURN entries qualify. The owned key copy is wiped after cipher
+creation. Handoff methods are nonenumerable, so JSON logging produces `{}`.
+This is a private API, never a session backup, HTTP response or public state.
+
+The lease pins the account epoch, call ID and a revision of key/relay/protocol/
+participant data. Ending the call, logout or relevant parameter changes revoke
+it before another packet can be sent. Duration-only changes preserve it. Before
+handoff, same-second state advancement may supply negotiated keys/relays;
+after handoff, conflicting equal-timestamp security parameters abort rather than
+leave stale material active. A second consumer is refused to avoid resetting a
+signaling counter under the same call key.
+
+`account-media.cjs` owns an exclusive CallSession/CallMedia pairing for one call:
+prepare and approve independent peer certificates, attach the accepted call,
+poll/update and drain its bounded private queue, and hang up or cancel. Its
+caller must not concurrently operate the underlying CallSession. JSON setup/
+candidates are validated, encrypted with the explicit legacy codec, and sent
+through the account-bound call client; received packets are authenticated before
+being interpreted as media signals. Authenticated duplicates/expired counters
+are discarded, not replayed or used to tear down a working proxy. Malformed or
+unauthenticated ciphertext fails closed. All drained buffers are wiped.
+
+Only actual media readiness (relay route plus approved QUIC identity) can trigger
+`callStarted`; public proxy readiness additionally waits for that service ACK.
+The ACK is sent once per call. A lost response aborts locally without blindly
+retrying or redialing. A 250 ms local monitor checks revocation/native failure
+and reports newly ready media; it does not poll provider updates automatically.
+Explicit hangup sends `discardCall` and then closes the owned worker/cipher.
+Remote deletion closes media while preserving the authenticated account and
+listening control session. A local abort/close cancels its control session too;
+it does not log out the owning account or promise a remote network ACK.
+
+```powershell
+node --test scripts/test-rubika-account-media.cjs
+```
+
+Current provider regression: **355 Node tests passed, 0 failed, 0 skipped**,
+including 107 Rubika tests. Fifteen handoff/owner tests cover single consumption,
+negotiation, key/profile revocation, same-second changes, readiness and one-time
+ACK, redelivery, tampering, account isolation, hangup and cancellation. All
+**62 Rust library tests passed, 0 failed, 0 ignored**, including the normal
+Rubika helper fixture now driven through actual account-bound CallClient and
+CallSession classes, retained-key checks, media handoff and ACK handling. The
+other real-media regression still echoes 256 KiB byte-for-byte. Accounts,
+provider discovery/HTTP and notifications in these fixtures remain synthetic.
+
+No live account request, lab restart, production build, release or change to the
+Bale packet path occurred. Real service acceptance, native Rubika interoperability,
+live key shape/clock semantics, external-VPS route, tariff and outage tests are
+still required, followed by guarded lab UI and product integration.
