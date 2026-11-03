@@ -25,6 +25,20 @@ select option,select optgroup{background:var(--panel);color:var(--ink);font:inhe
 .phone-control input{font-family:Inter,Vazirmatn,sans-serif;font-size:14px}
 .phone-control input::placeholder{color:var(--muted);opacity:1}
 .phone-control>img{flex:0 0 23px}
+.phone-control [data-country-open]{background:transparent;border:0;white-space:nowrap;min-width:96px;padding-inline:8px;direction:ltr;font-family:Inter,Vazirmatn,sans-serif;font-size:12px}
+.country-picker{width:min(400px,calc(100vw - 28px));max-height:calc(100dvh - 40px);padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);box-shadow:0 20px 80px #0006;overflow:auto;font:inherit}
+.country-picker::backdrop{background:#0007;backdrop-filter:blur(3px)}
+.country-picker-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.country-picker-heading strong{font-size:14px}
+.country-picker-heading button{font-size:20px;min-width:36px;min-height:36px;padding:0}
+#countrySearch{width:100%;margin-bottom:10px;font-size:13px}
+#countryResults{max-height:min(320px,calc(100dvh - 210px));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+#countryResults button{display:flex;align-items:center;gap:12px;width:100%;border-color:transparent;border-radius:8px;background:transparent;text-align:start;font-size:13px;min-height:44px}
+#countryResults button:hover,#countryResults button:focus-visible{background:var(--soft);outline-offset:-2px}
+#countryResults button[aria-selected=true]{background:color-mix(in srgb,var(--brand) 18%,var(--panel))}
+#countryResults img{width:24px;height:18px;object-fit:cover;border-radius:3px;flex-shrink:0}
+#countryResults bdi{margin-inline-start:auto;color:var(--muted);font-family:Inter,sans-serif;white-space:nowrap}
+#countryEmpty{font-size:13px;color:var(--muted);text-align:center;padding:20px 0}
 @media(max-width:700px){.lab-context{gap:6px 10px;margin-bottom:20px}.lab-context>strong{flex-basis:100%}.lab-context>span{margin-inline-start:0;flex:1}.phone-control select{width:112px;flex-basis:112px}.heading{flex-wrap:wrap}.phase-badge{white-space:normal}}
 .eitaa-call-row>[data-eitaa-state]{font-size:11px;color:var(--muted)}.eitaa-call-row>[data-eitaa-state][data-phase=connected]{color:var(--green)}.eitaa-call-row>[data-eitaa-state][data-phase=connected]:before{content:'';display:inline-block;width:6px;height:6px;margin-inline-end:8px;border-radius:50%;background:var(--green);animation:pulse 2s ease-out infinite}.eitaa-call-row.changed>[data-eitaa-state]{animation:change .5s ease-out}#eitaaClient{width:120px}#eitaaPort{width:105px}
 @media(max-width:500px){#eitaaPrepareForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}#eitaaPrepareForm>button{width:100%;min-height:44px}.eitaa-call-row .call-actions{margin-inline-start:auto}}
