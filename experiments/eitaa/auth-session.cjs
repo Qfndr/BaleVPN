@@ -38,7 +38,7 @@ class AuthSession{
   }throw safe;}finally{if(epoch===this.#epoch)this.#busy=false;}
  }
  #transport(){if(!this.#client)this.#client=this.#create({provider:'eitaa',imei:this.#imei,token:this.#record?.token||'',profile:this.#profile,language:this.#language});return this.#client;}
- async #request(method,input,guard){const client=this.#transport();guard();let result;try{result=await client.request(method,input);}catch(e){guard();throw e;}guard();return result;}
+ async #request(method,input,guard){const client=this.#transport();guard();let result;try{result=await client.request(method,input,method==='auth.sendCode'?{timeout:30000}:undefined);}catch(e){guard();throw e;}guard();return result;}
  async #persist(guard){
   guard();const record=this.exportSession(),task=this.#writes.then(async()=>{guard();try{await this.#save(record);}catch{guard();throw new ApiError('session_save_failed');}guard();});this.#writes=task.catch(()=>{});await task;
  }

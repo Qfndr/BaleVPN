@@ -1,5 +1,47 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {fixture,sdp,waitFor}=require('./nasim-call-fixture.cjs');
+const flags=state=>Object.fromEntries(['configured','offerSeen','answerSeen','negotiated'].map(key=>[key,state[key]]));
+
+test('safe signaling diagnostics distinguish pending answer installation and clear on reset',async()=>{
+ const f=fixture();let release;
+ try{
+  const {a,b}=await f.prepare();
+  const blank={configured:false,offerSeen:false,answerSeen:false,negotiated:false};
+  assert.deepEqual(flags(a.state.signaling),blank);assert.deepEqual(flags(b.state.signaling),blank);
+  await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  assert.deepEqual(flags(b.state.signaling),blank);
+  const native=f.natives[1],install=native.setAnswer.bind(native);
+  const pending=new Promise(resolve=>{release=resolve;});
+  native.setAnswer=async description=>{await pending;return install(description);};
+  await b.accept();await waitFor(()=>b.state.signaling.answerSeen);
+  assert.deepEqual(flags(b.state.signaling),{configured:true,offerSeen:true,answerSeen:true,negotiated:false});
+  release();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  assert.deepEqual(flags(a.state.signaling),{configured:true,offerSeen:true,answerSeen:false,negotiated:true});
+  assert.deepEqual(flags(b.state.signaling),{configured:true,offerSeen:true,answerSeen:true,negotiated:true});
+  for(const state of [a.state.signaling,b.state.signaling])assert.ok(Object.values(state).every(value=>typeof value==='boolean'||Number.isInteger(value)));
+  a.reset();b.reset();assert.deepEqual(flags(a.state.signaling),blank);assert.deepEqual(flags(b.state.signaling),blank);
+ }finally{release?.();f.close();}
+});
+
+test('bounded signaling counters separate an offer awaiting acceptance from wrong peer and device',async()=>{
+ const f=fixture({autoConfig:false});try{
+  const {a}=await f.prepare();await a.dial('42');
+  f.deliver('41',f.config('41'));await waitFor(()=>a.state.callUUID!==null);
+  f.deliver('41',f.raw('42','offer','fixture-call-1',sdp('offer')));
+  await waitFor(()=>a.state.signaling.pendingOfferCount===1);
+  assert.equal(a.state.signaling.offerSeen,false);assert.equal(a.state.remoteAccepted,false);
+  assert.equal(a.state.signaling.receivedConfig,1);assert.equal(a.state.signaling.receivedOffer,1);
+  f.deliver('41',f.raw('42','accept','fixture-call-1',{}));
+  await waitFor(()=>a.state.signaling.negotiated);
+  assert.equal(a.state.signaling.pendingOfferCount,0);assert.equal(a.state.signaling.receivedAccept,1);
+  const wrongDevice=f.raw('42','offer','fixture-call-1',sdp('offer'));wrongDevice.senderClientID='another-device';
+  f.deliver('41',wrongDevice);f.deliver('41',f.raw('99','offer','fixture-call-1',sdp('offer')));
+  await waitFor(()=>a.state.signaling.wrongDevice===1&&a.state.signaling.wrongPeer===1);
+  assert.equal(a.state.signaling.receivedOffer,3);
+  const before=a.state.signaling;before.wrongDevice=900;assert.equal(a.state.signaling.wrongDevice,1);
+  a.reset();for(const value of Object.values(a.state.signaling))assert.ok(value===false||value===0);
+ }finally{f.close();}
+});
 
 test('two account controllers require explicit incoming acceptance, then bind the reverse SDP direction to native roles',async()=>{
  const f=fixture();try{const {a,b}=await f.prepare();assert.equal(f.sent.length,0);

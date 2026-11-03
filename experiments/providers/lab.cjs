@@ -184,7 +184,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     case 'call/join':return json({ok:true,call:await calls.get(slot).join()});
     case 'call/leave':media?.close();return json({ok:true,call:await calls.get(slot).leave({terminate:body.terminate??false})});
     case 'call/reset':if(!['idle','ended','uncertain'].includes(calls.get(slot).state.phase)||calls.get(slot).state.busy)throw error('call_busy',409);calls.get(slot).reset();return json({ok:true});
-    case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
+    case 'start':{if(Object.hasOwn(body,'registrationProfile')&&!['independent','web-v3-compat'].includes(body.registrationProfile))throw error('invalid_registration_profile');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone,Object.hasOwn(body,'registrationProfile')?{registrationProfile:body.registrationProfile}:{});break;}
     case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
     case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
     case 'profile':result=await session.completeProfile(body.name);break;

@@ -10,11 +10,14 @@ class CallError extends Error {constructor(reason,fatal=false){super('Nasim call
 const error=(reason,fatal=false)=>new CallError(reason,fatal);
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}
 function uuid(v){return typeof v==='string'&&/^[-A-Za-z0-9_:]{1,128}$/.test(v);}
+const signalCounts=()=>({receivedConfig:0,receivedAccept:0,receivedOffer:0,receivedAnswer:0,wrongCall:0,wrongPeer:0,wrongDevice:0,configRejected:0});
 class CallSession {
  #account;#executable;#open;#rpc;#self;#client;#allowed=new Set();#bridge;#own;#trusted=[];#options;
  #phase='idle';#direction;#peer;#call;#remote;#config;#localAccepted=false;#remoteAccepted=false;
  #configured=false;#negotiated=false;#offerSeen=false;#answerSeen=false;#earlyOffers=new Map();#early=[];#earlyBytes=0;#ice=[];#iceSeen=new Set();
  #epoch=0;#queue=[];#working=false;#bytes=0;#timer;#deadline=0;#retired=new Set();#ignored=0;#reason=null;
+ #signalCounts=signalCounts();
+ #countSignal(key){this.#signalCounts[key]=Math.min(1000000,this.#signalCounts[key]+1);}
  constructor(account,{executable,open=NativeMediaBridge.open}={}){this.#account=account;this.#executable=executable;this.#open=open;}
  #context(){
   const state=this.#account.state;
@@ -65,6 +68,7 @@ class CallSession {
   clearInterval(this.#timer);this.#timer=null;this.#bridge?.close();this.#bridge=null;this.#own=null;this.#trusted=[];
   this.#config=null;this.#earlyOffers.clear();this.#early=[];this.#earlyBytes=0;this.#ice=[];this.#iceSeen.clear();this.#configured=this.#negotiated=false;
   this.#offerSeen=this.#answerSeen=this.#localAccepted=this.#remoteAccepted=false;this.#phase=phase;this.#reason=reason;
+  this.#signalCounts=signalCounts();
   this.#call=null;this.#remote=null;
   for(const job of this.#queue)job.reject(error('call_cancelled'));this.#queue=[];this.#bytes=0;
   if(disconnect){
@@ -134,6 +138,8 @@ class CallSession {
  }
  handleEvent(event){
   if(event?.provider!=='nasim'){this.#ignored++;return false;}
+  const received={config:'receivedConfig',accept:'receivedAccept',offer:'receivedOffer',answer:'receivedAnswer'}[event.type];
+  if(typeof received==='string')this.#countSignal(received);
   if(event.type==='streamReset'){
    if(this.#call||['dialing','outgoing','incoming','negotiating','connected'].includes(this.#phase))this.#finish('uncertain','call_stream_reset',true);
    return true;
@@ -150,7 +156,7 @@ class CallSession {
    if(this.#call===event.callUUID){this.#ignored++;return;}
    if(!this.#trusted.length||!this.#allowed.has(event.peerId)||!Array.isArray(event.participantIds)||event.participantIds.length!==2||
     !event.participantIds.includes(this.#self)||!event.participantIds.includes(event.peerId)||event.peerId===this.#self||
-    ![this.#self,event.peerId].includes(event.invitedUserId)||event.method!=='audio'){this.#ignored++;return;}
+    ![this.#self,event.peerId].includes(event.invitedUserId)||event.method!=='audio'){this.#countSignal('configRejected');this.#ignored++;return;}
    try{clientId(event.senderClientId);}catch{this.#ignored++;return;}
    if(event.invitedUserId===this.#self){
     if(this.#phase!=='ready'){this.#ignored++;return;}
@@ -172,7 +178,7 @@ class CallSession {
    }
    this.#ignored++;return;
   }
-  if(event.callUUID!==this.#call){this.#ignored++;return;}
+  if(event.callUUID!==this.#call){this.#countSignal('wrongCall');this.#ignored++;return;}
   if(event.type==='callLog'){
    // Official Web treats callLog as history metadata, including the initial
    // not_answered placeholder. It is not a bye/reject/busy control message.
@@ -183,8 +189,8 @@ class CallSession {
   if(event.senderId===this.#self&&event.senderClientId!==this.#client&&['accept','bye','reject','busy'].includes(event.type)){
    this.#finish('ended','call_handled_on_other_device');return;
   }
-  if(event.senderId!==this.#peer){this.#ignored++;return;}
-  if(this.#remote&&event.senderClientId!==this.#remote){this.#ignored++;return;}
+  if(event.senderId!==this.#peer){this.#countSignal('wrongPeer');this.#ignored++;return;}
+  if(this.#remote&&event.senderClientId!==this.#remote){this.#countSignal('wrongDevice');this.#ignored++;return;}
   if(event.type==='accept'){
    if(this.#direction!=='caller')return;this.#remote=event.senderClientId;this.#remoteAccepted=true;
    const offer=this.#earlyOffers.get(this.#remote);this.#earlyOffers.clear();if(offer)await this.#offer(offer,guard);return;
@@ -223,6 +229,8 @@ class CallSession {
   return {provider:'nasim',phase,busy:this.#working||this.#queue.length>0,direction:this.#direction||null,peerId:this.#peer||null,callUUID:this.#call||null,
    selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,
+   signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
+    pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
    liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};
  }
 }

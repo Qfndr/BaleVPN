@@ -15,6 +15,16 @@ Implemented:
   optional second password/profile completion, encrypted-channel login and
   saved-session restoration. Tested with protocol-shaped fixtures, not real OTPs.
   Session storage and the local UI live in `../providers`; no Bale data is read.
+  The iGap-only registration selector defaults to the independent public AppID
+  `67291`. The explicit `web-v3-compat` experiment uses public AppID `1`, as
+  observed in the inspected current web protocol, while retaining the lab's
+  own application/device metadata. This tests an interoperability difference;
+  it does not prove independent IDs are invalid or guarantee SMS delivery.
+  Selection applies only to the next admitted request, respects resend cooldown,
+  never retries automatically, and does not rewrite existing sealed sessions.
+  The public `registrationProfile` state reflects the account profile; an unsent
+  UI selection survives polling and language changes. Service `deliveryMethod`
+  hints distinguish SMS, existing-session delivery, both, and phone calls.
 - `secure-connection.cjs`, `rpc-connection.cjs`: actual v3 connection securing and
   correlated encrypted requests. Key exchange and unauthenticated InfoConfig
   round-trip were tested against the real service; no login or call was made.
