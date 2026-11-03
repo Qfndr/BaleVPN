@@ -53,7 +53,7 @@ function decode(data,expected){
   const exceptional=allowExceptional&&EXCEPTIONAL.has(c.predicate);
   if(type!=='Object'&&c.type!==type&&!exceptional&&!(type==='account.Password'&&c.type==='account.Password2'))throw new WireError('unexpected_constructor');
   const value={_:c.predicate},masks=knownFlags(c),flags={};
-  for(const p of c.params){if(p.type==='#'){const bits=r.int()>>>0;if((bits&~masks[p.name])!==0)throw new WireError('unknown_flags');flags[p.name]=bits;continue;}const f=optional(p.type);if(f&&!(flags[f.flag]&(1<<f.bit)))continue;value[p.name]=read(f?f.type:p.type,depth+1);}
+  for(const p of c.params){if(p.type==='#'){const bits=r.int()>>>0;if((bits&~masks[p.name])!==0){const error=new WireError('unknown_flags');error.schemaDiagnostic=Object.freeze({constructorId:id>>>0,flags:bits,knownMask:masks[p.name]>>>0});throw error;}flags[p.name]=bits;continue;}const f=optional(p.type);if(f&&!(flags[f.flag]&(1<<f.bit)))continue;value[p.name]=read(f?f.type:p.type,depth+1);}
   if(c.type==='Bool')return c.predicate==='boolTrue';return value;
  }
  const result=read(expected||'Object',0,true);r.end();return result;

@@ -52,6 +52,14 @@ test('definite phone rejections clear pending code without claiming an uncertain
  }
 });
 
+test('schema mismatch diagnostics expose only validated numeric fields and cannot authenticate or retry',async()=>{
+ const wire=require('../experiments/eitaa/wire.cjs');
+ for(const flags of [1,-1,'private-secret']){
+  const f=fixture({hook:async method=>{if(method==='auth.sendCode'){const e=new wire.WireError('unknown_flags');e.schemaDiagnostic={constructorId:1577067778,flags,knownMask:6,raw:'private-secret'};throw e;}}});
+  await assert.rejects(f.session.start(phone),{reason:'unknown_flags'});const state=f.session.state;assert.equal(state.stage,'uncertain');assert.equal(state.signedIn,false);assert.ok(!JSON.stringify(state).includes('private-secret'));assert.equal(!!state.error.schemaDiagnostic,flags===1);if(flags===1)assert.deepEqual(state.error.schemaDiagnostic,{constructorId:1577067778,flags:1,knownMask:6});assert.equal(f.calls.length,1);f.session.close();
+ }
+});
+
 test('accepted tokens survive a failed disk save and can be sealed on explicit resume without another sign-in',async()=>{
  let fail=true;const f=fixture({save:async()=>{if(fail)throw Error('disk fixture');}});await f.session.start(phone);await assert.rejects(f.session.verify('123456'),{reason:'session_save_failed'});assert.equal(f.session.state.hasSession,true);assert.equal(f.session.state.signedIn,false);assert.equal(f.calls.filter(c=>c.method==='users.getUsers').length,0);
  fail=false;await f.session.resume();assert.equal(f.saved.length,1);assert.equal(f.calls.filter(c=>c.method==='auth.signIn').length,1);assert.equal(f.session.state.signedIn,true);f.session.close();

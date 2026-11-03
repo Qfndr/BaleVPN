@@ -25,6 +25,7 @@ test('auth response decoding retains exact private token/self fields without tru
 });
 test('unknown flags, truncation, wrong result types, malformed vectors and nested RPC wrappers fail closed',()=>{
  const body=codec.object(auth),bad=Buffer.from(body);bad.writeInt32LE(1,4);assert.throws(()=>codec.response(bad,'auth.signIn'),{reason:'unknown_flags'});
+ assert.throws(()=>codec.response(bad,'auth.signIn'),error=>{assert.deepEqual(error.schemaDiagnostic,{constructorId:(-855308010)>>>0,flags:1,knownMask:0});assert.ok(!JSON.stringify(error).includes(auth.token));return true;});
  for(let length=4;length<body.length;length+=4)assert.throws(()=>codec.response(body.subarray(0,length),'auth.signIn'));
  assert.throws(()=>codec.response(codec.object(user),'auth.signIn'),{reason:'unexpected_constructor'});
  const nestedError=Buffer.concat([new wire.Writer().int(-855308010).int(0).string('fixture-token').finish(),codec.object({_:'error',code:400,text:'fixture-error'})]);assert.throws(()=>codec.response(nestedError,'auth.signIn'),{reason:'unexpected_constructor'});

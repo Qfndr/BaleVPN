@@ -27,6 +27,11 @@ class AuthSession{
   catch(e){const safe=e instanceof ApiError?e:e instanceof wire.WireError?new ApiError(e.reason):new ApiError('invalid_auth_response');if(epoch===this.#epoch){
    if(this.#stage==='requesting')this.#stage='uncertain';
    this.#error={reason:safe.reason,...safe.statusCode!==undefined?{statusCode:safe.statusCode}:{},...safe.serviceCode?{serviceCode:safe.serviceCode}:{}};
+   // Retain only numeric schema metadata, never the private response body.
+   if(e instanceof wire.WireError&&e.reason==='unknown_flags'&&e.schemaDiagnostic){
+    const d=e.schemaDiagnostic,keys=['constructorId','flags','knownMask'];
+    if(keys.every(k=>Number.isInteger(d[k])&&d[k]>=0&&d[k]<=0xffffffff))this.#error.schemaDiagnostic=Object.fromEntries(keys.map(k=>[k,d[k]]));
+   }
    if(safe.reason==='rate_limited')this.#retryAt=Math.max(this.#retryAt,Date.now()+Math.max(1,Math.min(86400,safe.waitSeconds||60))*1000);
    if(revoked.has(safe.serviceCode)||safe.reason==='not_authorized'){this.#signed=false;this.#stage=this.#record?'expired':this.#stage;}
    if(safe.reason==='session_refresh_required'){this.#signed=false;this.#stage='refresh_required';}
