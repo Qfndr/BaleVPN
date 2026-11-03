@@ -7,6 +7,25 @@
 @media(max-width:500px){.nasim-controls>label{flex:1}.nasim-controls select,.nasim-controls input{width:100%!important}.nasim-controls>button{flex:1;font-size:11px}.nasim-call-row .call-actions{width:100%;margin:0}.nasim-call-row .call-actions button{flex:1}}
 .nasim-metrics{display:flex;flex-wrap:wrap;gap:7px}.nasim-metrics>span{display:inline-flex;align-items:center;gap:9px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft)}.nasim-metrics b{color:var(--ink);font-weight:500;unicode-bidi:isolate}.nasim-call-row>[data-nasim-state][data-phase=connected]:before{content:'';display:inline-block;width:6px;height:6px;margin-inline-end:8px;border-radius:50%;background:var(--green);animation:pulse 2s ease-out infinite}
 .rubika-delivery{display:block;color:var(--muted);font-size:11px;line-height:1.9;margin-top:8px}.rubika-delivery:empty{display:none}
+
+/* Native popup menus need opaque colors: Windows can paint transparent
+   options on a white system surface while retaining the dark page text. */
+select option,select optgroup{background:var(--panel);color:var(--ink);font:inherit}
+.app{max-width:none}
+.lab-context{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;padding:12px 16px;margin-bottom:24px;border:1px solid var(--line);border-radius:12px;background:var(--soft);font-size:12px;line-height:1.8}
+.lab-context>strong{color:var(--accent)}
+.lab-context>span{margin-inline-start:auto}
+.lab-context>.help{flex-shrink:0}
+.account label,.account-state,.account-meta,.account-error{font-size:12px}
+.account-state{white-space:normal}
+.account-actions:not(:has(button:not([hidden]))){display:none}
+.account-meta:empty,.account-error:empty{display:none}
+.phone-control{gap:4px;min-height:48px}
+.phone-control select{width:130px;flex:0 1 130px;font-size:12px;background:var(--panel);color:var(--ink);cursor:pointer}
+.phone-control input{font-family:Inter,Vazirmatn,sans-serif;font-size:14px}
+.phone-control input::placeholder{color:var(--muted);opacity:1}
+.phone-control>img{flex:0 0 23px}
+@media(max-width:700px){.lab-context{gap:6px 10px;margin-bottom:20px}.lab-context>strong{flex-basis:100%}.lab-context>span{margin-inline-start:0;flex:1}.phone-control select{width:112px;flex-basis:112px}.heading{flex-wrap:wrap}.phase-badge{white-space:normal}}
 .eitaa-call-row>[data-eitaa-state]{font-size:11px;color:var(--muted)}.eitaa-call-row>[data-eitaa-state][data-phase=connected]{color:var(--green)}.eitaa-call-row>[data-eitaa-state][data-phase=connected]:before{content:'';display:inline-block;width:6px;height:6px;margin-inline-end:8px;border-radius:50%;background:var(--green);animation:pulse 2s ease-out infinite}.eitaa-call-row.changed>[data-eitaa-state]{animation:change .5s ease-out}#eitaaClient{width:120px}#eitaaPort{width:105px}
 @media(max-width:500px){#eitaaPrepareForm{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}#eitaaPrepareForm>button{width:100%;min-height:44px}.eitaa-call-row .call-actions{margin-inline-start:auto}}
 .rubika-call-row>[data-rubika-state]{font-size:11px;color:var(--muted)}.rubika-call-row>[data-rubika-state][data-phase=connected]{color:var(--green)}.rubika-call-row>[data-rubika-state][data-phase=connected]:before{content:'';display:inline-block;width:6px;height:6px;margin-inline-end:8px;border-radius:50%;background:var(--green);animation:pulse 2s ease-out infinite}.rubika-call-row.changed>[data-rubika-state]{animation:change .5s ease-out}#rubikaClient{width:120px}#rubikaPort{width:105px}
