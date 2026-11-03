@@ -1,6 +1,7 @@
 // Fixed Rubika service methods, no retries or redirects, no public raw errors.
 // Discovery is anonymous; account auth/private keys never go to the DC service.
 const wire=require('./wire.cjs');
+const profiles=require('./client-profile.cjs');
 const calls=require('./call-codec.cjs');
 const privacy=require('./privacy-wire.cjs');
 const {SocketUpdates,socketEndpoint}=require('./socket-updates.cjs');
@@ -18,7 +19,7 @@ function endpoint(value){
 function object(value){return value&&typeof value==='object'&&!Array.isArray(value);}
 function exact(value,fields){return object(value)&&Object.keys(value).every(k=>fields.includes(k));}
 function text(value,max){return typeof value==='string'&&value.length>0&&Buffer.byteLength(value)<=max&&!/[\0\r\n]/.test(value);}
-function input(method,value){
+function input(method,value,profile){
  if(method==='getPrivacySetting'){if(!exact(value,[])||Object.keys(value).length)throw new ApiError('invalid_request');return value;}
  if(method==='setSetting'){if(!privacy.validSettingInput(value))throw new ApiError('invalid_request');return value;}
  if(calls.PROTECTED_METHODS.includes(method)){try{return calls.validateInput(method,value);}catch{throw new ApiError('invalid_request');}}
@@ -27,9 +28,12 @@ function input(method,value){
   if(!exact(value,['phone_number','send_type','pass_key'])||!phone(value.phone_number)||value.send_type!=='SMS'||value.pass_key!==undefined&&!text(value.pass_key,256))throw new ApiError('invalid_request');
  }else if(method==='signIn'){
   if(!exact(value,['phone_number','phone_code_hash','phone_code','public_key'])||!phone(value.phone_number)||!text(value.phone_code_hash,2048)||
-   typeof value.phone_code!=='string'||!/^\d{4,10}$/.test(value.phone_code)||!text(value.public_key,8192))throw new ApiError('invalid_request');
+   typeof value.phone_code!=='string'||!/^\d{4,10}$/.test(value.phone_code)||!(profile===profiles.ANDROID?
+    typeof value.public_key==='string'&&value.public_key.length<=8192&&/^(?:[A-Za-z0-9+/=]{76}\n)*[A-Za-z0-9+/=]{1,76}\n$/.test(value.public_key):text(value.public_key,8192)))throw new ApiError('invalid_request');
  }else if(method==='registerDevice'){
-  if(!exact(value,['token_type','token','app_version','lang_code','system_version','device_model','device_hash'])||value.token_type!=='Web'||value.token!==''||
+  const android=profile===profiles.ANDROID;
+  if(!exact(value,['token_type','token','app_version','lang_code','system_version','device_model','device_hash',...android?['is_multi_account']:[]])||value.token_type!==(android?'Firebase':'Web')||value.token!==''||
+   android&&(value.app_version!=='MA_4.1.1'||typeof value.is_multi_account!=='boolean')||
    !['fa','en'].includes(value.lang_code)||!['app_version','system_version','device_model','device_hash'].every(k=>text(value[k],256)))throw new ApiError('invalid_request');
  }else if(method==='getUserInfo'){
   // The web API treats GUIDs as opaque. A future restore must pin the exact
@@ -61,20 +65,21 @@ async function bounded(response){
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks,size)));}catch{throw new ApiError('invalid_response');}
 }
 class HttpClient {
- #fetch;#session;#server=DEFAULT;#pending;#closed=false;#lang;#socketServer='wss://jsocket5.iranlms.ir:80/';#updates;#updatesFactory;#updatesAbort;#updateBinding;
- constructor({fetchImpl=globalThis.fetch,temporarySession=wire.temporarySession(),language='fa',updatesFactory=SocketUpdates.open}={}){
+ #fetch;#session;#server=DEFAULT;#pending;#closed=false;#lang;#profile;#socketServer='wss://jsocket5.iranlms.ir:80/';#updates;#updatesFactory;#updatesAbort;#updateBinding;
+ constructor({fetchImpl=globalThis.fetch,temporarySession=wire.temporarySession(),language='fa',updatesFactory=SocketUpdates.open,protocolProfile='web'}={}){
   const key=wire.serviceKey(temporarySession);key.fill(0);if(!['fa','en'].includes(language))throw new ApiError('invalid_request');
+  try{this.#profile=profiles.mode(protocolProfile);}catch{throw new ApiError('invalid_request');}
   if(updatesFactory!==null&&typeof updatesFactory!=='function')throw new ApiError('invalid_request');this.#updatesFactory=updatesFactory;this.#fetch=fetchImpl;this.#session=temporarySession;this.#lang=language;
  }
  get temporarySession(){return this.#session;}
- #client(){return {app_name:'Main',app_version:'4.4.34',platform:'Web',package:'web.rubika.ir',lang_code:this.#lang};}
+ #client(){return profiles.client(this.#profile,this.#lang);}
  async #post(url,body,{timeout=10000,json=false}={}){
   if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new ApiError('tls_verification_disabled');
   if(this.#closed)throw new ApiError('closed');if(this.#pending)throw new ApiError('account_busy');
   if(!Number.isInteger(timeout)||timeout<1||timeout>30000)throw new ApiError('invalid_request');
   const controller=new AbortController();this.#pending=controller;const timer=setTimeout(()=>controller.abort(),timeout);
   try{
-   const response=await this.#fetch(url,{method:'POST',headers:{'content-type':json?'application/json':'text/plain',origin:'https://web.rubika.ir',referer:'https://web.rubika.ir/'},
+   const response=await this.#fetch(url,{method:'POST',headers:{'content-type':json?'application/json':'text/plain',...this.#profile===profiles.WEB?{origin:'https://web.rubika.ir',referer:'https://web.rubika.ir/'}:{}},
     body:JSON.stringify(body),redirect:'error',cache:'no-store',signal:controller.signal});
    if(controller.signal.aborted||this.#closed)throw new ApiError(this.#closed?'closed':'timeout');
    if(response.status<200||response.status>=300)await response.body?.cancel().catch(()=>{});
@@ -93,25 +98,27 @@ class HttpClient {
  }
  async startUpdates(credentials){
   if(this.#closed)throw new ApiError('closed');if(this.#updates||this.#updatesAbort||this.#pending)throw new ApiError('account_busy');if(!this.#updatesFactory)return;
-  const binding={provider:credentials?.provider,userId:credentials?.userId,auth:credentials?.auth};this.#updatesAbort=new AbortController();try{const channel=await this.#updatesFactory(binding,{url:this.#socketServer,signal:this.#updatesAbort.signal});if(this.#closed){channel.close();throw new ApiError('closed');}this.#updates=channel;this.#updateBinding=binding;}catch(e){this.#updatesAbort=null;throw e;}
+  try{if(credentials?.provider!=='rubika'||profiles.fromRecord(credentials)!==this.#profile)throw Error();}catch{throw new ApiError('invalid_credentials');}
+  const binding={provider:credentials?.provider,userId:credentials?.userId,auth:credentials?.auth,...this.#profile===profiles.ANDROID?{profile:{protocolProfile:this.#profile}}:{}};this.#updatesAbort=new AbortController();try{const channel=await this.#updatesFactory(binding,{url:this.#socketServer,signal:this.#updatesAbort.signal});if(this.#closed){channel.close();throw new ApiError('closed');}this.#updates=channel;this.#updateBinding=binding;}catch(e){this.#updatesAbort=null;throw e;}
  }
  async request(method,value={}, {credentials,timeout}={}){
   if(this.#closed)throw new ApiError('closed');if(this.#pending)throw new ApiError('account_busy');
-  if(!METHODS.has(method))throw new ApiError('invalid_request');input(method,value);
+  if(!METHODS.has(method))throw new ApiError('invalid_request');input(method,value,this.#profile);
   const unauth=UNAUTH.has(method);
   if(unauth&&credentials!==undefined||!unauth&&(!credentials||credentials.provider!=='rubika'))throw new ApiError('invalid_credentials');
+  if(!unauth){try{if(profiles.fromRecord(credentials)!==this.#profile)throw Error();}catch{throw new ApiError('invalid_credentials');}}
   if(method==='getUpdate'&&this.#updates){if(['provider','userId','auth'].some(k=>credentials[k]!==this.#updateBinding[k]))throw new ApiError('invalid_credentials');return this.#updates.read();}
   const session=unauth?this.#session:credentials.auth;
-  let data;try{data=wire.encrypt({method,input:value,client:this.#client()},session);}catch{throw new ApiError('invalid_credentials');}
-  const body={api_version:'6',data_enc:data};
+  let data;try{data=wire.encrypt({method,input:value,client:this.#client(),...this.#profile===profiles.ANDROID?{is_background:false}:{}},session,this.#profile);}catch{throw new ApiError('invalid_credentials');}
+  const body={api_version:this.#profile===profiles.ANDROID?6:'6',data_enc:data};
   if(unauth)body.tmp_session=session;
-  else{try{body.auth=wire.transform(credentials.auth);body.sign=wire.signature(data,credentials.privateKey);}catch{throw new ApiError('invalid_credentials');}}
+  else{try{body.auth=wire.transform(credentials.auth);body.sign=wire.signature(data,credentials.privateKey,this.#profile);}catch{throw new ApiError('invalid_credentials');}}
   const response=await this.#post(this.#server,body,{timeout});
-  if(!text(response?.data_enc,512*1024)){
+  if(!(this.#profile===profiles.ANDROID?typeof response?.data_enc==='string'&&response.data_enc.length>0&&response.data_enc.length<=512*1024:text(response?.data_enc,512*1024))){
    if(response?.status&&response.status!=='OK')serviceResult(response);
    throw new ApiError('invalid_encrypted_response');
   }
-  let decoded;try{decoded=wire.decrypt(response.data_enc,session);}catch{throw new ApiError('invalid_encrypted_response');}
+  let decoded;try{decoded=wire.decrypt(response.data_enc,session,this.#profile);}catch{throw new ApiError('invalid_encrypted_response');}
   return serviceResult(decoded,['registerDevice','logout','setSetting'].includes(method));
  }
  close(){this.#closed=true;this.#pending?.abort();this.#updatesAbort?.abort();this.#updatesAbort=null;this.#updates?.close();this.#updates=null;this.#updateBinding=null;this.#session=null;}

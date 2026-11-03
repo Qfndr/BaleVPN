@@ -13,6 +13,11 @@ test('official v5 handshake binds the account and an idle queue performs no HTTP
 test('encrypted socket notifications retain only bounded call fields and wipe drained signal buffers',async()=>{
  const f=await fixture();try{f.socket.message({type:'messenger',data_enc:wire.encrypt({user_guid:credentials.userId,call_signal_data:[{call_id:'fixture_call_01',data:'YQ=='}],message_updates:[{text:'private-chat'}]},credentials.auth)});const reply=f.channel.read();assert.deepEqual(reply.update_data.call_signal_data,[{call_id:'fixture_call_01',data:'YQ=='}]);assert.ok(!JSON.stringify(reply).includes('private-chat'));assert.equal(f.channel.state.queuedSignals,0);}finally{f.channel.close();}
 });
+test('Android notification decryption retains canonical wrapped framing and rejects an unknown stored profile before opening a socket',async()=>{
+ const record={...credentials,profile:{protocolProfile:'android-4.1.1-compat'}},opening=SocketUpdates.open(record,{url:'wss://jsocket5.iranlms.ir:80',WebSocketImpl:Socket}),socket=Socket.all.at(-1);await Promise.resolve();socket.message({});const channel=await opening;
+ try{socket.message({type:'messenger',data_enc:wire.encrypt({user_guid:record.userId,call_signal_data:[{call_id:'fixture_call_01',data:'YQ=='}]},record.auth,'android-4.1.1-compat')});assert.deepEqual(channel.read().update_data.call_signal_data,[{call_id:'fixture_call_01',data:'YQ=='}]);}finally{channel.close();}
+ const count=Socket.all.length;await assert.rejects(SocketUpdates.open({...record,profile:{protocolProfile:'unknown'}},{url:'wss://jsocket5.iranlms.ir:80',WebSocketImpl:Socket}),/invalid_credentials/);assert.equal(Socket.all.length,count);
+});
 test('mismatched account IDs and corrupt or oversized packets close the account event stream',async()=>{
  for(const packet of [{type:'messenger',data_enc:wire.encrypt({user_guid:'fixture_other_02'},credentials.auth)},{type:'messenger',data_enc:'corrupt'},'x'.repeat(512*1024+1)]){const f=await fixture();f.socket.message(packet);assert.equal(f.channel.state.phase,'failed');assert.throws(()=>f.channel.read());assert.equal(f.socket.closed,true);f.channel.close();}
 });

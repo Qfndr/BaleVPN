@@ -1,0 +1,25 @@
+{
+  "profile": "android-4.1.1-compat",
+  "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "primaryReferences": [
+    "classes.dex: androidMessenger.model.MessangerInput2.ClientInfo constructor and getClientJsonObject",
+    "classes.dex: androidMessenger.model.MessangerInput2.makeDataV5 and getJsonObjectV6",
+    "classes.dex: ir.aaap.messengercore.LoginUtils.signIn and registerDevice",
+    "classes.dex: androidMessenger.KeyEncryptionHelper.CoreEncryptionHelperImpl.toString(PublicKey) and toPemString"
+  ],
+  "client": {"app_name": "Main", "app_version": "4.1.1", "platform": "Android", "package": "app.rbmain.a"},
+  "encryptedPayload": {"is_background": false},
+  "v6VersionType": "Android uses numeric 6, Web retains string 6",
+  "ciphertextAndSignature": "EncryptionHelper.encryptAuth and signRsa both emit Base64.DEFAULT with 76-column LF and final LF; RSA-SHA256 signs the exact wrapped ciphertext bytes, not an unwrapped re-encoding",
+  "deviceRegistration": {"token_type": "Firebase", "token": "", "app_version": "MA_4.1.1", "is_multi_account": false},
+  "publicKeySerialization": "SPKI DER Base64.DEFAULT (76 columns, LF including final LF); BEGIN PUBLIC KEY plus CRLF, wrapped DER, END PUBLIC KEY without final LF; UTF8 Base64.DEFAULT then one encodeChars transform",
+  "intentionalDifferences": ["RSA remains at least 2048 bits instead of the observed legacy 1024-bit generator", "Device model and system version truthfully identify the desktop laboratory", "No advertising identifier or Firebase token is invented"],
+  "sessionPolicy": "New login in an empty slot only; default and legacy Web sessions remain Web, and retain their original RSA/device identity",
+  "validation": "Offline encrypted login, registration, retained restoration, call/privacy profile binding and fixed independent public-key byte fixture",
+  "liveLoginVerified": false,
+  "liveCallVerified": false,
+  "providerPathVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false,
+  "privacy": "No account data, private keys, OTPs or real session material"
+}

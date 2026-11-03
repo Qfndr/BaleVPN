@@ -455,3 +455,37 @@ step. Each lab serves UI/backend from its startup snapshot; changed source does
 not upgrade an existing process. Real-account login, API/native interoperation,
 cross-machine persistent pairing, Linux packaging and external-VPS route/tariff/
 outage checks remain unfinished. No provider tunnel is advertised as verified.
+
+## Explicit Android login compatibility (experimental)
+
+An empty Rubika login card now offers `web` (the unchanged default) and
+`android-4.1.1-compat`. The latter follows the pinned APK's client identifiers,
+numeric V6 version, `is_background`, Firebase device registration fields, and
+the exact Android public-key/ciphertext/signature Base64 wrapping. It retains
+the laboratory's truthful desktop device name and at least 2048-bit RSA; it
+does not claim to be an installed phone or reproduce a weak legacy key size.
+
+The selected protocol is saved with the account's device profile and reused by
+auth restoration, call requests, privacy requests and notification decryption.
+Legacy records without a protocol field remain Web. A transport cannot silently
+use a record from a different profile, and changing the profile during an active
+account operation cancels its ownership. The profile selector performs no
+network action and cannot relabel an existing saved session.
+
+For live testing use an **empty slot in a separate isolated lab data directory**;
+keep the existing encrypted Web session store intact. New auth is still sealed
+before device registration, so a partial registration failure cannot discard
+it. No automatic registration retry, OTP request, logout, record replacement or
+conversion of an old Web session has been added. The current running lab must
+be explicitly reloaded by its owner to see source changes.
+
+The Android profile has passed offline encrypted login/registration/restore,
+cross-profile binding, byte-fixture and browser tests only. Service login,
+Android-profile socket handshake interoperability, real calls and media remain
+unverified. See [source evidence](android-login-profile-evidence-2026-11-04.json).
+
+```powershell
+$env:TEMP='E:\CodexTemp'; $env:TMP=$env:TEMP; $env:TMPDIR=$env:TEMP
+$env:NODE_COMPILE_CACHE='E:\CodexBuilds\BaleVPN\cache\node'
+node --test scripts/test-rubika-client-profile.cjs
+```

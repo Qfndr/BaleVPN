@@ -2,6 +2,7 @@
 // exceptions. A separate readback, never a setter ACK, proves the result.
 'use strict';
 const {HttpClient,ApiError}=require('./http-client.cjs');
+const profiles=require('./client-profile.cjs');
 const privacy=require('./privacy-wire.cjs');
 const PERMISSIONS=new Set(['Everybody','MyContacts','Nobody']);
 function project(value){
@@ -18,8 +19,8 @@ class CallPrivacy{
  #record(){const state=this.#account.state;let record;if(state?.provider!=='rubika'||state.signedIn!==true||state.selfConfirmed!==true)throw new ApiError('not_authenticated');try{record=this.#account.exportSession();}catch{throw new ApiError('not_authenticated');}if(record?.provider!=='rubika'||record.userId!==state.userId||['userId','auth','privateKey','publicKey'].some(k=>typeof record[k]!=='string'||!record[k]))throw new ApiError('invalid_account_binding');return record;}
  async #run(allow){
   if(this.#busy)throw new ApiError('account_busy');this.#busy=true;let client;const epoch=this.#epoch;
-  try{const record=this.#record(),guard=()=>{if(epoch!==this.#epoch)throw new ApiError('closed');const current=this.#record();if(['userId','auth','privateKey','publicKey'].some(k=>record[k]!==current[k]))throw new ApiError('account_binding_changed');};
-   client=this.#client=this.#create({language:'fa'});await client.discover();guard();const beforeReply=await client.request('getPrivacySetting',{}, {credentials:record}),before=project(beforeReply);guard();if(!allow)return before;if(!before.supported)throw new ApiError('call_privacy_unavailable');
+  try{const record=this.#record();let protocolProfile;try{protocolProfile=profiles.fromRecord(record);}catch{throw new ApiError('invalid_account_binding');}const guard=()=>{if(epoch!==this.#epoch)throw new ApiError('closed');const current=this.#record();let mode;try{mode=profiles.fromRecord(current);}catch{throw new ApiError('account_binding_changed');}if(['userId','auth','privateKey','publicKey'].some(k=>record[k]!==current[k])||mode!==protocolProfile)throw new ApiError('account_binding_changed');};
+   client=this.#client=this.#create({language:'fa',protocolProfile});await client.discover();guard();const beforeReply=await client.request('getPrivacySetting',{}, {credentials:record}),before=project(beforeReply);guard();if(!allow)return before;if(!before.supported)throw new ApiError('call_privacy_unavailable');
    if(before.allowedForEveryone)return {...before,changed:false,verified:true,needsExceptionUpdate:false};
    const input={settings:{can_called_by:'Everybody'},update_parameters:['can_called_by']};
    if(before.callExclusionCount>0){try{input.settings.exceptions=privacy.otherExceptions(beforeReply.privacy_setting);input.update_parameters.push('exceptions');}catch{throw new ApiError('invalid_privacy_response');}}

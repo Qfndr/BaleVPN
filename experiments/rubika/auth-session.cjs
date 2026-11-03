@@ -2,6 +2,7 @@
 // before device registration; restore never signs in or registers implicitly.
 const crypto=require('node:crypto'),os=require('node:os');
 const wire=require('./wire.cjs'),{HttpClient,ApiError}=require('./http-client.cjs');
+const profiles=require('./client-profile.cjs');
 const {countries}=require('../providers/phone.cjs');
 const guid=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const clean=(v,max=256)=>typeof v==='string'?v.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,max):'';
@@ -24,7 +25,7 @@ class AuthSession {
   }throw safe;}finally{if(epoch===this.#epoch)this.#busy=false;}
  }
  async #transport(guard){
-  if(!this.#client){this.#client=this.#create({language:this.#language});this.#discovered=false;}
+  if(!this.#client){this.#client=this.#create({language:this.#language,protocolProfile:profiles.fromRecord(this.#record||{profile:this.#profile})});this.#discovered=false;}
   const client=this.#client;if(!this.#discovered){await client.discover();guard();this.#discovered=true;}return client;
  }
  async #request(method,input,guard,authenticated=false){
@@ -49,14 +50,16 @@ class AuthSession {
    default:throw new ApiError('invalid_auth_response');
   }
  }
- async start({country,nationalNumber,internationalNumber}){
+ async start({country,nationalNumber,internationalNumber},options={}){
   return this.#run(async guard=>{
    if(this.#record)throw new ApiError('already_signed_in');if(Date.now()<this.#retryAt)throw new ApiError('cooldown');
+   let protocolProfile;try{if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(k=>k!=='protocolProfile'))throw Error();protocolProfile=profiles.mode(options.protocolProfile);}catch{throw new ApiError('invalid_client_profile');}
    const c=countries.find(c=>c.iso===country);
    if(!c||typeof nationalNumber!=='string'||!/^\d{5,15}$/.test(nationalNumber)||internationalNumber!=='+'+c.code+nationalNumber||
     !/^\+[1-9]\d{6,14}$/.test(internationalNumber)||country==='IR'&&!/^9\d{9}$/.test(nationalNumber))throw new ApiError('invalid_phone');
    this.#pending={phone:internationalNumber.slice(1),hash:null};this.#phone=internationalNumber;this.#identity=null;this.#hint='';this.#count=0;this.#delivery=null;
-   this.#profile={deviceHash:crypto.randomBytes(16).toString('hex'),deviceModel:'BaleVPN Provider Lab (desktop)',systemVersion:clean(os.platform()+' '+os.release()+' '+os.arch(),128)};
+   this.#client?.close();this.#client=null;this.#discovered=false;
+   this.#profile={protocolProfile,deviceHash:crypto.randomBytes(16).toString('hex'),deviceModel:'BaleVPN Provider Lab (desktop)',systemVersion:clean(os.platform()+' '+os.release()+' '+os.arch(),128)};
    await this.#transport(guard);guard();this.#retryAt=Date.now()+60000;
    return this.#result(await this.#request('sendCode',{phone_number:this.#pending.phone,send_type:'SMS'},guard));
   });
@@ -74,13 +77,13 @@ class AuthSession {
    if(this.#stage!=='code'||!this.#pending?.hash)throw new ApiError('no_pending_code');
    if(typeof code!=='string'||!/^\d{4,10}$/.test(code)||code.length!==this.#count)throw new ApiError('invalid_code_format');
    if(!this.#identity){const identity=await this.#createIdentity();guard();this.#identity=identity;}
-   const response=await this.#request('signIn',{phone_number:this.#pending.phone,phone_code_hash:this.#pending.hash,phone_code:code,public_key:wire.publicKeyField(this.#identity.publicKey)},guard);
+   const response=await this.#request('signIn',{phone_number:this.#pending.phone,phone_code_hash:this.#pending.hash,phone_code:code,public_key:wire.publicKeyField(this.#identity.publicKey,profiles.mode(this.#profile.protocolProfile))},guard);
    if(response?.status!=='OK'){
     if(['CodeIsExpired','CodeIsUsed'].includes(response?.status)){this.#pending.hash=null;this.#stage='expired';throw new ApiError(response.status==='CodeIsExpired'?'code_expired':'code_used');}
     throw new ApiError(response?.status==='CodeIsInvalid'?'invalid_code':'invalid_auth_response');
    }
    if(!guid(response.user?.user_guid))throw new ApiError('invalid_auth_response');
-   let auth;try{auth=wire.decryptAuth(response.auth,this.#identity.privateKey);}catch{throw new ApiError('invalid_auth_response');}
+   let auth;try{auth=wire.decryptAuth(response.auth,this.#identity.privateKey,profiles.mode(this.#profile.protocolProfile));}catch{throw new ApiError('invalid_auth_response');}
    this.#record={provider:'rubika',userId:response.user.user_guid,auth,privateKey:this.#identity.privateKey,publicKey:this.#identity.publicKey,
     loginPhone:this.#phone,profile:{...this.#profile},registration:'required'};
    this.#identity=null;this.#pending=null;this.#stage='device_required';
@@ -93,8 +96,7 @@ class AuthSession {
   if(!this.#record)throw new ApiError('no_saved_session');
   this.#signed=false;this.#selfConfirmed=false;this.#record.registration='uncertain';this.#stage='registration_uncertain';await this.#persist(guard);
   const p=this.#record.profile;
-  try{await this.#request('registerDevice',{token_type:'Web',token:'',app_version:'WB_4.4.34',lang_code:this.#language,
-   system_version:p.systemVersion,device_model:p.deviceModel,device_hash:p.deviceHash},guard,true);}
+  try{await this.#request('registerDevice',profiles.registration(profiles.fromRecord(this.#record),p,this.#language),guard,true);}
   catch(e){if(e instanceof ApiError&&e.reason==='registration_required'){this.#record.registration='required';this.#stage='device_required';await this.#persist(guard);}throw e;}
   this.#record.registration='confirmed';this.#stage='restoring';await this.#persist(guard);
  }
@@ -112,13 +114,13 @@ class AuthSession {
     !['required','uncertain','confirmed'].includes(record.registration)||!record.profile||! /^[a-f0-9]{32}$/.test(record.profile.deviceHash)||
     typeof record.profile.deviceModel!=='string'||!record.profile.deviceModel||record.profile.deviceModel.length>128||
     typeof record.profile.systemVersion!=='string'||!record.profile.systemVersion||record.profile.systemVersion.length>128)throw new ApiError('invalid_saved_session');
-   try{const key=wire.serviceKey(record.auth);key.fill(0);wire.publicKeyField(record.publicKey);wire.signature(wire.encrypt({},record.auth),record.privateKey);
+   try{const mode=profiles.fromRecord(record);const key=wire.serviceKey(record.auth);key.fill(0);wire.publicKeyField(record.publicKey,mode);wire.signature(wire.encrypt({},record.auth),record.privateKey);
     const derived=crypto.createPublicKey(record.privateKey).export({type:'spki',format:'der'}),given=crypto.createPublicKey(record.publicKey).export({type:'spki',format:'der'});
     if(!derived.equals(given))throw Error();
    }catch{throw new ApiError('invalid_saved_session');}
    this.#client?.close();this.#client=null;this.#discovered=false;
    this.#record={provider:'rubika',userId:record.userId,auth:record.auth,privateKey:record.privateKey,publicKey:record.publicKey,
-    loginPhone:record.loginPhone,registration:record.registration,profile:{deviceHash:record.profile.deviceHash,deviceModel:record.profile.deviceModel,systemVersion:record.profile.systemVersion}};
+    loginPhone:record.loginPhone,registration:record.registration,profile:{deviceHash:record.profile.deviceHash,deviceModel:record.profile.deviceModel,systemVersion:record.profile.systemVersion,...Object.hasOwn(record.profile,'protocolProfile')?{protocolProfile:record.profile.protocolProfile}:{}}};
    this.#phone=record.loginPhone;this.#stage='restoring';return this.#confirm(guard);
   });
  }
@@ -132,6 +134,7 @@ class AuthSession {
   userId:this.#record?.userId||null,maskedPhone:this.#phone?'•••• '+this.#phone.slice(-4):'',retryAfter:Math.max(0,Math.ceil((this.#retryAt-Date.now())/1000)),
   hint:this.#hint,error:this.#error,codeDigits:this.#count,delivery:this.#delivery,selfConfirmed:this.#selfConfirmed,
   registration:this.#record?.registration||null,deviceModel:this.#record?.profile.deviceModel||null,systemVersion:this.#record?.profile.systemVersion||null,
+  protocolProfile:profiles.fromRecord(this.#record||{profile:this.#profile}),
   providerVerified:false,callReady:false};}
 }
 module.exports={AuthSession};

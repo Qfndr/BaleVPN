@@ -123,7 +123,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     const tracked=rubika[2]!=='stop';if(tracked&&rubikaOperations.has(slot))throw error('account_busy',409);if(tracked)rubikaOperations.add(slot);
     try{
     switch(rubika[2]){
-     case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
+     case 'start':{if(Object.hasOwn(body,'protocolProfile')&&!['web','android-4.1.1-compat'].includes(body.protocolProfile))throw error('invalid_client_profile');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone,Object.hasOwn(body,'protocolProfile')?{protocolProfile:body.protocolProfile}:{});break;}
      case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
      case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
      case 'resume':rubikaCalls.invalidate();if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('rubika',slot);if(!record)throw error('no_saved_session');result=await session.restore(record);}break;

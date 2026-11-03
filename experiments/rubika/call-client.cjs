@@ -4,6 +4,7 @@
 const {diagnostic}=require('./call-diagnostic.cjs');
 const {StreamError}=require('./socket-updates.cjs');
 const crypto=require('node:crypto'),{HttpClient,ApiError}=require('./http-client.cjs');
+const profiles=require('./client-profile.cjs');
 const codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
 const SAFE=new Set(['closed','account_busy','invalid_request','invalid_credentials','not_authorized','access_denied','rate_limited',
  'registration_required','service_rejected','timeout','network_error','http_error','invalid_dc_server',
@@ -22,7 +23,8 @@ class CallClient{
   let record;try{record=this.#account.exportSession();}catch{fail('not_authenticated');}
   if(record?.provider!=='rubika'||record.userId!==state.userId||typeof record.userId!=='string'||! /^[A-Za-z0-9_-]{8,128}$/.test(record.userId)||
    typeof record.auth!=='string'||! /^[A-Za-z0-9]{32}$/.test(record.auth)||typeof record.privateKey!=='string'||record.privateKey.length>16384||typeof record.publicKey!=='string'||record.publicKey.length>8192)fail('invalid_account_binding');
-  if(this.#binding&&['userId','auth','privateKey','publicKey'].some(k=>record[k]!==this.#binding[k]))fail('account_binding_changed');return record;
+  let profile;try{profile=profiles.fromRecord(record);}catch{fail('invalid_account_binding');}
+  if(this.#binding&&(['userId','auth','privateKey','publicKey'].some(k=>record[k]!==this.#binding[k])||profile!==profiles.fromRecord(this.#binding)))fail('account_binding_changed');return record;
  }
  #guard(epoch){if(this.#closed||epoch!==this.#epoch)fail('closed');this.#context();}
  #retire(){this.#epoch++;this.#ready=false;this.#client?.close();this.#client=null;this.#binding=null;}
@@ -46,8 +48,8 @@ class CallClient{
    if(privateKey.asymmetricKeyType!=='rsa'||publicKey.asymmetricKeyType!=='rsa'||privateKey.asymmetricKeyDetails.modulusLength<2048||publicKey.asymmetricKeyDetails.modulusLength<2048||
     !crypto.createPublicKey(privateKey).export({type:'spki',format:'der'}).equals(publicKey.export({type:'spki',format:'der'})))fail('invalid_account_binding');
   }catch{fail('invalid_account_binding');}
-  this.#binding={provider:'rubika',userId:record.userId,auth:record.auth,privateKey:record.privateKey,publicKey:record.publicKey};
-  this.#client=this.#create({language:this.#lang});await this.#client.discover();guard();if(typeof this.#client.startUpdates==='function')await this.#client.startUpdates({...this.#binding});guard();this.#ready=true;return {ready:true,mediaReady:false};
+  this.#binding={provider:'rubika',userId:record.userId,auth:record.auth,privateKey:record.privateKey,publicKey:record.publicKey,...record.profile?{profile:{...record.profile}}:{}};
+  this.#client=this.#create({language:this.#lang,protocolProfile:profiles.fromRecord(record)});await this.#client.discover();guard();if(typeof this.#client.startUpdates==='function')await this.#client.startUpdates({...this.#binding});guard();this.#ready=true;return {ready:true,mediaReady:false};
  });}
  request(method,value={}){
   // Snapshot before awaiting discovery/network or allowing external mutation.
