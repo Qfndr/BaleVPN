@@ -44,6 +44,14 @@ test('lost send replies enforce cooldown, invalid phones never reach the service
  const g=fixture();await assert.rejects(g.session.start({...phone,nationalNumber:'123'}),{reason:'invalid_phone'});assert.equal(g.calls.length,0);g.session.close();
  const h=fixture({hook:async()=>{const e=new ApiError('rate_limited');e.waitSeconds=999999;throw e;}});await assert.rejects(h.session.start(phone),{reason:'rate_limited'});assert.equal(h.session.state.retryAfter,86400);h.session.close();
 });
+test('definite phone rejections clear pending code without claiming an uncertain send or retrying',async()=>{
+ for(const code of ['PHONE_NUMBER_INVALID','PHONE_NUMBER_BANNED']){
+  const f=fixture({hook:async method=>{if(method==='auth.sendCode')throw service(code);}});
+  await assert.rejects(f.session.start(phone),{reason:'service_rejected',serviceCode:code});assert.equal(f.session.state.stage,'idle');assert.equal(f.session.state.error.serviceCode,code);assert.equal(f.session.state.hasSession,false);assert.ok(f.session.state.retryAfter>0);
+  await assert.rejects(f.session.verify('123456'),{reason:'no_pending_code'});await assert.rejects(f.session.start(phone),{reason:'cooldown'});assert.equal(f.calls.length,1);f.session.close();
+ }
+});
+
 test('accepted tokens survive a failed disk save and can be sealed on explicit resume without another sign-in',async()=>{
  let fail=true;const f=fixture({save:async()=>{if(fail)throw Error('disk fixture');}});await f.session.start(phone);await assert.rejects(f.session.verify('123456'),{reason:'session_save_failed'});assert.equal(f.session.state.hasSession,true);assert.equal(f.session.state.signedIn,false);assert.equal(f.calls.filter(c=>c.method==='users.getUsers').length,0);
  fail=false;await f.session.resume();assert.equal(f.saved.length,1);assert.equal(f.calls.filter(c=>c.method==='auth.signIn').length,1);assert.equal(f.session.state.signedIn,true);f.session.close();

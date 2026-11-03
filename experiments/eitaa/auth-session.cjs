@@ -56,7 +56,11 @@ class AuthSession{
    if(!c||typeof nationalNumber!=='string'||!/^\d{5,14}$/.test(nationalNumber)||internationalNumber!=='+'+c.code+nationalNumber||!/^\+[1-9]\d{6,14}$/.test(internationalNumber)||country==='IR'&&!/^9\d{9}$/.test(nationalNumber))throw new ApiError('invalid_phone');
    this.#client?.close();this.#client=null;this.#clearPending();this.#imei=wire.deviceId();this.#profile=deviceProfile();this.#phone=internationalNumber;this.#signed=false;this.#hashSource=null;this.#delivery=null;this.#count=0;this.#stage='requesting';
    const correlation=this.#ids();if(!/^[1-9]\d{0,19}$/.test(correlation))throw new ApiError('invalid_request');this.#pending={phone:this.#phone,hash:null,correlation};this.#retryAt=Date.now()+60000;
-   let response;try{response=await this.#request('auth.sendCode',{phone_number:this.#phone},guard);}catch(e){guard();this.#stage='uncertain';throw e;}
+   let response;try{response=await this.#request('auth.sendCode',{phone_number:this.#phone},guard);}catch(e){guard();
+    // A definite number rejection cannot have produced a usable code. Keep
+    // cooldown protection, but reserve "uncertain" for unconfirmed outcomes.
+    if(e instanceof ApiError&&e.reason==='service_rejected'&&['PHONE_NUMBER_INVALID','PHONE_NUMBER_BANNED'].includes(e.serviceCode)){this.#clearPending();this.#stage='idle';}
+    else this.#stage='uncertain';throw e;}
    if(response?.acknowledged===true&&response.codeIssued===false){this.#stage='code';this.#count=6;this.#delivery='Unconfirmed';this.#hashSource='localCompatibility';return {acknowledged:true,codeRequested:false,deliveryUnconfirmed:true};}
    const channels={'auth.sentCodeTypeSms':'SMS','auth.sentCodeTypeApp':'Internal','auth.sentCodeTypeCall':'CallCode'};
    if(response?._!=='auth.sentCode'||!text(response.phone_code_hash,4096)||!channels[response.type?._]||!Number.isInteger(response.type.length)||response.type.length<4||response.type.length>10)throw new ApiError('invalid_auth_response');
