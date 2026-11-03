@@ -54,6 +54,13 @@ test('closing cancels outstanding I/O, prevents late discovery selection and rej
  release(new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}})));await assert.rejects(pending,/closed/);
  await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),/closed/);
 });
+
+test('call diagnostics preserve short alphabetic status symbols without accepting raw messages or credentials',async()=>{
+ for(const detail of ['METHOD_NOT_FOUND','private-response','123456','A'.repeat(41)]){
+  const client=new HttpClient({fetchImpl:async()=>Response.json({status:'ERROR_ACTION',status_det:detail,message:'private-secret',data:{token:'private-token'}})});
+  await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),e=>{assert.equal(e.diagnosticStatus,'ERROR_ACTION');assert.equal(e.diagnosticDetail,detail==='METHOD_NOT_FOUND'?detail:undefined);assert.ok(!JSON.stringify(e).includes('private'));return true;});client.close();
+ }
+});
 test('oversized response bodies and HTTP rate limits terminate once without leaking response content',async()=>{
  let cancelled=false;const client=new HttpClient({fetchImpl:async()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(512*1024+1));},cancel(){cancelled=true;}}))});
  await assert.rejects(client.discover(),/response_too_large/);assert.equal(cancelled,true);client.close();

@@ -38,7 +38,10 @@ function serviceResult(value,allowEmpty=false){
  if(!object(value))throw new ApiError('invalid_response');
  if(value.status!=='OK'){
   const code=CODES.has(value.status_det)?value.status_det:undefined;
-  throw new ApiError(code==='INVALID_AUTH'?'not_authorized':code==='TOO_REQUESTS'?'rate_limited':code==='NOT_REGISTERED'?'registration_required':'service_rejected',undefined,code);
+  const error=new ApiError(code==='INVALID_AUTH'?'not_authorized':code==='TOO_REQUESTS'?'rate_limited':code==='NOT_REGISTERED'?'registration_required':'service_rejected',undefined,code);
+  // Only short alphabetic status symbols; never return service data or messages.
+  for(const [key,valueKey]of [['diagnosticStatus','status'],['diagnosticDetail','status_det']])if(typeof value[valueKey]==='string'&&/^[A-Z][A-Z_]{0,39}$/.test(value[valueKey]))error[key]=value[valueKey];
+  throw error;
  }
  if(allowEmpty&&(value.data===null||value.data===undefined))return {};
  if(!object(value.data))throw new ApiError('invalid_response');return value.data;

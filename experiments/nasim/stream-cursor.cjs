@@ -18,13 +18,13 @@ async function initialCursor(session,{fetchImpl=globalThis.fetch,signal}={}){
   try{while(true){const part=await reader.read();if(part.done)break;total+=part.value.length;if(total>MAX)throw new ApiError('response_too_large');chunks.push(Buffer.from(part.value));}encrypted=Buffer.concat(chunks,total);}catch(e){await reader.cancel().catch(()=>{});throw e;}finally{for(const chunk of chunks)chunk.fill(0);reader.releaseLock();}
   if(controller.signal.aborted)throw new ApiError('closed');
   let decoded;try{
-   const text=new TextDecoder('utf-8',{fatal:true}).decode(encrypted);
+   let text=new TextDecoder('utf-8',{fatal:true}).decode(encrypted);if(text.trimStart().startsWith('"')){text=JSON.parse(text);if(typeof text!=='string')throw Error();}
    if(text.trimStart().startsWith('{'))decoded=JSON.parse(text);
    else{if(text.length<40||! /^[\x20-\x7e]{16}[A-Za-z0-9+/]+={0,2}$/.test(text))throw Error();key=Buffer.from(session.token).subarray(0,32);const cipher=crypto.createDecipheriv('aes-256-cbc',key,Buffer.from(text.slice(0,16)));plain=Buffer.concat([cipher.update(Buffer.from(text.slice(16),'base64')),cipher.final()]);decoded=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(plain));}
-  }catch{throw new ApiError('invalid_cursor_response');}
-  const groups=decoded?.data?.groups;if(decoded?.status==='error'||!Array.isArray(groups)||groups.length>256)throw new ApiError('invalid_cursor_response');
+  }catch{throw new ApiError('invalid_cursor_response',undefined,'cursor_cipher');}
+  const groups=decoded?.data?.groups;if(decoded?.status==='error'||!Array.isArray(groups)||groups.length>256)throw new ApiError('invalid_cursor_response',undefined,'cursor_groups');
   if(!groups.length)return '0';const id=groups[0]?.lastMessage?.messageID;
-  if(typeof id==='number'&&!Number.isSafeInteger(id)||!['number','string'].includes(typeof id)||! /^(?:0|[1-9]\d{0,19})$/.test(String(id)))throw new ApiError('invalid_cursor_response');
+  if(typeof id==='number'&&!Number.isSafeInteger(id)||!['number','string'].includes(typeof id)||! /^(?:0|[1-9]\d{0,19})$/.test(String(id)))throw new ApiError('invalid_cursor_response',undefined,'cursor_message_id');
   return String(id);
  }catch(e){if(e instanceof ApiError)throw e;throw new ApiError(controller.signal.aborted?'closed':'cursor_request_failed');}
  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);encrypted?.fill(0);plain?.fill(0);key?.fill(0);}

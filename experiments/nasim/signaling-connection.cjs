@@ -55,7 +55,7 @@ class SignalingConnection{
   connection.#cursor=BigInt(cursor);connection.#fetch=fetchImpl;connection.#onEvent=onEvent;
   connection.#api=new HttpClient({deviceId:session.deviceId,fetchImpl});
   if(signal){const close=()=>connection.close();signal.addEventListener('abort',close,{once:true});connection.#unbind=()=>signal.removeEventListener('abort',close);}
-  try{await connection.#start();return connection;}catch(error){const reason=connection.#phase==='closed'?'closed':error instanceof ApiError?error.reason:'stream_connect_failed';connection.#fail(reason);throw new ApiError(reason);}
+  try{await connection.#start();return connection;}catch(error){const reason=connection.#phase==='closed'?'closed':error instanceof ApiError?error.reason:'stream_connect_failed';connection.#fail(reason);throw new ApiError(reason,error instanceof ApiError?error.statusCode:undefined,['cursor_cipher','cursor_groups','cursor_message_id'].includes(error?.serviceType)?error.serviceType:undefined);}
  }
  #headers(){return {'accept-language':'fa','app-version':'web','api-version':'v2.8',
   clientid:this.#session.clientId,duid:this.#session.deviceId,os:'web',token:this.#session.token,

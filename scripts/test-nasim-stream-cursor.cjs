@@ -4,9 +4,9 @@ const {initialCursor}=require('../experiments/nasim/stream-cursor.cjs');
 const session={token:'fixture-nasim-token-0123456789-0123456789'};
 function encrypted(value){const iv='0123456789abcdef',cipher=crypto.createCipheriv('aes-256-cbc',Buffer.from(session.token).subarray(0,32),Buffer.from(iv));return iv+Buffer.concat([cipher.update(JSON.stringify(value)),cipher.final()]).toString('base64');}
 test('initial Nasim SSE cursor follows the first official group-page message ID without returning history',async()=>{
- for(const encryptedReply of [false,true]){
+ for(const encryptedReply of [false,true,'quoted']){
   let count=0;const value={data:{groups:[{lastMessage:{messageID:'9007199254740993',text:'private-chat'}},{lastMessage:{messageID:'123'}}]}};
-  const id=await initialCursor(session,{fetchImpl:async(url,options)=>{count++;assert.equal(url,'https://api.gaplication.com/groupList?page=reset');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.body,undefined);assert.equal(options.headers['X-Token'],session.token);return encryptedReply?new Response(encrypted(value)):Response.json(value);}});
+  const id=await initialCursor(session,{fetchImpl:async(url,options)=>{count++;assert.equal(url,'https://api.gaplication.com/groupList?page=reset');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(options.body,undefined);assert.equal(options.headers['X-Token'],session.token);return encryptedReply==='quoted'?Response.json(encrypted(value)):encryptedReply?new Response(encrypted(value)):Response.json(value);}});
   assert.equal(id,'9007199254740993');assert.equal(count,1);assert.ok(!id.includes('private'));
  }
 });
