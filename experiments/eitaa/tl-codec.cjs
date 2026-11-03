@@ -2,7 +2,20 @@
 // tokens, account/message metadata and call credentials must never be returned
 // directly by a UI/state/logging endpoint.
 'use strict';
-const {Writer,Reader,WireError,IDS}=require('./wire.cjs');
+const {Writer,Reader,WireError,IDS,MAX}=require('./wire.cjs');
+const {gunzipSync,inflateRawSync}=require('node:zlib');
+function singleGzip(packed,maxOutputLength){
+ // gunzip verifies CRC/ISIZE but accepts concatenated members. Locate exactly
+ // one deflate stream as well, rejecting extra members and compressed tails.
+ if(packed.length<18||packed[0]!==31||packed[1]!==139||packed[2]!==8||(packed[3]&224))throw new WireError('invalid_compressed_response');
+ let offset=10;const flags=packed[3];
+ if(flags&4){if(offset+2>packed.length)throw new WireError('invalid_compressed_response');const size=packed.readUInt16LE(offset);offset+=2+size;}
+ for(const bit of [8,16])if(flags&bit){while(offset<packed.length&&packed[offset]!==0)offset++;offset++;}
+ if(flags&2)offset+=2;if(offset+8>=packed.length)throw new WireError('invalid_compressed_response');
+ let raw;
+ try{raw=inflateRawSync(packed.subarray(offset),{info:true,maxOutputLength});if(offset+raw.engine.bytesWritten+8!==packed.length)throw new WireError('invalid_compressed_response');return gunzipSync(packed,{maxOutputLength});}
+ catch{throw new WireError('invalid_compressed_response');}finally{raw?.buffer.fill(0);}
+}
 function createCodec(schema){
 const constructors=new Map(schema.constructors.map(c=>[c.id|0,c])),predicates=new Map();
 // The pinned API includes legacy constructor IDs with the same predicate.
@@ -41,11 +54,19 @@ function encode(def,value){
 }
 function method(name,input={}){const def=methods.get(name);if(!def)throw new WireError('invalid_method');return encode(def,input);}
 function object(value){const def=predicates.get(value?._);if(!def)throw new WireError('unexpected_constructor');return encode(def,value);}
-function decode(data,expected){
+function decode(data,expected,compression={depth:0,remaining:MAX}){
  const r=new Reader(data);let nodes=0,rootConstructorId,lastConstructorId;
  function read(type,depth=0,allowExceptional=false){
   if(++nodes>MAX_NODES||depth>MAX_DEPTH)throw new WireError('complexity_limit');
-  if(depth===0&&r.peekInt()===IDS.rpcResult){r.int();return {_: 'rpc_result',request_id:r.long(),result:read(type,depth+1,true)};}
+  // Official TL gzip_packed is a response envelope, not a new contact/user
+  // constructor. Bound inflated size and nesting before reusing the same
+  // strict expected-type decoder; neither inner nor outer tails are ignored.
+  if(allowExceptional&&r.peekInt()===812830625){
+   if(compression.depth>=2||compression.remaining<1)throw new WireError('compression_limit');r.int();const packed=r.bytes(MAX);let inflated;
+   try{inflated=singleGzip(packed,compression.remaining);}finally{packed.fill(0);}
+   try{return decode(inflated,type,{depth:compression.depth+1,remaining:compression.remaining-inflated.length,rpcWrapped:compression.rpcWrapped||depth>0});}finally{inflated.fill(0);}
+  }
+  if(depth===0&&r.peekInt()===IDS.rpcResult){if(compression.rpcWrapped)throw new WireError('nesting_limit');r.int();return {_: 'rpc_result',request_id:r.long(),result:read(type,depth+1,true)};}
   if(type==='int')return r.int();if(type==='long')return r.long();if(type==='double')return r.double();if(type==='string')return r.string();if(type==='bytes')return r.bytes();if(type==='true')return true;
   const vector=type.match(/^Vector<(.+)>$/);if(vector){if(allowExceptional&&EXCEPTIONAL.has(constructors.get(r.peekInt())?.predicate))return read('Object',depth+1,true);if(r.int()!==VECTOR)throw new WireError('invalid_vector');const count=r.int();if(count<0||count>MAX_VECTOR)throw new WireError('invalid_vector');return Array.from({length:count},()=>read(vector[1],depth+1));}
   const id=r.int();
@@ -53,7 +74,7 @@ function decode(data,expected){
   // The service can directly return error/pong/token events instead of the
   // declared method result. They must be handled explicitly by the controller.
   if(id===IDS.rpcResult)throw new WireError('nesting_limit');
-  const c=constructors.get(id);if(!c)throw new WireError('unsupported_constructor');
+  const c=constructors.get(id);if(!c){const error=new WireError('unsupported_constructor');error.schemaDiagnostic=Object.freeze({constructorId:id>>>0});throw error;}
   const exceptional=allowExceptional&&EXCEPTIONAL.has(c.predicate);
   if(type!=='Object'&&c.type!==type&&!exceptional&&!(type==='account.Password'&&c.type==='account.Password2'))throw new WireError('unexpected_constructor');
   const value={_:c.predicate},masks=knownFlags(c),flags={};

@@ -1,0 +1,42 @@
+{
+  "provider": "eitaa",
+  "dateUtc": "2026-11-03",
+  "scope": "One bounded two-account trial on one Windows host, retained encrypted sessions restored in memory",
+  "accountChecks": {
+    "bothRetainedSessionsRestored": true,
+    "bothProtectedSelfReadsMatched": true,
+    "distinctAccountsVerified": true,
+    "otpRequested": false,
+    "newSignInRequested": false,
+    "sessionFilesModifiedByTrial": false,
+    "bothCallPrivacyEveryoneVerified": true,
+    "callPrivacyChanged": false
+  },
+  "targetLookup": {
+    "initialFailure": "unsupported_constructor",
+    "constructorId": 812830625,
+    "officialMapping": "gzip_packed packed_data:bytes = Object",
+    "officialLocalSources": ["mtproto.worker-CJJzYEpd.js", "appDialogsManager-CtDWV_rQ.js"],
+    "bothRelativeTargetsResolvedAfterBoundedGzipSupport": true,
+    "methods": ["contacts.getContacts", "contacts.resolveUsername"]
+  },
+  "callAttempt": {
+    "bothNativeHelpersPreparedAndPrivatelyPaired": true,
+    "requestedLocalSocksPort": 1096,
+    "failedOperation": "messages.getDhConfig",
+    "methodConstructorId": 651135312,
+    "input": {"version": 0, "random_length": 256},
+    "officialMethodAndEnvelopeMatched": true,
+    "envelope": {"method": "eitaaObject", "layer": 135, "flags": 128},
+    "reason": "service_rejected",
+    "serviceCode": "INVALID_CONSTRUCTOR",
+    "statusCode": 404,
+    "phoneRequestCallSent": false,
+    "incomingCallObserved": false,
+    "mediaAuthenticated": false,
+    "proxyPayloadVerified": false
+  },
+  "cleanup": {"nativeHelpersClosed": true, "localSocksListenerAbsent": true, "accountSessionsPreserved": true},
+  "limitations": {"liveCallVerified": false, "providerPathVerified": false, "foreignVpsVerified": false, "billingVerified": false, "internationalOutageVerified": false},
+  "privacy": "No account identifiers, phone numbers, tokens, OTPs, contact data, certificates, SDP or raw service frames are included"
+}

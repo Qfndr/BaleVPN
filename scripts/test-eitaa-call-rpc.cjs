@@ -22,6 +22,37 @@ test('all call requests encode and mismatched responses, nested RPCs, unknown fl
  const h=new wire.Writer().int(wire.IDS.rpcResult).long(1n).finish();assert.throws(()=>codec.response(Buffer.concat([h,h,codec.object(f.wrap(f.waiting))]),'phone.requestCall'),{reason:'nesting_limit'});
  assert.throws(()=>codec.object(f.updates(Array(257).fill({_:'updatePhoneCall',phone_call:f.active}))),{reason:'invalid_vector'});
 });
+
+test('unknown call constructors retain only their unsigned numeric ID for private diagnosis',()=>{
+ const frame=new wire.Writer().int(-123456789).string('private-contact-name').finish();
+ assert.throws(()=>codec.response(frame,'contacts.getContacts'),error=>{
+  assert.equal(error.reason,'unsupported_constructor');assert.deepEqual(error.schemaDiagnostic,{constructorId:(-123456789)>>>0});
+  assert.equal(Object.isFrozen(error.schemaDiagnostic),true);assert.ok(!JSON.stringify(error).includes('private-contact-name'));return true;
+ });
+});
+
+test('official gzip response envelopes remain bounded, typed and strict at both frame ends',()=>{
+ const {gzipSync}=require('node:zlib');
+ const pack=bytes=>new wire.Writer().int(812830625).bytes(gzipSync(bytes)).finish();
+ const value={_:'contacts.contacts',contacts:[],users:[]},raw=codec.object(value);
+ assert.deepEqual(codec.response(pack(raw),'contacts.getContacts'),value);
+ const rpc=new wire.Writer().int(wire.IDS.rpcResult).long(1n).finish();
+ assert.deepEqual(codec.response(Buffer.concat([rpc,pack(raw)]),'contacts.getContacts'),{_:'rpc_result',request_id:1n,result:value});
+ assert.throws(()=>codec.response(Buffer.concat([rpc,pack(Buffer.concat([rpc,raw]))]),'contacts.getContacts'),{reason:'nesting_limit'});
+ assert.deepEqual(codec.response(pack(pack(raw)),'contacts.getContacts'),value);
+ assert.throws(()=>codec.response(pack(pack(pack(raw))),'contacts.getContacts'),{reason:'compression_limit'});
+ assert.throws(()=>codec.response(pack(codec.object(f.state)),'contacts.getContacts'),{reason:'unexpected_constructor'});
+ assert.throws(()=>codec.response(Buffer.concat([pack(raw),Buffer.alloc(4)]),'contacts.getContacts'),{reason:'trailing_data'});
+ assert.throws(()=>codec.response(pack(Buffer.concat([raw,Buffer.alloc(4)])),'contacts.getContacts'),{reason:'trailing_data'});
+ assert.throws(()=>codec.response(new wire.Writer().int(812830625).bytes(Buffer.from('not gzip')).finish(),'contacts.getContacts'),{reason:'invalid_compressed_response'});
+ assert.throws(()=>codec.response(pack(Buffer.alloc(wire.MAX+4)),'contacts.getContacts'),{reason:'invalid_compressed_response'});
+ assert.throws(()=>codec.response(pack(Buffer.alloc(3)),'contacts.getContacts'),{reason:'invalid_frame'});
+ const first=gzipSync(raw),second=gzipSync(raw);
+ assert.throws(()=>codec.response(new wire.Writer().int(812830625).bytes(Buffer.concat([first,second])).finish(),'contacts.getContacts'),{reason:'invalid_compressed_response'});
+ assert.throws(()=>codec.response(new wire.Writer().int(812830625).bytes(Buffer.concat([first,Buffer.alloc(4)])).finish(),'contacts.getContacts'),{reason:'invalid_compressed_response'});
+ for(const offset of [first.length-8,first.length-4]){const bad=Buffer.from(first);bad[offset]^=1;assert.throws(()=>codec.response(new wire.Writer().int(812830625).bytes(bad).finish(),'contacts.getContacts'),{reason:'invalid_compressed_response'});}
+ const large=Buffer.alloc(wire.MAX-4);assert.throws(()=>codec.response(pack(pack(large)),'contacts.getContacts'),{reason:'invalid_compressed_response'});
+});
 test('call differences retain call events alongside unrelated messages and final/intermediate cursors',()=>{
  const message={_:'message',id:45,peer_id:{_:'peerUser',user_id:101n},date:f.state.date,message:'fixture سلام'};
  for(const type of ['updates.difference','updates.differenceSlice']){
