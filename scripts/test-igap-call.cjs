@@ -8,12 +8,42 @@ const token = 'fixtureHeader.fixturePayload.fixtureSignature';
 const numeric = (field, value) => w.field(field, BigInt(value), 0);
 const offer = (sender, room, extra = Buffer.alloc(0)) => w.frame(30915,
   Buffer.concat([numeric(2, sender), numeric(3, room), extra]));
+const boundToken=(claims={})=>'header.'+Buffer.from(JSON.stringify({sub:'41',video:{room:'99',roomJoin:true},exp:Math.floor(Date.now()/1000)+300,...claims})).toString('base64url')+'.signature';
+const joinPush=(token,user='41')=>w.frame(30914,Buffer.concat([w.string(2,token,16384),numeric(3,user)]));
 
-test('service leave during a pending join retains safe terminal actor/stage and rejects the stale credential reply',async()=>{
- for(const [actor,id]of [['self','41'],['peer','42']]){const {session,rpc}=fixture();await session.handlePush(offer('42','99'));const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();assert.equal(session.state.phase,'joining');await session.handlePush(w.frame(30918,numeric(2,id)));assert.equal(session.state.phase,'ended');assert.deepEqual(session.state.terminalDiagnostic,{cause:'service_leave',endingActor:actor,phaseBeforeEnd:'joining'});
+test('caller accepts only an authenticated outgoing push bound to the exact LiveKit room/account and does not join twice',async()=>{
+ const {session,calls}=fixture();await session.dial('42');const token=boundToken();await session.handlePush(joinPush(token));assert.equal(session.state.phase,'joined');assert.equal(session.state.credentialReady,true);assert.ok(Object.values(session.state.joinPushDiagnostic).every(v=>v===true));await session.join();assert.deepEqual(calls.map(c=>c.action),[913,915]);await session.handlePush(joinPush(boundToken({exp:Math.floor(Date.now()/1000)+600})));assert.equal(session.takeTransportSession().token,token);assert.equal(session.state.joinPushDiagnostic.contextMatches,false);assert.ok(!JSON.stringify(session.state).includes(token));
+});
+
+test('media grant diagnostics attach only to accepted credentials and cannot alter authorization',async()=>{
+ const token=boundToken({video:{room:'99',roomJoin:true,canPublish:false,canSubscribe:true,canPublishData:false,canPublishSources:['microphone']}}),expected={publish:false,subscribe:true,publishData:false,microphoneAllowed:true};for(const incoming of [false,true]){const f=fixture();if(incoming){await f.session.handlePush(offer('42','99'));f.rpc.handler=async()=>({action:30914,fields:w.parse(joinPush(token).subarray(2))});await f.session.join();}else{await f.session.dial('42');await f.session.handlePush(joinPush(token));}assert.equal(f.session.state.credentialReady,true);assert.deepEqual(f.session.state.mediaGrants,expected);const copy=f.session.state.mediaGrants;copy.publish=true;assert.equal(f.session.state.mediaGrants.publish,false);f.session.reset('ended');assert.deepEqual(f.session.state.mediaGrants,expected);f.session.reset();assert.equal(f.session.state.mediaGrants,null);}
+ const f=fixture();await f.session.dial('42');await f.session.handlePush(joinPush(boundToken({sub:'42'})));assert.equal(f.session.state.mediaGrants,null);
+});
+
+test('caller token pushes reject cross-room, cross-account, expired, malformed and missing grants without exposing claims',async()=>{
+ const cases=[boundToken({video:{room:'100',roomJoin:true}}),boundToken({sub:'42'}),boundToken({exp:1}),boundToken({nbf:Math.floor(Date.now()/1000)+600}),boundToken({video:{room:'99'}}),boundToken({video:{roomJoin:true}}),'header.payload.signature'];
+ for(const token of cases){const {session}=fixture();await session.dial('42');await session.handlePush(joinPush(token));assert.equal(session.state.phase,'outgoing');assert.equal(session.state.credentialReady,false);assert.ok(Object.values(session.state.joinPushDiagnostic).every(v=>typeof v==='boolean'));assert.ok(!JSON.stringify(session.state.joinPushDiagnostic).includes(token));session.reset();assert.equal(session.state.joinPushDiagnostic,null);}
+ const {session}=fixture();await session.handlePush(offer('42','99'));await session.handlePush(joinPush(boundToken()));assert.equal(session.state.phase,'incoming');assert.equal(session.state.credentialReady,false);session.reset();await session.handlePush(joinPush(boundToken()));assert.equal(session.state.credentialReady,false);
+});
+
+test('late or wrong-user token pushes cannot revive an ended call or a replaced authenticated connection',async()=>{
+ for(const change of [f=>f.session.reset('ended'),f=>{f.account.connection={request:async()=>{throw Error('must not call');}};},f=>{f.account.state.signedIn=false;}]){const f=fixture();await f.session.dial('42');change(f);await f.session.handlePush(joinPush(boundToken()));assert.equal(f.session.state.credentialReady,false);assert.ok(['idle','ended'].includes(f.session.state.phase));}
+ const f=fixture();await f.session.dial('42');await f.session.handlePush(joinPush(boundToken(),'42'));assert.equal(f.session.state.phase,'outgoing');assert.equal(f.session.state.credentialReady,false);
+});
+
+test('peer leave during a pending join retains safe terminal actor/stage and rejects the stale credential reply',async()=>{
+ for(const [actor,id]of [['peer','42']]){const {session,rpc}=fixture();await session.handlePush(offer('42','99'));const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();assert.equal(session.state.phase,'joining');await session.handlePush(w.frame(30918,numeric(2,id)));assert.equal(session.state.phase,'ended');assert.deepEqual(session.state.terminalDiagnostic,{cause:'service_leave',endingActor:actor,phaseBeforeEnd:'joining'});
   reply.resolve({action:30914,fields:w.parse(Buffer.concat([w.string(2,token,100),numeric(3,'41')]))});await assert.rejects(joining,/call_cancelled/);assert.equal(session.state.credentialReady,false);assert.equal(session.state.busy,false);assert.equal(session.state.terminalDiagnostic.endingActor,actor);const diagnostic=JSON.stringify(session.state.terminalDiagnostic);for(const secret of [token,'41','42','99'])assert.ok(!diagnostic.includes(secret));
   const exported=session.state.terminalDiagnostic;exported.endingActor='altered';assert.equal(session.state.terminalDiagnostic.endingActor,actor);session.reset('ended');assert.equal(session.state.terminalDiagnostic.endingActor,actor);await session.handlePush(offer('42','100'));assert.equal(session.state.terminalDiagnostic,null);session.reset();assert.equal(session.state.terminalDiagnostic,null);
  }
+});
+
+test('receiver self-leave during correlated join is resolved only by exact current-room credentials; later self-leave still ends it',async()=>{
+ const {session,rpc,calls}=fixture();await session.handlePush(offer('42','99'));const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();for(let n=0;n<3;n++)await session.handlePush(w.frame(30918,numeric(2,'41')));assert.equal(session.state.phase,'joining');assert.equal(session.state.credentialReady,false);assert.equal(session.state.terminalDiagnostic.selfLeaveDeferred,true);const token=boundToken();reply.resolve({action:30914,fields:w.parse(joinPush(token).subarray(2))});await joining;assert.equal(session.state.phase,'joined');assert.equal(session.state.terminalDiagnostic.joinConfirmed,true);assert.equal(session.takeTransportSession().token,token);assert.deepEqual(calls.map(v=>v.action),[914]);await session.handlePush(w.frame(30918,numeric(2,'41')));assert.equal(session.state.phase,'ended');assert.equal(session.state.terminalDiagnostic.selfLeaveDeferred,undefined);
+});
+
+test('deferred receiver self-leave ends on invalid credentials, request timeout, peer leave, or local reset without retry',async()=>{
+ for(const outcome of ['invalid','timeout','peer','reset','replaced','revoked']){const {session,rpc,account,calls}=fixture();await session.handlePush(offer('42','99'));const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();await session.handlePush(w.frame(30918,numeric(2,'41')));if(outcome==='peer')await session.handlePush(w.frame(30918,numeric(2,'42')));if(outcome==='reset')session.reset();if(outcome==='revoked')account.state.signedIn=false;if(outcome==='replaced')account.connection={request:async()=>{throw Error('must not call');}};if(outcome==='timeout')reply.reject(new RpcError('timeout'));else reply.resolve({action:30914,fields:w.parse(joinPush(outcome==='invalid'?boundToken({video:{room:'100',roomJoin:true}}):boundToken()).subarray(2))});await assert.rejects(joining);assert.equal(session.state.credentialReady,false);assert.ok(['idle','ended'].includes(session.state.phase));assert.equal(calls.length,1);}
 });
 
 test('unrelated and stale correlated leave pushes during a pending join do not end the call',async()=>{

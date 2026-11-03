@@ -42,13 +42,14 @@ function encode(def,value){
 function method(name,input={}){const def=methods.get(name);if(!def)throw new WireError('invalid_method');return encode(def,input);}
 function object(value){const def=predicates.get(value?._);if(!def)throw new WireError('unexpected_constructor');return encode(def,value);}
 function decode(data,expected){
- const r=new Reader(data);let nodes=0;
+ const r=new Reader(data);let nodes=0,rootConstructorId,lastConstructorId;
  function read(type,depth=0,allowExceptional=false){
   if(++nodes>MAX_NODES||depth>MAX_DEPTH)throw new WireError('complexity_limit');
   if(depth===0&&r.peekInt()===IDS.rpcResult){r.int();return {_: 'rpc_result',request_id:r.long(),result:read(type,depth+1,true)};}
   if(type==='int')return r.int();if(type==='long')return r.long();if(type==='double')return r.double();if(type==='string')return r.string();if(type==='bytes')return r.bytes();if(type==='true')return true;
   const vector=type.match(/^Vector<(.+)>$/);if(vector){if(allowExceptional&&EXCEPTIONAL.has(constructors.get(r.peekInt())?.predicate))return read('Object',depth+1,true);if(r.int()!==VECTOR)throw new WireError('invalid_vector');const count=r.int();if(count<0||count>MAX_VECTOR)throw new WireError('invalid_vector');return Array.from({length:count},()=>read(vector[1],depth+1));}
   const id=r.int();
+  if(rootConstructorId===undefined)rootConstructorId=id>>>0;lastConstructorId=id>>>0;
   // The service can directly return error/pong/token events instead of the
   // declared method result. They must be handled explicitly by the controller.
   if(id===IDS.rpcResult)throw new WireError('nesting_limit');
@@ -59,7 +60,7 @@ function decode(data,expected){
   for(const p of c.params){if(p.type==='#'){const bits=r.int()>>>0;if((bits&~masks[p.name])!==0){const error=new WireError('unknown_flags');error.schemaDiagnostic=Object.freeze({constructorId:id>>>0,flags:bits,knownMask:masks[p.name]>>>0});throw error;}flags[p.name]=bits;continue;}const f=optional(p.type);if(f&&!(flags[f.flag]&(1<<f.bit)))continue;value[p.name]=read(f?f.type:p.type,depth+1);}
   if(c.type==='Bool')return c.predicate==='boolTrue';return value;
  }
- const result=read(expected||'Object',0,true);r.end();return result;
+ const result=read(expected||'Object',0,true);try{r.end();}catch(error){if(error.reason==='trailing_data'&&error.frameDiagnostic&&rootConstructorId!==undefined)error.trailingDiagnostic=Object.freeze({constructorId:rootConstructorId,lastConstructorId,...error.frameDiagnostic});throw error;}return result;
 }
 function response(data,name){const def=methods.get(name);if(!def)throw new WireError('invalid_method');return decode(data,schema.responseAliases[def.type]||def.type);}
 return Object.freeze({method,object,decode,response,MAX_VECTOR,MAX_DEPTH});

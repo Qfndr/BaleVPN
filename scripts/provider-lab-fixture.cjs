@@ -26,7 +26,7 @@ class FakeCallAuth extends FakeAuth{
    if(action===913)payload=w.field(2,room,0);
    else if(action===915){const target=peers.get(calls).get(Number(w.one(fields,2,0)));payload=Buffer.concat([w.field(2,id,0),w.field(3,room,0)]);await target.onPush(w.frame(30915,payload));}
    else if(action===916)payload=w.field(2,id,0);
-   else if(action===914){payload=Buffer.concat([w.string(2,'fixture.payload.signature',100),w.field(3,id,0)]);await peers.get(calls).get(3-slot)?.onPush(w.frame(30914,w.field(3,id,0)));}
+   else if(action===914){payload=Buffer.concat([w.string(2,'fixture.payload.signature',100),w.field(3,id,0)]);const other=peers.get(calls).get(3-slot);if(other){await other.onPush(w.frame(30914,w.field(3,id,0)));const claims=Buffer.from(JSON.stringify({sub:String(3-slot),video:{room:String(room),roomJoin:true},exp:Math.floor(Date.now()/1000)+300})).toString('base64url'),token='fixture.'+claims+'.signature';await other.onPush(w.frame(30914,Buffer.concat([w.string(2,token,1024),w.field(3,BigInt(3-slot),0)])));}}
    else if(action===918){payload=w.field(2,id,0);await peers.get(calls).get(3-slot)?.onPush(w.frame(30918,payload));}
    else throw new Error('Unexpected fixture call');
    return {action:action+30000,fields:w.parse(payload)};

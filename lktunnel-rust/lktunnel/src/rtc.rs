@@ -543,7 +543,7 @@ async fn signal_loop(
                 }
                 proto::signal_response::Message::Leave(leave) => {
                     log::info!("rtc[{id}]: server LEAVE (action={})", leave.action);
-                    let _ = event_tx.send(EngineEvent::Disconnected("server leave".into()));
+                    let _ = event_tx.send(EngineEvent::Disconnected(server_leave_context(&leave)));
                     return;
                 }
                 _ => {}
@@ -551,6 +551,29 @@ async fn signal_loop(
         }
     }
     let _ = event_tx.send(EngineEvent::Disconnected("signal stream ended".into()));
+}
+
+// Only bounded protocol enum values enter diagnostics; regions and arbitrary
+// server payloads never enter the event context.
+fn server_leave_context(leave: &proto::LeaveRequest) -> String {
+    let reason = if (0..=16).contains(&leave.reason) { leave.reason } else { -1 };
+    let action = if (0..=2).contains(&leave.action) { leave.action } else { -1 };
+    format!("server leave reason={reason} action={action} reconnect={}", u8::from(leave.can_reconnect))
+}
+
+#[cfg(test)]
+mod leave_diagnostic_tests {
+    use super::*;
+    #[test]
+    fn leave_context_bounds_unknown_enums_and_excludes_unrelated_data() {
+        for (reason, action, expected) in [(0,0,"server leave reason=0 action=0 reconnect=1"),
+            (16,2,"server leave reason=16 action=2 reconnect=1"),
+            (-9,i32::MAX,"server leave reason=-1 action=-1 reconnect=1")] {
+            let leave=proto::LeaveRequest {reason,action,can_reconnect:true,..Default::default()};
+            assert_eq!(server_leave_context(&leave),expected);
+        }
+        assert_eq!(server_leave_context(&proto::LeaveRequest::default()),"server leave reason=0 action=0 reconnect=0");
+    }
 }
 
 /// Apply a `ParticipantUpdate`: diff against the known peer set, emitting

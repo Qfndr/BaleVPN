@@ -9,6 +9,44 @@ use tokio::sync::mpsc;
 const MAX_COMMAND: usize = 64 * 1024;
 const ENDPOINT: &str = "wss://call.igap.net/";
 
+fn server_leave_metadata(info: &str) -> Option<Value> {
+    let rest=info.strip_prefix("server leave reason=")?;
+    let (reason,rest)=rest.split_once(" action=")?;
+    let (action,reconnect)=rest.split_once(" reconnect=")?;
+    let code=|text:&str,max:i32| -> Option<Option<i32>> {
+        if text=="-1" {return Some(None);}
+        let value=text.parse::<i32>().ok()?;
+        if !(0..=max).contains(&value)||value.to_string()!=text {return None;}
+        Some(Some(value))
+    };
+    let reason=code(reason,16)?;let action=code(action,2)?;
+    let reconnect=match reconnect {"0"=>false,"1"=>true,_=>return None};
+    Some(json!({"event":"serverLeave","reasonCode":reason,"actionCode":action,"canReconnect":reconnect}))
+}
+
+// Event.info may contain identities or server text. Classify only known engine
+// messages and emit fixed codes; never forward the original context to IPC.
+fn disconnect_reason(kind: &EventKind, info: &str, fallback: &'static str) -> &'static str {
+    if *kind == EventKind::PeerLeft {
+        return "peer_left";
+    }
+    if !matches!(kind, EventKind::Disconnected | EventKind::Error) {
+        return fallback;
+    }
+    if server_leave_metadata(info).is_some() {return "server_leave";}
+    match info {
+        "publisher PC failed" => "publisher_pc_failed",
+        "publisher PC closed" => "publisher_pc_closed",
+        "subscriber PC failed" => "subscriber_pc_failed",
+        "subscriber PC closed" => "subscriber_pc_closed",
+        "signal stream ended" => "signal_ended",
+        "server leave" => "server_leave",
+        "remote carrier track ended" => "carrier_track_ended",
+        text if text.starts_with("signal closed: ") => "signal_closed",
+        _ => fallback,
+    }
+}
+
 fn output(value: Value) -> Result<(), &'static str> {
     let mut stdout = std::io::stdout().lock();
     serde_json::to_writer(&mut stdout, &value).map_err(|_| "output_closed")?;
@@ -128,6 +166,9 @@ async fn run(mut identity: Identity, mut commands: mpsc::Receiver<Result<Value, 
             _ = &mut deadline, if !connected => return Err("connect_timeout"),
             event = events.recv() => {
                 let event = event.ok_or("transport_closed")?;
+                if matches!(event.kind,EventKind::Disconnected|EventKind::Error) {
+                    if let Some(metadata)=server_leave_metadata(&event.info) {output(metadata)?;}
+                }
                 match event.kind {
                     EventKind::Connected => {
                         connected = true;
@@ -141,8 +182,8 @@ async fn run(mut identity: Identity, mut commands: mpsc::Receiver<Result<Value, 
                             "socksAddress":address,"peerAuthenticated":tunnel.is_peer_authenticated(),
                             "proxyReady":tunnel.is_proxy_ready(),"providerPathVerified":false,"billingVerified":false}))?;
                     },
-                    EventKind::Disconnected | EventKind::PeerLeft => return Err("transport_disconnected"),
-                    EventKind::Error => return Err("transport_failed"),
+                    EventKind::Disconnected | EventKind::PeerLeft => return Err(disconnect_reason(&event.kind,&event.info,"transport_disconnected")),
+                    EventKind::Error => return Err(disconnect_reason(&event.kind,&event.info,"transport_failed")),
                     EventKind::PeerJoined => {},
                 }
             },
@@ -206,6 +247,41 @@ mod tests {
         let mut input=sample(); input["url"]=json!("wss://foreign.invalid/");assert!(config(input,&[1,2]).is_err());
         let mut input=sample(); input["allowUnauthenticated"]=json!(true);assert!(config(input,&[1,2]).is_err());
     }
+    #[test]
+    fn disconnect_context_is_classified_without_forwarding_details() {
+        for (message, expected) in [
+            ("publisher PC failed", "publisher_pc_failed"),
+            ("publisher PC closed", "publisher_pc_closed"),
+            ("subscriber PC failed", "subscriber_pc_failed"),
+            ("subscriber PC closed", "subscriber_pc_closed"),
+            ("signal stream ended", "signal_ended"),
+            ("server leave", "server_leave"),
+            ("remote carrier track ended", "carrier_track_ended"),
+            ("signal closed: private-token-or-server-message", "signal_closed"),
+        ] {
+            assert_eq!(disconnect_reason(&EventKind::Disconnected, message, "transport_disconnected"), expected);
+        }
+        for message in ["private-token", "publisher PC failed: private-token", "publisher PC disconnected", "signal closed private-token", "subscriber PC failed\nprivate-token"] {
+            assert_eq!(disconnect_reason(&EventKind::Disconnected, message, "transport_disconnected"), "transport_disconnected");
+            assert_eq!(disconnect_reason(&EventKind::Error, message, "transport_failed"), "transport_failed");
+        }
+        assert_eq!(disconnect_reason(&EventKind::PeerLeft, "private-peer-id", "transport_disconnected"), "peer_left");
+        assert_eq!(disconnect_reason(&EventKind::Connected, "publisher PC failed", "transport_failed"), "transport_failed");
+    }
+
+    #[test]
+    fn leave_metadata_accepts_only_exact_bounded_context() {
+        assert_eq!(server_leave_metadata("server leave reason=16 action=2 reconnect=1"),Some(json!({"event":"serverLeave","reasonCode":16,"actionCode":2,"canReconnect":true})));
+        assert_eq!(server_leave_metadata("server leave reason=-1 action=-1 reconnect=0"),Some(json!({"event":"serverLeave","reasonCode":null,"actionCode":null,"canReconnect":false})));
+        assert_eq!(disconnect_reason(&EventKind::Disconnected,"server leave reason=0 action=0 reconnect=0","transport_disconnected"),"server_leave");
+        for text in ["server leave","server leave reason=17 action=0 reconnect=0","server leave reason=0 action=3 reconnect=0",
+            "server leave reason=00 action=0 reconnect=0","server leave reason=0 action=0 reconnect=true",
+            "server leave reason=0 action=0 reconnect=0 private-token","server leave reason=0 action=0 reconnect=0\nprivate-token"] {
+            assert!(server_leave_metadata(text).is_none());
+        }
+        assert_eq!(disconnect_reason(&EventKind::Disconnected,"server leave","transport_disconnected"),"server_leave");
+    }
+
     #[test]
     fn tokens_ports_and_certificate_lengths_are_bounded() {
         for token in ["", "a.b", "a.b.c?secret", &"a".repeat(17000)] {

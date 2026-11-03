@@ -2,7 +2,8 @@
 // precede public authentication. No auto OTP, registration, refresh or retries.
 'use strict';
 const crypto=require('node:crypto'),wire=require('./wire.cjs');
-const {AccountClient,passwordHash,deviceProfile,validProfile}=require('./account-client.cjs');
+const {AccountClient,passwordHash,deviceProfile,validProfile,AUTH_RECOVERY_FRAME}=require('./account-client.cjs');
+const codec=require('./auth-wire.cjs');
 const {ApiError}=require('./http-client.cjs'),{countries}=require('../providers/phone.cjs');
 const clean=(v,n=128)=>typeof v==='string'?v.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,n):'';
 const text=(v,max)=>typeof v==='string'&&!!v&&Buffer.byteLength(v)<=max&&!/[\0\r\n]/.test(v);
@@ -15,10 +16,11 @@ function requestIds({clock=Date.now,random=()=>crypto.randomInt(65536)}={}){
   let id=(BigInt(Math.floor(now/1000))<<32n)|BigInt(((now%1000)<<21|r<<3|4)>>>0);if(id<=last)id=last+4n;last=id;return String(id);};
 }
 class AuthSession{
- #create;#save;#language;#ids;#client;#record;#pending;#salt;#profile;#imei;#phone='';#hint='';#count=0;#delivery=null;#hashSource=null;
- #stage='idle';#busy=false;#epoch=0;#retryAt=0;#error=null;#signed=false;#writes=Promise.resolve();#callPrivacy=null;
- constructor({createClient=options=>new AccountClient(options),saveSession=async()=>{},language='fa',createRequestId=requestIds()}={}){
+ #create;#save;#saveRecovery;#language;#ids;#client;#record;#pending;#salt;#profile;#imei;#phone='';#hint='';#count=0;#delivery=null;#hashSource=null;
+ #stage='idle';#busy=false;#epoch=0;#retryAt=0;#error=null;#signed=false;#writes=Promise.resolve();#callPrivacy=null;#recoveryAvailable=false;
+ constructor({createClient=options=>new AccountClient(options),saveSession=async()=>{},saveRecovery=null,language='fa',createRequestId=requestIds()}={}){
   if(!['fa','en'].includes(language)||typeof createClient!=='function'||typeof saveSession!=='function'||typeof createRequestId!=='function')throw new ApiError('invalid_request');
+  if(saveRecovery!==null&&typeof saveRecovery!=='function')throw new ApiError('invalid_request');this.#saveRecovery=saveRecovery;
   this.#create=createClient;this.#save=saveSession;this.#language=language;this.#ids=createRequestId;
  }
  async #run(action){
@@ -32,13 +34,25 @@ class AuthSession{
     const d=e.schemaDiagnostic,keys=['constructorId','flags','knownMask'];
     if(keys.every(k=>Number.isInteger(d[k])&&d[k]>=0&&d[k]<=0xffffffff))this.#error.schemaDiagnostic=Object.fromEntries(keys.map(k=>[k,d[k]]));
    }
+   if(e instanceof wire.WireError&&e.reason==='trailing_data'&&e.trailingDiagnostic){
+    const d=e.trailingDiagnostic,ids=['constructorId','lastConstructorId'],sizes=['consumed','total','remaining'];
+    if(ids.every(k=>Number.isInteger(d[k])&&d[k]>=0&&d[k]<=0xffffffff)&&sizes.every(k=>Number.isInteger(d[k])&&d[k]>=0&&d[k]<=wire.MAX)&&d.remaining>0&&d.consumed+d.remaining===d.total)this.#error.trailingDiagnostic=Object.fromEntries([...ids,...sizes].map(k=>[k,d[k]]));
+   }
    if(safe.reason==='rate_limited')this.#retryAt=Math.max(this.#retryAt,Date.now()+Math.max(1,Math.min(86400,safe.waitSeconds||60))*1000);
    if(revoked.has(safe.serviceCode)||safe.reason==='not_authorized'){this.#signed=false;this.#stage=this.#record?'expired':this.#stage;}
    if(safe.reason==='session_refresh_required'){this.#signed=false;this.#stage='refresh_required';}
   }throw safe;}finally{if(epoch===this.#epoch)this.#busy=false;}
  }
- #transport(){if(!this.#client)this.#client=this.#create({provider:'eitaa',imei:this.#imei,token:this.#record?.token||'',profile:this.#profile,language:this.#language});return this.#client;}
- async #request(method,input,guard){const client=this.#transport();guard();let result;try{result=await client.request(method,input,method==='auth.sendCode'?{timeout:30000}:undefined);}catch(e){guard();throw e;}guard();return result;}
+ #transport(){if(!this.#client)this.#client=this.#create({provider:'eitaa',imei:this.#imei,token:this.#record?.token||'',profile:this.#profile,language:this.#language,captureAuthRecovery:!!this.#saveRecovery});return this.#client;}
+ async #request(method,input,guard){const client=this.#transport();guard();let result;try{result=await client.request(method,input,method==='auth.sendCode'?{timeout:30000}:undefined);}catch(e){
+  const frame=e?.[AUTH_RECOVERY_FRAME];try{guard();if(this.#saveRecovery&&frame instanceof Buffer&&frame.length>0&&frame.length<=wire.MAX&&e instanceof wire.WireError&&['unknown_flags','trailing_data'].includes(e.reason)&&['auth.signIn','auth.checkPassword2'].includes(method)){
+   const recovery={provider:'eitaa',format:'eitaa-auth-recovery-v1',imei:this.#imei,loginPhone:this.#phone,profile:{...this.#profile},frame:frame.toString('base64'),method,createdAt:Date.now()};
+   // The service may already have created a session. Never reuse the submitted
+   // code after this undecodable reply, even if encrypted persistence fails.
+   this.#clearPending();this.#stage='uncertain';
+   const task=this.#writes.then(async()=>{guard();try{await this.#saveRecovery(recovery);}catch{guard();throw new ApiError('recovery_save_failed');}guard();});this.#writes=task.catch(()=>{});await task;guard();this.#clearPending();this.#recoveryAvailable=true;this.#stage='recovery_required';
+  }}finally{if(frame instanceof Buffer)frame.fill(0);}throw e;
+ }guard();return result;}
  async #persist(guard){
   guard();const record=this.exportSession(),task=this.#writes.then(async()=>{guard();try{await this.#save(record);}catch{guard();throw new ApiError('session_save_failed');}guard();});this.#writes=task.catch(()=>{});await task;
  }
@@ -54,7 +68,7 @@ class AuthSession{
  async #confirm(guard){
   this.#callPrivacy=null;
   const users=await this.#request('users.getUsers',{},guard);if(!Array.isArray(users)||users.length!==1)throw new ApiError('invalid_auth_response');const user=this.#validateUser(users[0],{self:true});
-  if(String(user.id)!==this.#record.userId)throw new ApiError('login_account_mismatch');this.#signed=true;this.#stage='authenticated';return {authenticated:true,selfConfirmed:true};
+  if(String(user.id)!==this.#record.userId)throw new ApiError('login_account_mismatch');this.#signed=true;this.#recoveryAvailable=false;this.#stage='authenticated';return {authenticated:true,selfConfirmed:true};
  }
  async #readCallPrivacy(guard){
   if(!this.#record||!this.#signed)throw new ApiError('not_authenticated');
@@ -74,7 +88,7 @@ class AuthSession{
  });}
  async start({country,nationalNumber,internationalNumber}){
   return this.#run(async guard=>{
-   if(this.#record)throw new ApiError('already_signed_in');if(Date.now()<this.#retryAt)throw new ApiError('cooldown');const c=countries.find(c=>c.iso===country);
+   if(this.#record)throw new ApiError('already_signed_in');if(this.#recoveryAvailable)throw new ApiError('recovery_required');if(Date.now()<this.#retryAt)throw new ApiError('cooldown');const c=countries.find(c=>c.iso===country);
    if(!c||typeof nationalNumber!=='string'||!/^\d{5,14}$/.test(nationalNumber)||internationalNumber!=='+'+c.code+nationalNumber||!/^\+[1-9]\d{6,14}$/.test(internationalNumber)||country==='IR'&&!/^9\d{9}$/.test(nationalNumber))throw new ApiError('invalid_phone');
    this.#client?.close();this.#client=null;this.#clearPending();this.#imei=wire.deviceId();this.#profile=deviceProfile();this.#phone=internationalNumber;this.#signed=false;this.#hashSource=null;this.#delivery=null;this.#count=0;this.#stage='requesting';
    const correlation=this.#ids();if(!/^[1-9]\d{0,19}$/.test(correlation))throw new ApiError('invalid_request');this.#pending={phone:this.#phone,hash:null,correlation};this.#retryAt=Date.now()+60000;
@@ -113,6 +127,23 @@ class AuthSession{
    const hash=passwordHash(value,this.#salt);let response;try{response=await this.#request('auth.checkPassword2',{password_hash:hash,phone_number:this.#pending.phone,phone_code:this.#pending.code},guard);}finally{hash.fill(0);}return this.#accept(response,guard);
   });
  }
+ async recoverAuthorization(record){
+  return this.#run(async guard=>{
+   if(this.#record)throw new ApiError('already_signed_in');
+   const keys=['provider','format','imei','loginPhone','profile','frame','method','createdAt'],now=Date.now();
+   if(!record||typeof record!=='object'||Array.isArray(record)||Object.keys(record).length!==keys.length||Object.keys(record).some(k=>!keys.includes(k))||record.provider!=='eitaa'||record.format!=='eitaa-auth-recovery-v1'||
+    typeof record.imei!=='string'||!/^[a-z0-9]{15}__web$/.test(record.imei)||typeof record.loginPhone!=='string'||!/^\+[1-9]\d{6,14}$/.test(record.loginPhone)||!validProfile(record.profile)||
+    !['auth.signIn','auth.checkPassword2'].includes(record.method)||!Number.isSafeInteger(record.createdAt)||record.createdAt<now-86400000||record.createdAt>now+30000||
+    typeof record.frame!=='string'||!record.frame||record.frame.length>4*Math.ceil(wire.MAX/3)||record.frame.length%4||!/^[A-Za-z0-9+/]+={0,2}$/.test(record.frame))throw new ApiError('invalid_recovery_record');
+   const frame=Buffer.from(record.frame,'base64');
+   try{
+    if(!frame.length||frame.length>wire.MAX||frame.toString('base64')!==record.frame)throw new ApiError('invalid_recovery_record');
+    let response=codec.response(frame,record.method);if(response?._==='rpc_result')response=response.result;guard();
+    this.#client?.close();this.#client=null;this.#clearPending();this.#imei=record.imei;this.#phone=record.loginPhone;this.#profile={...record.profile};this.#signed=false;this.#recoveryAvailable=true;this.#stage='recovery_required';
+    this.#transport();return await this.#accept(response,guard);
+   }finally{frame.fill(0);}
+  });
+ }
  async restore(record){
   return this.#run(async guard=>{
    if(this.#record)throw new ApiError('already_signed_in');if(record?.provider!=='eitaa'||record.format!==1||!text(record.token,4096)||typeof record.imei!=='string'||!/^[a-z0-9]{15}__web$/.test(record.imei)||
@@ -128,10 +159,10 @@ class AuthSession{
  });}
  async logout(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');if(await this.#request('auth.logOut',{},guard)!==true)throw new ApiError('logout_not_confirmed');this.#clear();return {loggedOut:true};});}
  exportSession(){if(!this.#record)throw new ApiError('session_not_ready');return {...this.#record,profile:{...this.#record.profile}};}
- #clear(){this.#client?.close();this.#client=null;this.#clearPending();this.#record=null;this.#imei=null;this.#profile=null;this.#phone='';this.#stage='idle';this.#signed=false;this.#error=null;this.#delivery=null;this.#hashSource=null;this.#count=0;this.#callPrivacy=null;}
- stop(){this.#epoch++;this.#busy=false;this.#client?.close();this.#client=null;this.#clearPending();this.#signed=false;this.#stage=this.#record?'stopped':'idle';this.#error=null;this.#callPrivacy=null;}
+ #clear(){this.#client?.close();this.#client=null;this.#clearPending();this.#record=null;this.#imei=null;this.#profile=null;this.#phone='';this.#stage='idle';this.#signed=false;this.#error=null;this.#delivery=null;this.#hashSource=null;this.#count=0;this.#callPrivacy=null;this.#recoveryAvailable=false;}
+ stop(){this.#epoch++;this.#busy=false;this.#client?.close();this.#client=null;this.#clearPending();this.#signed=false;this.#stage=this.#record?'stopped':this.#recoveryAvailable?'recovery_required':'idle';this.#error=null;this.#callPrivacy=null;}
  close(){this.#epoch++;this.#busy=false;this.#clear();}
- get state(){return {provider:'eitaa',stage:this.#stage,busy:this.#busy,connected:this.#signed,signedIn:this.#signed,hasSession:!!this.#record,userId:this.#record?.userId||null,
+ get state(){return {provider:'eitaa',stage:this.#stage,busy:this.#busy,connected:this.#signed,signedIn:this.#signed,hasSession:!!this.#record,hasRecovery:this.#recoveryAvailable,userId:this.#record?.userId||null,
   maskedPhone:this.#phone?'•••• '+this.#phone.slice(-4):'',retryAfter:Math.max(0,Math.ceil((this.#retryAt-Date.now())/1000)),hint:this.#hint,error:this.#error,codeDigits:this.#count,delivery:this.#delivery,codeHashSource:this.#hashSource,
   selfConfirmed:this.#signed,callPrivacy:this.#signed&&this.#callPrivacy?{...this.#callPrivacy}:null,deviceModel:this.#profile?.deviceModel||null,systemVersion:this.#profile?.systemVersion||null,deviceMetadataSent:this.#record?.deviceMetadataSent||false,providerVerified:false,callReady:false};}
 }

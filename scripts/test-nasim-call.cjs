@@ -2,6 +2,44 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {fixture,sdp,waitFor}=require('./nasim-call-fixture.cjs');
 const flags=state=>Object.fromEntries(['configured','offerSeen','answerSeen','negotiated'].map(key=>[key,state[key]]));
 
+test('terminal diagnostics retain verified peer signal across late frames and cleanup, then reset',async()=>{
+ for(const signal of ['bye','reject','busy']){
+  const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+   f.deliver('42',f.raw('41',signal,'fixture-call-1',null));await waitFor(()=>b.state.phase==='ended');
+   const expected={signal,phaseBeforeEnd:'incoming',actor:'peer'};
+   assert.deepEqual(b.state.terminal,expected);
+   f.deliver('42',f.config('42'));f.deliver('42',f.raw('41','bye','fixture-call-1',null));
+   assert.deepEqual(b.state.terminal,expected);await b.end();assert.deepEqual(b.state.terminal,expected);
+   const snapshot=b.state.terminal;snapshot.actor='changed';assert.equal(b.state.terminal.actor,'peer');
+   await b.prepare({role:'server'});assert.equal(b.state.terminal,null);
+   b.reset();assert.equal(b.state.terminal,null);
+  }finally{f.close();}
+ }
+});
+
+test('ignored own accept echo is distinct from missing config or a wrong bound device',async()=>{
+ const f=fixture({autoConfig:false});try{const {a}=await f.prepare();await a.dial('42');
+  f.deliver('41',f.raw('41','accept','fixture-call-1',{}));
+  await waitFor(()=>a.state.signaling.acceptOwnEcho===1);
+  assert.equal(a.state.remoteAccepted,false);assert.equal(a.state.signaling.acceptNoCall,0);
+  f.deliver('41',f.config('41'));f.deliver('41',f.raw('42','accept','fixture-call-1',{}));
+  await waitFor(()=>a.state.remoteAccepted);
+  const mismatch=f.raw('42','accept','fixture-call-1',{});mismatch.senderClientID='unselected-device';f.deliver('41',mismatch);
+  await waitFor(()=>a.state.signaling.acceptWrongDevice===1);assert.equal(a.state.terminal,null);
+  a.reset();assert.equal(a.state.signaling.acceptOwnEcho,0);assert.equal(a.state.signaling.acceptWrongDevice,0);
+ }finally{f.close();}
+});
+
+test('native terminal failure has no claimed actor and local end records the local actor',async()=>{
+ const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  f.natives[1].latest={phase:'failed',reason:'ice_failed'};
+  await waitFor(()=>b.state.phase==='uncertain');
+  assert.deepEqual(b.state.terminal,{signal:'media_failure',phaseBeforeEnd:'incoming',actor:null});
+  await a.end();assert.deepEqual(a.state.terminal,{signal:'local_end',phaseBeforeEnd:'outgoing',actor:'self'});
+  b.reset();assert.equal(b.state.terminal,null);
+ }finally{f.close();}
+});
+
 test('safe signaling diagnostics distinguish pending answer installation and clear on reset',async()=>{
  const f=fixture();let release;
  try{
@@ -98,6 +136,7 @@ test('wrong sender device, answer target and call UUID cannot enter an approved 
 test('stream history loss closes native media, invalidates queued signals and requires fresh event subscription',async()=>{
  const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
   b.handleEvent({provider:'nasim',type:'streamReset',lastEventId:'3'});assert.equal(b.state.phase,'uncertain');assert.equal(b.state.reason,'call_stream_reset');
+  assert.deepEqual(b.state.terminal,{signal:'stream_reset',phaseBeforeEnd:'incoming',actor:null});
   assert.equal(f.natives[1].state.phase,'closed');assert.equal(f.accounts.get('42').disconnects,1);
   f.deliver('42',f.config('42'));await waitFor(()=>!b.state.busy);assert.notEqual(b.state.phase,'incoming');
  }finally{f.close();}
@@ -106,6 +145,7 @@ test('other own-account device acceptance stops this instance without admitting 
  const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
   const event=f.raw('42','accept','fixture-call-1',{});event.senderClientID='own-other-device';f.deliver('42',event);
   await waitFor(()=>b.state.phase==='ended');assert.equal(b.state.reason,'call_handled_on_other_device');assert.equal(f.natives[1].state.phase,'closed');
+  assert.deepEqual(b.state.terminal,{signal:'other_device',phaseBeforeEnd:'incoming',actor:'self'});
  }finally{f.close();}
 });
 test('reset during late native preparation closes the late process and cannot resurrect account state',async()=>{

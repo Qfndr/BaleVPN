@@ -56,7 +56,7 @@ const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');co
  const firstCall=page.locator('[data-call-slot="1"]'),secondCall=page.locator('[data-call-slot="2"]');
  await firstCall.locator('[data-call-action=dial]').click();await page.waitForFunction(()=>document.querySelector('[data-call-slot="2"] [data-call-state]').dataset.phase==='incoming');
  await secondCall.locator('[data-call-action=ring]').click();await secondCall.locator('[data-call-action=join]').click();await page.waitForFunction(()=>document.querySelector('[data-call-slot="2"] [data-call-state]').dataset.phase==='joined');
- await firstCall.locator('[data-call-action=join]').click();await page.waitForFunction(()=>document.querySelector('[data-call-slot="1"] [data-call-state]').dataset.phase==='joined');
+ await page.waitForFunction(()=>document.querySelector('[data-call-slot="1"] [data-call-state]').dataset.phase==='joined');assert.equal(await firstCall.locator('[data-call-action=join]').isVisible(),false);assert.equal(calls.filter(c=>c.action===914).length,1,'caller receives its bound token without another join RPC');
  assert.ok(!(await page.locator('body').innerText()).includes('fixture.payload.signature'));
  await page.locator('#mediaClient').selectOption('1');await page.locator('#mediaPort').fill('1089');await page.locator('#mediaStart').click();await page.waitForFunction(()=>document.getElementById('mediaStatus').textContent.includes('پروکسی احراز هویت شد'));
  assert.ok((await page.locator('#mediaMetrics').innerText()).includes('127.0.0.1:1089'));

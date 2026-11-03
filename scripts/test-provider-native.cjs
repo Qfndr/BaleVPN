@@ -34,6 +34,35 @@ const metrics = (extra = {}) => ({event: 'metrics', mediaConnected: true, peerAu
     sentPackets: 200, congestionWindow: 120000, sendWindowBytes: 4000000, profile: 'throughput'},
   providerPathVerified: false, billingVerified: false, ...extra});
 
+test('fixed engine stage codes cross IPC without accepting decorated or raw error context', async () => {
+  const reasons=['publisher_pc_failed','publisher_pc_closed','subscriber_pc_failed','subscriber_pc_closed',
+    'signal_closed','signal_ended','server_leave','carrier_track_ended','peer_left'];
+  for(const reason of [...reasons,'publisher_pc_failed: private-token','signal closed: private-token']){
+    const f=fixture(),bridge=await f.open();
+    await bridge.connect(session,{role:'client',trustedCertificates:[peer]});
+    f.emit({event:'error',reason});
+    assert.equal(bridge.state.phase,'failed');
+    assert.equal(bridge.state.reason,reasons.includes(reason)?reason:'invalid_native_output');
+    assert.ok(!JSON.stringify(bridge.state).includes('private-token'));
+    assert.equal(f.child.killed,true);
+  }
+});
+
+test('bounded leave metadata survives server_leave failure and rejects hostile records', async()=>{
+  for(const codes of [{reasonCode:8,actionCode:1,canReconnect:false},{reasonCode:null,actionCode:null,canReconnect:true}]){
+    const f=fixture(),bridge=await f.open();await bridge.connect(session,{role:'client',trustedCertificates:[peer]});
+    f.emit({event:'serverLeave',...codes});f.emit({event:'error',reason:'server_leave'});
+    assert.equal(bridge.state.reason,'server_leave');assert.deepEqual(bridge.state.serverLeave,codes);
+    const snapshot=bridge.state.serverLeave;snapshot.reasonCode=999;assert.deepEqual(bridge.state.serverLeave,codes);
+  }
+  for(const extra of [{reasonCode:17},{actionCode:-1},{reasonCode:'private-token'},{canReconnect:1},{token:'private-token'}]){
+    const f=fixture(),bridge=await f.open();await bridge.connect(session,{role:'client',trustedCertificates:[peer]});
+    f.emit({event:'serverLeave',reasonCode:0,actionCode:0,canReconnect:false,...extra});
+    assert.equal(bridge.state.reason,'invalid_native_output');assert.equal(bridge.state.serverLeave,null);
+    assert.ok(!JSON.stringify(bridge.state).includes('private-token'));
+  }
+});
+
 test('native token crosses only stdin; process has no command arguments, shell, exposed window or secret state', async () => {
   const f = fixture(), bridge = await f.open();
   assert.equal(bridge.publicCertificate, own);

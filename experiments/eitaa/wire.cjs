@@ -26,7 +26,7 @@ class Reader{
  double(){const n=this.#take(8).readDoubleLE();if(!Number.isFinite(n))throw new WireError('invalid_double');return n;}
  bytes(max=MAX){const first=this.#take(1)[0];if(first===255)throw new WireError('invalid_length');let n=first,prefix=1;if(first===254){n=this.#take(3).readUIntLE(0,3);prefix=4;if(n<254)throw new WireError('invalid_length');}if(n>max)throw new WireError('payload_too_large');const value=Buffer.from(this.#take(n));const padding=this.#take((4-(prefix+n)%4)%4);if(padding.some(n=>n!==0))throw new WireError('invalid_padding');return value;}
  string(max=4096){try{return new TextDecoder('utf-8',{fatal:true}).decode(this.bytes(max));}catch(e){if(e instanceof WireError)throw e;throw new WireError('invalid_utf8');}}
- end(){if(this.#offset!==this.#buffer.length)throw new WireError('trailing_data');}
+ end(){if(this.#offset!==this.#buffer.length){const error=new WireError('trailing_data');error.frameDiagnostic=Object.freeze({consumed:this.#offset,total:this.#buffer.length,remaining:this.#buffer.length-this.#offset});throw error;}}
 }
 function envelope(packed,{token='',imei,layer=135,flags=128}={}){
  if(typeof token!=='string'||Buffer.byteLength(token)>4096||/[\0\r\n]/.test(token)||typeof imei!=='string'||!/^[a-z0-9]{15}__web$/.test(imei)||layer!==135||flags!==128)throw new WireError('invalid_envelope');

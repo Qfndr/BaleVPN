@@ -198,7 +198,7 @@ test('HTTP call flow allows only two signed-in local accounts and returns no roo
  assert.equal((await call(1,'reset')).status,409,'an active call must be left explicitly');
  assert.equal((await call(2,'leave')).status,200);
  state=await(await request('/api/state')).json();assert.ok(state.accounts.every(a=>a.call.phase==='ended'&&!a.call.credentialReady));
- assert.deepEqual(calls.filter(c=>typeof c.action==='number').map(c=>c.action),[913,915,916,914,914,918]);
+ assert.deepEqual(calls.filter(c=>typeof c.action==='number').map(c=>c.action),[913,915,916,914,918]);
 }));
 test('local login endpoints isolate accounts, persist sealed sessions and restore without OTP or public secret output',()=>fixture(async({request,dir,calls})=>{
  const password='fixture-passphrase-123';assert.equal((await request('/api/vault/unlock',{password})).status,200);

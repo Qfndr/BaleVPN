@@ -41,9 +41,61 @@ test('live sentCode flags 7 consume no bit-0 payload, matching the official Andr
  assert.throws(()=>codec.response(Buffer.concat([encoded,Buffer.alloc(4)]),'auth.sendCode'));
  assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.sendCode'));
 });
+test('live authorization bit 10 is payload-free while Android bit 0 reads tmp_sessions before User',()=>{
+ for(const value of [auth,{...auth,tmp_sessions:3}]){
+  const encoded=codec.object(value),flags=encoded.readUInt32LE(4);encoded.writeUInt32LE(flags|1024,4);
+  assert.deepEqual(codec.response(encoded,'auth.signIn'),value);
+  const wrapped=Buffer.concat([new wire.Writer().int(wire.IDS.rpcResult).long(9n).finish(),encoded]);
+  assert.deepEqual(codec.response(wrapped,'auth.signIn').result,value);
+  assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.signIn'));
+  assert.throws(()=>codec.response(Buffer.concat([encoded,Buffer.alloc(4)]),'auth.signIn'));
+ }
+ const missing=codec.object(auth);missing.writeUInt32LE(1025,4);assert.throws(()=>codec.response(missing,'auth.signIn'));
+});
+
+test('trailing authorization diagnostics contain only constructor IDs and byte counts',()=>{
+ const original=codec.object(auth),extra=Buffer.concat([original,Buffer.alloc(8,0xa5)]);
+ assert.throws(()=>codec.response(extra,'auth.signIn'),error=>{
+  assert.equal(error.reason,'trailing_data');assert.deepEqual(error.trailingDiagnostic,{constructorId:(-855308010)>>>0,lastConstructorId:(-306628279)>>>0,consumed:original.length,total:extra.length,remaining:8});
+  assert.ok(!JSON.stringify(error).includes(auth.token));return true;
+ });
+});
+
+test('observed authorization flag-10 appendix is bounded, canonical, opaque and restricted to login responses',()=>{
+ const prefix=codec.object(auth);prefix.writeUInt32LE(1024,4);
+ const appendix=new wire.Writer().bytes(Buffer.from('A'.repeat(56))).finish(),frame=Buffer.concat([prefix,appendix]);
+ assert.deepEqual(codec.response(frame,'auth.signIn'),auth);assert.deepEqual(codec.response(frame,'auth.checkPassword2'),auth);
+ assert.deepEqual(codec.response(prefix,'auth.signIn'),auth);
+ const wrapped=Buffer.concat([new wire.Writer().int(wire.IDS.rpcResult).long(8n).finish(),frame]);assert.deepEqual(codec.response(wrapped,'auth.signIn').result,auth);
+ assert.throws(()=>codec.decode(frame,'auth.Authorization'),{reason:'trailing_data'});
+ assert.throws(()=>codec.response(frame,'auth.sendCode'));
+ const noFlag=Buffer.from(frame);noFlag.writeUInt32LE(0,4);assert.throws(()=>codec.response(noFlag,'auth.signIn'),{reason:'trailing_data'});
+ for(const tail of [Buffer.concat([appendix,appendix]),appendix.subarray(0,appendix.length-4),new wire.Writer().bytes(Buffer.alloc(257,65)).finish(),new wire.Writer().bytes(Buffer.alloc(56,255)).finish(),new wire.Writer().bytes(Buffer.alloc(0)).finish()])assert.throws(()=>codec.response(Buffer.concat([prefix,tail]),'auth.signIn'));
+ const badPadding=Buffer.from(frame);badPadding[badPadding.length-1]=1;assert.throws(()=>codec.response(badPadding,'auth.signIn'));
+ const noncanonical=Buffer.concat([prefix,Buffer.from([254,56,0,0]),Buffer.alloc(56,65)]);assert.throws(()=>codec.response(noncanonical,'auth.signIn'));
+});
+
+test('Android User booleans and modern photo/status IDs decode inside authorization without changing legacy output',()=>{
+ const androidUser={...user,MXB_REGISTERED_USER:true,MXB_VIRTUAL_USER:true,oneWayMessaging:true};
+ assert.deepEqual(codec.response(codec.object({...auth,user:androidUser}),'auth.signIn').user,androidUser);
+ for(const [statusId,statusName]of [[2065268168,'userStatusRecently'],[1410997530,'userStatusLastWeek'],[1703516023,'userStatusLastMonth']]){
+  const w=new wire.Writer().int(-855308010).int(1024).string(auth.token)
+   .int(-321753653).int(1024|32|64|256|512).int(0).int(64).long(user.id)
+   .int(-2100168954).int(7).long(55n).bytes(Buffer.from([1,2,3])).int(2)
+   .int(statusId).int(1);
+  const encoded=w.finish(),value=codec.response(encoded,'auth.signIn');
+  assert.equal(value.token,auth.token);assert.equal(value.user.self,true);assert.equal(value.user.MXB_REGISTERED_USER,true);assert.equal(value.user.MXB_VIRTUAL_USER,true);assert.equal(value.user.oneWayMessaging,true);
+  assert.deepEqual(value.user.photo,{_:'userProfilePhoto',has_video:true,personal:true,photo_id:55n,stripped_thumb:Buffer.from([1,2,3]),dc_id:2});
+  assert.deepEqual(value.user.status,{_:statusName,by_me:true});
+  assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.signIn'));
+  const unknown=Buffer.from(encoded);unknown.writeInt32LE(3,encoded.length-4);assert.throws(()=>codec.response(unknown,'auth.signIn'),{reason:'unknown_flags'});
+ }
+ assert.equal(codec.object({_:'userStatusRecently'}).readInt32LE(0),-496024847);
+});
+
 test('unknown flags, truncation, wrong result types, malformed vectors and nested RPC wrappers fail closed',()=>{
- const body=codec.object(auth),bad=Buffer.from(body);bad.writeInt32LE(1,4);assert.throws(()=>codec.response(bad,'auth.signIn'),{reason:'unknown_flags'});
- assert.throws(()=>codec.response(bad,'auth.signIn'),error=>{assert.deepEqual(error.schemaDiagnostic,{constructorId:(-855308010)>>>0,flags:1,knownMask:0});assert.ok(!JSON.stringify(error).includes(auth.token));return true;});
+ const body=codec.object(auth),bad=Buffer.from(body);bad.writeInt32LE(2,4);assert.throws(()=>codec.response(bad,'auth.signIn'),{reason:'unknown_flags'});
+ assert.throws(()=>codec.response(bad,'auth.signIn'),error=>{assert.deepEqual(error.schemaDiagnostic,{constructorId:(-855308010)>>>0,flags:2,knownMask:1025});assert.ok(!JSON.stringify(error).includes(auth.token));return true;});
  for(let length=4;length<body.length;length+=4)assert.throws(()=>codec.response(body.subarray(0,length),'auth.signIn'));
  assert.throws(()=>codec.response(codec.object(user),'auth.signIn'),{reason:'unexpected_constructor'});
  const nestedError=Buffer.concat([new wire.Writer().int(-855308010).int(0).string('fixture-token').finish(),codec.object({_:'error',code:400,text:'fixture-error'})]);assert.throws(()=>codec.response(nestedError,'auth.signIn'),{reason:'unexpected_constructor'});

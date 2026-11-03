@@ -25,7 +25,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
  for(const slot of [1,2]){const account=sessionFactory(slot,bytes=>calls.get(slot)?.handlePush(bytes));sessions.set(slot,account);calls.set(slot,new CallSession(account));}
  const nasimSessions=new Map([1,2].map(slot=>[slot,nasimSessionFactory(slot)]));
  const rubikaSessions=new Map([1,2].map(slot=>[slot,rubikaSessionFactory(slot,{saveSession:record=>rubikaWrite(slot,()=>vault.save('rubika',slot,record))})]));
- const eitaaSessions=new Map([1,2].map(slot=>[slot,eitaaSessionFactory(slot,{saveSession:record=>eitaaWrite(slot,()=>vault.save('eitaa',slot,record))})]));
+ const eitaaSessions=new Map([1,2].map(slot=>[slot,eitaaSessionFactory(slot,{saveSession:record=>eitaaWrite(slot,()=>vault.save('eitaa',slot,record)),saveRecovery:record=>eitaaWrite(slot,()=>vault.saveRecovery('eitaa',slot,record))})]));
  const privacyAccounts={igap:sessions,nasim:nasimSessions,rubika:rubikaSessions,eitaa:eitaaSessions},privacyBusy=new Set(),privacyCache=new Map(),privacyGeneration=new Map(),privacyControllers=new Map();
  function privacyStatus(provider,slot){const account=privacyAccounts[provider].get(slot),entry=privacyCache.get(provider+'/'+slot);return entry&&account.state.signedIn&&entry.userId===account.state.userId?{...entry.value,checkedAt:entry.checkedAt,stale:Date.now()-entry.checkedAt>30000}:null;}
  async function callPrivacy(provider,slot,allow=false){
@@ -63,7 +63,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     const accounts=[];for(const [slot,session]of sessions)accounts.push({provider:'igap',slot,...session.state,call:calls.get(slot).state,stored:await vault.has('igap',slot)});
     const nasimAccounts=[];for(const [slot,session]of nasimSessions)nasimAccounts.push({provider:'nasim',slot,...session.state,call:nasimCalls.getCall(slot),stored:await vault.has('nasim',slot)});
     const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,call:rubikaCalls.getCall(slot),busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot)});
-    const eitaaAccounts=[];for(const [slot,session]of eitaaSessions)eitaaAccounts.push({provider:'eitaa',slot,...session.state,call:eitaaCalls.getCall(slot),busy:session.state.busy||eitaaOperations.has(slot),stored:await vault.has('eitaa',slot)});
+    const eitaaAccounts=[];for(const [slot,session]of eitaaSessions)eitaaAccounts.push({provider:'eitaa',slot,...session.state,call:eitaaCalls.getCall(slot),busy:session.state.busy||eitaaOperations.has(slot),stored:await vault.has('eitaa',slot),recoveryStored:await vault.hasRecovery('eitaa',slot)});
     for(const [provider,list]of Object.entries({igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts}))for(const account of list){account.callPrivacy=privacyStatus(provider,account.slot);account.callPrivacySupported=privacy.supported(provider);account.busy||=privacyBusy.has(provider+'/'+account.slot);}
     return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking||locking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts},nasimMedia:nasimCalls.state,eitaaMedia:eitaaCalls.state,rubikaMedia:rubikaCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:true,liveCallVerified:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:true,liveCallVerified:false,tunnelReady:false}}});
    }
@@ -107,14 +107,14 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     if(!vault.unlocked)throw error('vault_locked',423);const slot=Number(eitaa[1]),session=eitaaSessions.get(slot);let result;
     const tracked=eitaa[2]!=='stop';if(tracked&&eitaaOperations.has(slot))throw error('account_busy',409);if(tracked)eitaaOperations.add(slot);
     try{switch(eitaa[2]){
-     case 'start':{let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
+     case 'start':{if(await vault.hasRecovery('eitaa',slot))throw error('auth_recovery_available');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
      case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
      case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
-     case 'resume':eitaaCalls.invalidate();if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('eitaa',slot);if(!record)throw error('no_saved_session');result=await session.restore(record);}break;
+     case 'resume':eitaaCalls.invalidate();if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('eitaa',slot);if(record)result=await session.restore(record);else{const recovery=await vault.loadRecovery('eitaa',slot);if(!recovery)throw error('no_saved_session');result=await session.recoverAuthorization(recovery);}}if(session.state.signedIn)await eitaaWrite(slot,()=>vault.removeRecovery('eitaa',slot));break;
      case 'refresh':eitaaCalls.invalidate();result=await session.refresh();break;
      case 'stop':eitaaCalls.invalidate();session.stop();return json({ok:true});
-     case 'logout':eitaaCalls.invalidate();result=await session.logout();await eitaaWrite(slot,()=>vault.remove('eitaa',slot));return json({ok:true,...result});
-     case 'forget':if(session.state.busy)throw error('account_busy',409);eitaaCalls.invalidate();session.close();await eitaaWrite(slot,()=>vault.remove('eitaa',slot));return json({ok:true});
+     case 'logout':eitaaCalls.invalidate();result=await session.logout();await eitaaWrite(slot,async()=>{await vault.remove('eitaa',slot);await vault.removeRecovery('eitaa',slot);});return json({ok:true,...result});
+     case 'forget':if(session.state.busy)throw error('account_busy',409);eitaaCalls.invalidate();session.close();await eitaaWrite(slot,async()=>{await vault.remove('eitaa',slot);await vault.removeRecovery('eitaa',slot);});return json({ok:true});
     }return json({ok:true,...result});}finally{if(tracked)eitaaOperations.delete(slot);}
    }
    const rubika=url.pathname.match(/^\/api\/rubika\/([12])\/(start|verify|password|resume|register|stop|logout|forget)$/);

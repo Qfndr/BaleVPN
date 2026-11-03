@@ -9,7 +9,9 @@ const REASONS = new Set(['arguments_not_allowed', 'unsafe_environment', 'identit
   'bridge_panic', 'config_timeout', 'input_closed', 'invalid_config', 'invalid_role',
   'invalid_token', 'invalid_pairing', 'invalid_port', 'invalid_profile', 'event_stream_unavailable',
   'output_closed', 'invalid_command', 'invalid_control_command', 'transport_closed',
-  'transport_disconnected', 'transport_failed', 'connect_timeout', 'server_setup_failed', 'proxy_bind_failed']);
+  'transport_disconnected', 'transport_failed', 'connect_timeout', 'server_setup_failed', 'proxy_bind_failed',
+  'publisher_pc_failed', 'publisher_pc_closed', 'subscriber_pc_failed', 'subscriber_pc_closed',
+  'signal_closed', 'signal_ended', 'server_leave', 'carrier_track_ended', 'peer_left']);
 function fail(reason) { return Object.assign(new Error('Native bridge ' + reason), {reason}); }
 function cert(value) { return typeof value === 'string' && value.length >= 128 &&
   value.length <= 16384 && value.length % 2 === 0 && /^[a-f0-9]+$/.test(value); }
@@ -27,6 +29,7 @@ class NativeBridge {
   #role;
   #context;
   #latest = {};
+  #serverLeave = null;
   #reason = null;
   #stderrBytes = 0;
   #resolve;
@@ -92,6 +95,13 @@ class NativeBridge {
   }
 
   #event(value) {
+    if(value.event==='serverLeave'){
+      const code=(n,max)=>n===null||Number.isInteger(n)&&n>=0&&n<=max;
+      if(!['connecting','connected'].includes(this.#phase)||this.#serverLeave||
+        !keys(value,['event','reasonCode','actionCode','canReconnect'])||
+        !code(value.reasonCode,16)||!code(value.actionCode,2)||!bool(value.canReconnect))throw fail('invalid_native_output');
+      this.#serverLeave={reasonCode:value.reasonCode,actionCode:value.actionCode,canReconnect:value.canReconnect};return;
+    }
     if (value.event === 'prepared') {
       if (this.#phase !== 'starting' || value.protocol !== 1 || !cert(value.publicCertificate) ||
           !keys(value, ['event', 'protocol', 'publicCertificate'])) throw fail('invalid_native_output');
@@ -182,6 +192,7 @@ class NativeBridge {
       context: this.#context ? {...this.#context} : null,
       ...this.#latest, quic: this.#latest.quic ? {...this.#latest.quic} : null,
       reason: this.#reason, stderrPresent: this.#stderrBytes > 0,
+      serverLeave:this.#serverLeave?{...this.#serverLeave}:null,
       providerPathVerified: false, billingVerified: false, internationalOutageVerified: false};
   }
 }

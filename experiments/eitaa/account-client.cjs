@@ -4,6 +4,7 @@
 const os=require('node:os'),crypto=require('node:crypto'),wire=require('./wire.cjs'),codec=require('./auth-wire.cjs');
 const {Transport,ApiError}=require('./http-client.cjs');
 const privacyCodec=require('./privacy-wire.cjs');
+const AUTH_RECOVERY_FRAME=Symbol('Eitaa private authorization recovery frame');
 const AUTH=new Set(['users.getUsers','auth.logOut','eitaaRefreshToken','account.getPrivacy','account.setPrivacy']);
 const CODES=new Set(['PHONE_NUMBER_INVALID','PHONE_CODE_INVALID','PHONE_CODE_EXPIRED','PHONE_CODE_EMPTY','PHONE_NUMBER_BANNED','SESSION_PASSWORD_NEEDED','PASSWORD_HASH_INVALID','INVALID_LOGIN','AUTH_KEY_UNREGISTERED','SESSION_REVOKED','INVALID_CONSTRUCTOR']);
 const FIELDS={
@@ -40,9 +41,10 @@ function passwordHash(password,salt){
  try{return crypto.createHash('sha256').update(salt).update(bytes).update(salt).digest();}finally{bytes.fill(0);}
 }
 class AccountClient{
- #transport;#imei;#token;#language;#profile;
- constructor({imei,token:sessionToken='',language='fa',provider='eitaa',profile=deviceProfile(),...options}={}){
+ #transport;#imei;#token;#language;#profile;#captureAuthRecovery;
+ constructor({imei,token:sessionToken='',language='fa',provider='eitaa',profile=deviceProfile(),captureAuthRecovery=false,...options}={}){
   if(provider!=='eitaa'||typeof imei!=='string'||!/^[a-z0-9]{15}__web$/.test(imei)||!token(sessionToken)||!['fa','en'].includes(language)||!validProfile(profile))throw new ApiError('invalid_credentials');
+  if(typeof captureAuthRecovery!=='boolean')throw new ApiError('invalid_credentials');this.#captureAuthRecovery=captureAuthRecovery;
   this.#transport=new Transport(options);this.#imei=imei;this.#token=sessionToken;this.#language=language;this.#profile={deviceModel:profile.deviceModel,systemVersion:profile.systemVersion};
  }
  setToken(value){this.#transport.assertOpen();if(!text(value,4096))throw new ApiError('invalid_credentials');this.#token=value;}
@@ -50,7 +52,12 @@ class AccountClient{
   this.#transport.assertOpen();const value=requestInput(name,input,this.#language,this.#profile);if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
   const selected=name==='account.getPrivacy'||name==='account.setPrivacy'?privacyCodec:codec;
   const body=wire.envelope(selected.method(name,value),{imei:this.#imei,token:this.#token});
-  let result=selected.response(await this.#transport.post(body,options),name);this.#transport.assertOpen();if(result?._==='rpc_result')result=result.result;
+  const frame=await this.#transport.post(body,options);let result;
+  try{result=selected.response(frame,name);}catch(error){
+   if(this.#captureAuthRecovery&&['auth.signIn','auth.checkPassword2'].includes(name)&&error instanceof wire.WireError&&['unknown_flags','trailing_data'].includes(error.reason))Object.defineProperty(error,AUTH_RECOVERY_FRAME,{value:Buffer.from(frame),enumerable:false});
+   throw error;
+  }finally{frame.fill(0);}
+  this.#transport.assertOpen();if(result?._==='rpc_result')result=result.result;
   if(result?._==='error'||result?._==='eitta_error')throw serviceError(result);
   if(['eitaa_updates_expire_token','eitaa_token_updating'].includes(result?._))throw new ApiError('session_refresh_required');
   // Preserve the acknowledgement honestly, never invent a service-issued hash.
@@ -59,4 +66,4 @@ class AccountClient{
  }
  close(){this.#transport.close();this.#token='';this.#imei='';}
 }
-module.exports={AccountClient,passwordHash,deviceProfile,validProfile,serviceError};
+module.exports={AccountClient,passwordHash,deviceProfile,validProfile,serviceError,AUTH_RECOVERY_FRAME};

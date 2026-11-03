@@ -32,4 +32,20 @@ function liveKitSession(response,selfId,peerId){
  if(response.action!==30914||response.joinedUserId!==id(selfId).toString()||!response.token||!/^[-\w]+\.[-\w]+\.[-\w]+$/.test(response.token))throw new Error('No LiveKit credentials for this account');
  return {provider:'igap',url:'wss://call.igap.net/',token:response.token,peerId:id(peerId).toString()};
 }
-module.exports={ACTIONS,encodeRoomRequest,roomRequestFields,decodeRoomResponse,liveKitSession};
+// LiveKit protocol/auth/grants.go defines video.room/video.roomJoin. These
+// claims bind an authenticated service push to the active call; they do not
+// verify a JWT signature. The fixed LiveKit service performs that verification.
+function liveKitPushBinding(token,selfId,roomId,nowSeconds=Math.floor(Date.now()/1000)){
+ const result={claimsReadable:false,roomClaimPresent:false,roomClaimMatches:false,joinGrant:false,subjectMatches:false,timeValid:false};
+ try{if(typeof token!=='string'||token.length>16384||!/^[-\w]+\.[-\w]+\.[-\w]+$/.test(token))return result;const part=token.split('.')[1],bytes=Buffer.from(part,'base64url');if(bytes.toString('base64url')!==part||bytes.length>12000)return result;const claims=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));if(!claims||typeof claims!=='object'||Array.isArray(claims))return result;
+  result.claimsReadable=true;result.roomClaimPresent=typeof claims.video?.room==='string';result.roomClaimMatches=result.roomClaimPresent&&claims.video.room===id(roomId).toString();result.joinGrant=claims.video?.roomJoin===true;result.subjectMatches=claims.sub===id(selfId).toString();result.timeValid=Number.isSafeInteger(claims.exp)&&claims.exp>nowSeconds&&(claims.nbf===undefined||Number.isSafeInteger(claims.nbf)&&claims.nbf<=nowSeconds+5);
+ }catch{}return result;
+}
+function liveKitMediaGrants(token){
+ const result={publish:null,subscribe:null,publishData:null,microphoneAllowed:null};
+ try{if(typeof token!=='string'||token.length>16384||!/^[-\w]+\.[-\w]+\.[-\w]+$/.test(token))return result;const part=token.split('.')[1],bytes=Buffer.from(part,'base64url');if(bytes.toString('base64url')!==part||bytes.length>12000)return result;const video=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes))?.video;if(!video||typeof video!=='object'||Array.isArray(video))return result;
+  for(const [name,key]of [['publish','canPublish'],['subscribe','canSubscribe'],['publishData','canPublishData']])if(typeof video[key]==='boolean')result[name]=video[key];
+  const sources=video.canPublishSources;if(Array.isArray(sources)&&sources.length>0&&sources.length<=16&&sources.every(source=>typeof source==='string'&&source.length<=64))result.microphoneAllowed=sources.includes('microphone');
+ }catch{}return result;
+}
+module.exports={ACTIONS,encodeRoomRequest,roomRequestFields,decodeRoomResponse,liveKitSession,liveKitPushBinding,liveKitMediaGrants};

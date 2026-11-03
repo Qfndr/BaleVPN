@@ -60,6 +60,14 @@ test('schema mismatch diagnostics expose only validated numeric fields and canno
  }
 });
 
+test('trailing-data diagnostics validate numeric bounds and redact all supplied response content',async()=>{
+ const wire=require('../experiments/eitaa/wire.cjs');
+ for(const remaining of [4,-1,'private-secret']){
+  const f=fixture({hook:async method=>{if(method==='auth.sendCode'){const e=new wire.WireError('trailing_data');e.trailingDiagnostic={constructorId:3439659286,lastConstructorId:1,consumed:20,total:24,remaining,raw:'private-secret'};throw e;}}});
+  await assert.rejects(f.session.start(phone),{reason:'trailing_data'});const state=f.session.state;assert.ok(!JSON.stringify(state).includes('private-secret'));assert.equal(!!state.error.trailingDiagnostic,remaining===4);assert.equal(state.signedIn,false);assert.equal(f.calls.length,1);f.session.close();
+ }
+});
+
 test('accepted tokens survive a failed disk save and can be sealed on explicit resume without another sign-in',async()=>{
  let fail=true;const f=fixture({save:async()=>{if(fail)throw Error('disk fixture');}});await f.session.start(phone);await assert.rejects(f.session.verify('123456'),{reason:'session_save_failed'});assert.equal(f.session.state.hasSession,true);assert.equal(f.session.state.signedIn,false);assert.equal(f.calls.filter(c=>c.method==='users.getUsers').length,0);
  fail=false;await f.session.resume();assert.equal(f.saved.length,1);assert.equal(f.calls.filter(c=>c.method==='auth.signIn').length,1);assert.equal(f.session.state.signedIn,true);f.session.close();

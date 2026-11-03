@@ -43,6 +43,14 @@ Implemented:
 - `call-session.cjs`: account-bound create/offer/ring/join/leave, two-party
   admission, no automatic dialing, correlated credentials and late-response
   cancellation. Real service calls and actual media transport are unverified.
+  The inspected Web peer-call flow joins the receiver explicitly and supplies
+  the caller a token-bearing join push. Such caller pushes are admitted only
+  on the pinned authenticated outgoing call, with the exact room and subject,
+  join grant and usable expiry. The `video.room` / `video.roomJoin` layout is
+  defined in [LiveKit's protocol grants](https://github.com/livekit/protocol/blob/main/auth/grants.go).
+  These checks bind context; LiveKit verifies the token signature. Unknown
+  iGap claim naming fails closed with boolean-only `joinPushDiagnostic` state.
+  A repeated join control after accepted push does not send another join RPC.
 - `room-signaling.cjs`: current room create/join/invite/leave codec, with
   account-specific LiveKit credential checks. Live room calls remain untested.
 - `web-v3-schema.json`: factual call/auth field descriptors extracted from the

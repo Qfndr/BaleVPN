@@ -2,7 +2,7 @@
 // automatic dialing. Credentials are available only to an in-process transport.
 const {wire: w} = require('./signaling.cjs');
 const {RpcError} = require('./rpc-connection.cjs');
-const {roomRequestFields, decodeRoomResponse, liveKitSession} = require('./room-signaling.cjs');
+const {roomRequestFields, decodeRoomResponse, liveKitSession, liveKitPushBinding, liveKitMediaGrants} = require('./room-signaling.cjs');
 
 function identifier(value) {
   if (typeof value !== 'string' || !/^[1-9]\d{0,19}$/.test(value) || BigInt(value) > 0xffffffffffffffffn) {
@@ -27,6 +27,9 @@ class CallSession {
   #ringing = false;
   #ignored = 0;
   #terminalDiagnostic = null;
+  #joinPushDiagnostic = null;
+  #pendingReceiverJoin = null;
+  #mediaGrants = null;
 
   constructor(account) { this.#account = account; }
 
@@ -97,6 +100,8 @@ class CallSession {
     if (peerId === this.#self) throw new RpcError('call_self_not_allowed');
     return this.#run(async request => {
       this.#terminalDiagnostic = null;
+      this.#joinPushDiagnostic = null;
+      this.#mediaGrants = null;
       this.#peer = peerId;
       this.#room = null;
       this.#credential = null;
@@ -135,6 +140,8 @@ class CallSession {
         this.#room = response.roomId;
         this.#peer = response.peerId;
         this.#terminalDiagnostic = null;
+        this.#joinPushDiagnostic = null;
+        this.#mediaGrants = null;
         this.#phase = 'incoming';
         this.#credential = null;
         this.#peerJoined = this.#ringing = false;
@@ -145,14 +152,28 @@ class CallSession {
       }
       if (response.action === 30916 && response.receiverId === this.#peer) {
         this.#ringing = true;
+      } else if (response.action === 30914 && response.token) {
+        const binding = liveKitPushBinding(response.token, this.#self, this.#room);
+        const contextMatches = this.#phase === 'outgoing' && !this.#busy && this.#allowed.has(this.#peer) && response.joinedUserId === this.#self && !this.#credential;
+        this.#joinPushDiagnostic = {...binding, contextMatches};
+        if (contextMatches && Object.values(binding).every(value => value === true)) {
+          this.#credential = liveKitSession(response, this.#self, this.#peer);
+          this.#mediaGrants = liveKitMediaGrants(response.token);
+          this.#phase = 'joined';
+        } else this.#ignored++;
       } else if (response.action === 30914 && response.joinedUserId === this.#peer && !response.token) {
         this.#peerJoined = true;
       } else if (response.action === 30918 && [this.#self, this.#peer].includes(response.leftUserId)) {
+        const pending = this.#pendingReceiverJoin;
+        if (response.leftUserId === this.#self && this.#phase === 'joining' && this.#busy && pending && pending.epoch === this.#epoch && pending.rpc === this.#rpc && pending.room === this.#room) {
+          pending.selfLeaveDeferred = true;
+          this.#terminalDiagnostic = {cause: 'service_leave', endingActor: 'self', phaseBeforeEnd: 'joining', selfLeaveDeferred: true};
+          return;
+        }
         this.#terminalDiagnostic = {cause: 'service_leave', endingActor: response.leftUserId === this.#self ? 'self' : 'peer', phaseBeforeEnd: this.#phase};
         this.reset('ended');
       } else {
-        // Join pushes have no room ID. Never turn an unsolicited token into
-        // transport credentials; explicitly join and use the correlated reply.
+        // Other roomless pushes cannot authorize transport credentials.
         this.#ignored++;
       }
     } catch {
@@ -172,14 +193,33 @@ class CallSession {
   }
 
   async join() {
+    // A caller's matching service push already supplies the official join;
+    // pressing the acceptance control again must not issue a redundant RPC.
+    if (this.#phase === 'joined') { this.#context(); return this.state; }
     if (!['incoming', 'outgoing'].includes(this.#phase) || !this.#room) throw new RpcError('no_joinable_call');
-    return this.#run(async request => {
-      this.#phase = 'joining';
-      const response = await request(914, {roomId: this.#room});
-      this.#credential = liveKitSession(response, this.#self, this.#peer);
-      this.#phase = 'joined';
-      return this.state;
-    });
+    const pending = this.#phase === 'incoming' ? {epoch:this.#epoch,rpc:this.#rpc,room:this.#room,selfLeaveDeferred:false} : null;
+    this.#pendingReceiverJoin = pending;
+    try { return await this.#run(async request => {
+        this.#phase = 'joining';
+        const response = await request(914, {roomId: this.#room});
+        // A roomless self-leave cannot identify which room ended. Only the
+        // same correlated join, still on its pinned connection/epoch, may
+        // resolve that ambiguity; require exact usable current-room claims.
+        if (pending?.selfLeaveDeferred) {
+          const binding = liveKitPushBinding(response.token, this.#self, pending.room);
+          this.#joinPushDiagnostic = {...binding,contextMatches:response.joinedUserId === this.#self};
+          if (!this.#joinPushDiagnostic.contextMatches || !Object.values(binding).every(value=>value===true)) throw new RpcError('call_join_binding_mismatch');
+        }
+        this.#credential = liveKitSession(response, this.#self, this.#peer);
+        this.#mediaGrants = liveKitMediaGrants(response.token);
+        if (pending?.selfLeaveDeferred) this.#terminalDiagnostic = {...this.#terminalDiagnostic,joinConfirmed:true};
+        this.#phase = 'joined';
+        return this.state;
+      });
+    } catch (error) {
+      if (pending?.selfLeaveDeferred && pending.epoch === this.#epoch) this.reset('ended');
+      throw error;
+    } finally { if (this.#pendingReceiverJoin === pending) this.#pendingReceiverJoin = null; }
   }
 
   async leave({terminate = false} = {}) {
@@ -207,6 +247,9 @@ class CallSession {
   }
 
   reset(phase = 'idle') {
+    if (phase !== 'ended') this.#mediaGrants = null;
+    this.#pendingReceiverJoin = null;
+    if (phase !== 'ended') this.#joinPushDiagnostic = null;
     if (phase !== 'ended') this.#terminalDiagnostic = null;
     this.#epoch++;
     this.#busy = false;
@@ -226,6 +269,8 @@ class CallSession {
       ringing: this.#ringing, peerJoined: this.#peerJoined,
       credentialReady: !!this.#credential, ignoredEvents: this.#ignored, error: this.#error,
       terminalDiagnostic: this.#terminalDiagnostic ? {...this.#terminalDiagnostic} : null,
+      joinPushDiagnostic: this.#joinPushDiagnostic ? {...this.#joinPushDiagnostic} : null,
+      mediaGrants: this.#mediaGrants ? {...this.#mediaGrants} : null,
       liveCallVerified: false, tunnelReady: false, billingVerified: false};
   }
 }

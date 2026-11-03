@@ -3,6 +3,11 @@ const {wire:w}=require('../experiments/igap/signaling.cjs');
 const security=require('../experiments/igap/secure-connection.cjs');
 const room=require('../experiments/igap/room-signaling.cjs');
 const auth={id:'fixture',authenticated:true};
+test('media grant diagnostics expose only fixed booleans and preserve unknown omitted permissions',()=>{
+ const jwt=video=>'header.'+Buffer.from(JSON.stringify({sub:'private-user',video,metadata:'private-token'})).toString('base64url')+'.signature';
+ assert.deepEqual(room.liveKitMediaGrants(jwt({canPublish:true,canSubscribe:false,canPublishData:false,canPublishSources:['microphone']})),{publish:true,subscribe:false,publishData:false,microphoneAllowed:true});assert.deepEqual(room.liveKitMediaGrants(jwt({})),{publish:null,subscribe:null,publishData:null,microphoneAllowed:null});assert.equal(room.liveKitMediaGrants(jwt({canPublishSources:['camera']})).microphoneAllowed,false);
+ for(const input of ['header.payload.signature',jwt({canPublish:'private-token',canSubscribe:1,canPublishSources:[{secret:'private-token'}]}),jwt(null)]){const value=room.liveKitMediaGrants(input);assert.ok(Object.values(value).every(v=>v===null||typeof v==='boolean'));assert.ok(!JSON.stringify(value).includes('private'));}
+});
 test('v3 room offer/join preserve account and room uint64 IDs with actual field ordering',()=>{
  const bytes=room.encodeRoomRequest(915,auth,{roomId:18446744073709551615n,peerId:42n});assert.equal(bytes.readUInt16LE(),915);
  const fields=w.parse(bytes.subarray(2));assert.equal(w.one(fields,2,0),42n);assert.equal(w.one(fields,3,0),18446744073709551615n);
