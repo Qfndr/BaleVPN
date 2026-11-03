@@ -3,13 +3,15 @@
 'use strict';
 const os=require('node:os'),crypto=require('node:crypto'),wire=require('./wire.cjs'),codec=require('./auth-wire.cjs');
 const {Transport,ApiError}=require('./http-client.cjs');
-const AUTH=new Set(['users.getUsers','auth.logOut','eitaaRefreshToken']);
+const privacyCodec=require('./privacy-wire.cjs');
+const AUTH=new Set(['users.getUsers','auth.logOut','eitaaRefreshToken','account.getPrivacy','account.setPrivacy']);
 const CODES=new Set(['PHONE_NUMBER_INVALID','PHONE_CODE_INVALID','PHONE_CODE_EXPIRED','PHONE_CODE_EMPTY','PHONE_NUMBER_BANNED','SESSION_PASSWORD_NEEDED','PASSWORD_HASH_INVALID','INVALID_LOGIN','AUTH_KEY_UNREGISTERED','SESSION_REVOKED','INVALID_CONSTRUCTOR']);
 const FIELDS={
  'auth.sendCode':['phone_number'],
  'auth.signIn':['phone_number','phone_code_hash','phone_code'],
  'auth.checkPassword2':['password_hash','phone_number','phone_code'],
- 'account.getPassword':[],'account.getPasswordLayer68':[],'users.getUsers':[],'auth.logOut':[],'eitaaRefreshToken':[]
+ 'account.getPassword':[],'account.getPasswordLayer68':[],'users.getUsers':[],'auth.logOut':[],'eitaaRefreshToken':[],
+ 'account.getPrivacy':[],'account.setPrivacy':['allowAll']
 };
 function text(v,max){return typeof v==='string'&&!!v&&Buffer.byteLength(v)<=max&&!/[\0\r\n]/.test(v);}
 function token(v){return v===''||text(v,4096);}
@@ -22,6 +24,8 @@ function requestInput(name,input,language,profile){
  if(name==='auth.signIn'){if(!phone(input.phone_number)||!code(input.phone_code)||!text(input.phone_code_hash,4096))throw new ApiError('invalid_request');}
  if(name==='auth.checkPassword2'){if(!(input.password_hash instanceof Uint8Array)||input.password_hash.length!==32||!phone(input.phone_number)||!code(input.phone_code))throw new ApiError('invalid_request');}
  if(name==='users.getUsers')return {id:[{_:'inputUserSelf'}]};
+ if(name==='account.getPrivacy')return {key:{_:'inputPrivacyKeyPhoneCall'}};
+ if(name==='account.setPrivacy'){if(Object.keys(input).length!==1||input.allowAll!==true)throw new ApiError('invalid_request');return {key:{_:'inputPrivacyKeyPhoneCall'},rules:[{_:'inputPrivacyValueAllowAll'}]};}
  if(name==='eitaaRefreshToken')return {app_info:{_:'eitaaAppInfo',build_version:2496,device_model:profile.deviceModel,system_version:profile.systemVersion,app_version:'5.2 K',lang_code:language,sign:''}};
  return input;
 }
@@ -44,8 +48,9 @@ class AccountClient{
  setToken(value){this.#transport.assertOpen();if(!text(value,4096))throw new ApiError('invalid_credentials');this.#token=value;}
  async request(name,input={},options={}){
   this.#transport.assertOpen();const value=requestInput(name,input,this.#language,this.#profile);if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
-  const body=wire.envelope(codec.method(name,value),{imei:this.#imei,token:this.#token});
-  let result=codec.response(await this.#transport.post(body,options),name);this.#transport.assertOpen();if(result?._==='rpc_result')result=result.result;
+  const selected=name==='account.getPrivacy'||name==='account.setPrivacy'?privacyCodec:codec;
+  const body=wire.envelope(selected.method(name,value),{imei:this.#imei,token:this.#token});
+  let result=selected.response(await this.#transport.post(body,options),name);this.#transport.assertOpen();if(result?._==='rpc_result')result=result.result;
   if(result?._==='error'||result?._==='eitta_error')throw serviceError(result);
   if(['eitaa_updates_expire_token','eitaa_token_updating'].includes(result?._))throw new ApiError('session_refresh_required');
   // Preserve the acknowledgement honestly, never invent a service-issued hash.

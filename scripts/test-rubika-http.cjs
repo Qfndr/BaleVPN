@@ -48,6 +48,18 @@ test('only fixed error codes survive raw response errors; a response never trigg
  await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),e=>e.reason==='not_authorized'&&e.serviceCode==='INVALID_AUTH'&&!e.message.includes('fixture-private-error'));
  assert.equal(count,1);client.close();
 });
+
+test('official status semantics distinguish a denied operation from a revoked authentication',async()=>{
+ for(const [status,reason]of [['ERROR_GENERIC','access_denied'],['ERROR_ACTION','not_authorized']]){
+  const client=new HttpClient({fetchImpl:async()=>Response.json({status,status_det:'INVALID_AUTH',message:'private service detail'})});await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),e=>e.reason===reason&&e.diagnosticStatus===status&&e.serviceCode==='INVALID_AUTH'&&!e.message.includes('private'));client.close();
+ }
+});
+
+test('call privacy transport permits only the observed Everybody field and cannot mutate other privacy controls',async()=>{
+ let count=0;const client=new HttpClient({fetchImpl:async()=>{count++;throw Error('Private fixture failure');}});
+ for(const value of [{settings:{can_called_by:'Nobody'},update_parameters:['can_called_by']},{settings:{show_my_phone_number:'Everybody'},update_parameters:['show_my_phone_number']},{settings:{can_called_by:'Everybody'},update_parameters:['can_called_by','exceptions']},{settings:{can_called_by:'Everybody',exceptions:[{setting_type:'CanCalled',exclude_users:['fixture-user']}]},update_parameters:['can_called_by','exceptions']}])await assert.rejects(client.request('setSetting',value,{credentials:{provider:'rubika',auth}}),/invalid_request/);
+ await assert.rejects(client.request('getPrivacySetting',{unknown:true},{credentials:{provider:'rubika',auth}}),/invalid_request/);assert.equal(count,0);client.close();
+});
 test('closing cancels outstanding I/O, prevents late discovery selection and rejects concurrent requests',async()=>{
  let release,signal;const client=new HttpClient({fetchImpl:async(url,o)=>{signal=o.signal;return new Promise(r=>{release=r;});}});
  const pending=client.discover();await assert.rejects(client.discover(),/account_busy/);client.close();assert.equal(signal.aborted,true);

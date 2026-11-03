@@ -5,7 +5,7 @@ const {userId,clientId}=require('./call-codec.cjs');
 const SAFE=new Set(['timeout','closed','not_authorized','not_connected','call_transport_failed','call_rejected','invalid_call_response',
  'invalid_native_output','operation_timeout','input_closed','process_exited','process_failed','prepare_timeout','invalid_relay',
  'invalid_pairing','invalid_description','negotiation_failed','gather_timeout','no_relay','transport_closed','transport_failed',
- 'transport_disconnected','proxy_bind_failed','server_setup_failed','media_setup_failed','unsafe_environment']);
+ 'transport_disconnected','ice_failed','dtls_failed','relay_route_failed','proxy_bind_failed','server_setup_failed','media_setup_failed','unsafe_environment']);
 class CallError extends Error {constructor(reason,fatal=false){super('Nasim call '+reason);this.reason=reason;this.fatal=fatal;}}
 const error=(reason,fatal=false)=>new CallError(reason,fatal);
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}

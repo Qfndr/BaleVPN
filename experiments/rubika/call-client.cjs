@@ -5,7 +5,7 @@ const {diagnostic}=require('./call-diagnostic.cjs');
 const {StreamError}=require('./socket-updates.cjs');
 const crypto=require('node:crypto'),{HttpClient,ApiError}=require('./http-client.cjs');
 const codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
-const SAFE=new Set(['closed','account_busy','invalid_request','invalid_credentials','not_authorized','rate_limited',
+const SAFE=new Set(['closed','account_busy','invalid_request','invalid_credentials','not_authorized','access_denied','rate_limited',
  'registration_required','service_rejected','timeout','network_error','http_error','invalid_dc_server',
  'invalid_dc_response','invalid_response','invalid_encrypted_response','response_too_large','tls_verification_disabled']);
 const UPDATE_ERRORS=new Set(['invalid_call_response','call_identity_mismatch','unsupported_call_protocol','update_account_mismatch']);

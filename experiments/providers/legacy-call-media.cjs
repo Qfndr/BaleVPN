@@ -6,7 +6,7 @@ class MediaError extends Error{constructor(reason){super(label+' media '+reason)
 const fail=reason=>{throw new MediaError(reason);};
 const cert=v=>typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);
 const SAFE=new Set(['invalid_relay','invalid_pairing','invalid_description','invalid_native_output','prepare_timeout','operation_timeout','input_closed','process_exited','process_failed',
- 'negotiation_failed','gather_timeout','no_relay','connect_timeout','transport_closed','transport_failed','transport_disconnected','proxy_bind_failed','server_setup_failed','media_setup_failed',
+ 'negotiation_failed','gather_timeout','no_relay','connect_timeout','transport_closed','transport_failed','transport_disconnected','ice_failed','dtls_failed','relay_route_failed','proxy_bind_failed','server_setup_failed','media_setup_failed',
  'non_relay_candidate','candidate_context_mismatch','invalid_candidate','invalid_audio','invalid_media_signal','unsupported_media','no_relay_candidate',
  'invalid_media_context','duplicate_initial_setup','too_many_candidates']);
 class CallMedia{

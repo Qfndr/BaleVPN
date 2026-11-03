@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-03",
+  "scope": "Pinned official Web and bounded Android DEX facts; call privacy implementation with offline tests",
+  "officialWeb": "https://web.rubika.ir/",
+  "webBundle": "main-es2015.6421623571994c9dd619.js",
+  "webBundleSha256": "47b302b9166ed8c9138f9d959e9107c53dcb78c9447f8281715f657b68080acb",
+  "webMethods": {
+    "read": "getPrivacySetting",
+    "responseField": "privacy_setting",
+    "write": "setSetting",
+    "writeShape": "settings map and update_parameters containing exactly its keys"
+  },
+  "androidApk": "https://cdnu6.iranlms.ir/Rubika_4_1_1.apk",
+  "androidApkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "boundedAndroidFacts": {
+    "privacyClass": "ir.aaap.messengercore.model.api.PrivacySettings",
+    "callField": "can_called_by",
+    "accessLevels": ["Everybody", "MyContacts", "Nobody"],
+    "callExceptionType": "CanCalled",
+    "exceptionFields": ["setting_type", "exclude_users", "include_users"],
+    "exceptionUserListGenericSignature": "Ljava/util/ArrayList<Ljava/lang/String;>;",
+    "settingParameterEnumFields": ["can_called_by", "exceptions"],
+    "setSettingInputConstructor": "settings = map; update_parameters = map.keySet()",
+    "installedOrExecuted": false,
+    "fullControlFlowProven": false
+  },
+  "officialErrorSemantics": {
+    "ERROR_ACTION_INVALID_AUTH": "invalidAuth",
+    "ERROR_GENERIC_INVALID_AUTH": "accessDenied",
+    "sourceMethod": "handleCustomErrors"
+  },
+  "localImplementation": {
+    "callOnlySetter": true,
+    "otherPrivacyFieldsPreserved": true,
+    "onlyCanCalledExceptionsRemoved": true,
+    "otherExceptionEntriesPreservedAndReadBack": true,
+    "independentReadbackRequired": true,
+    "automaticRetryOrCall": false,
+    "publicExceptionIds": false,
+    "accountBindingAndCancellation": true,
+    "livePrivacyReadVerified": false,
+    "livePrivacyWriteVerified": false,
+    "requestCallAccessDeniedFixed": false
+  }
+}

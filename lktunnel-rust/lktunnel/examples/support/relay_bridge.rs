@@ -2,7 +2,7 @@
 // by the separate binary, never chosen by a control message.
 use lktunnel::{
     carrier,
-    peer_media::{MediaError, RelayMedia},
+    peer_media::{MediaDisconnectStage, MediaError, RelayMedia},
     security::Identity,
     EventKind, TunnelRole,
 };
@@ -175,6 +175,14 @@ fn reason(error: MediaError) -> &'static str {
         MediaError::Closed => "transport_closed",
     }
 }
+fn disconnect_reason(stage: MediaDisconnectStage, fallback: &'static str) -> &'static str {
+    match stage {
+        MediaDisconnectStage::Ice => "ice_failed",
+        MediaDisconnectStage::Dtls => "dtls_failed",
+        MediaDisconnectStage::RelayRoute => "relay_route_failed",
+        MediaDisconnectStage::Unknown => fallback,
+    }
+}
 fn reader() -> mpsc::Receiver<Result<Value, &'static str>> {
     let (tx, rx) = mpsc::channel(4);
     std::thread::spawn(move || {
@@ -294,7 +302,7 @@ async fn run(
                             "socksAddress":address,"peerAuthenticated":tunnel.is_peer_authenticated(),"proxyReady":tunnel.is_proxy_ready(),
                             "providerPathVerified":false,"billingVerified":false}))?;
                     },
-                    EventKind::Disconnected|EventKind::PeerLeft=>return Err("transport_disconnected"),EventKind::Error=>return Err("transport_failed"),_=>{},
+                    EventKind::Disconnected|EventKind::PeerLeft=>return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected")),EventKind::Error=>return Err(disconnect_reason(media.disconnect_stage(),"transport_failed")),_=>{},
                 }
             },
             _=interval.tick(),if connected=>{
@@ -397,6 +405,26 @@ mod tests {
         assert!(description(&json!({"type":"offer","sdp":"invalid-secret"}), "offer").is_err());
         assert!(description(&json!({"type":"answer","sdp":"v=0"}), "offer").is_err());
         assert_eq!(reason(MediaError::Negotiation), "negotiation_failed");
+        assert_eq!(
+            disconnect_reason(MediaDisconnectStage::Ice, "transport_disconnected"),
+            "ice_failed"
+        );
+        assert_eq!(
+            disconnect_reason(MediaDisconnectStage::Dtls, "transport_disconnected"),
+            "dtls_failed"
+        );
+        assert_eq!(
+            disconnect_reason(MediaDisconnectStage::RelayRoute, "transport_disconnected"),
+            "relay_route_failed"
+        );
+        assert_eq!(
+            disconnect_reason(MediaDisconnectStage::Unknown, "transport_disconnected"),
+            "transport_disconnected"
+        );
+        assert_eq!(
+            disconnect_reason(MediaDisconnectStage::Unknown, "transport_failed"),
+            "transport_failed"
+        );
     }
     #[tokio::test]
     async fn stop_and_eof_cancel_pending_setup_without_waiting_for_network() {

@@ -23,6 +23,13 @@ test('auth response decoding retains exact private token/self fields without tru
  assert.deepEqual(codec.response(vector([user]),'users.getUsers'),[user]);
  const wrappedVector=Buffer.concat([new wire.Writer().int(wire.IDS.rpcResult).long(5n).finish(),vector([user])]);assert.deepEqual(codec.response(wrappedVector,'users.getUsers').result,[user]);
 });
+
+test('official Android sentCode bit-8 message extension parses without relaxing unknown flags or exposing a fake code',()=>{
+ const value={...sent,message:'fixture-service-delivery-message'};
+ const encoded=codec.object(value);assert.equal(encoded.readUInt32LE(4),260);assert.deepEqual(codec.response(encoded,'auth.sendCode'),value);
+ const unknown=Buffer.from(encoded);unknown.writeUInt32LE(260|512,4);assert.throws(()=>codec.response(unknown,'auth.sendCode'),{reason:'unknown_flags'});
+ assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.sendCode'));
+});
 test('unknown flags, truncation, wrong result types, malformed vectors and nested RPC wrappers fail closed',()=>{
  const body=codec.object(auth),bad=Buffer.from(body);bad.writeInt32LE(1,4);assert.throws(()=>codec.response(bad,'auth.signIn'),{reason:'unknown_flags'});
  assert.throws(()=>codec.response(bad,'auth.signIn'),error=>{assert.deepEqual(error.schemaDiagnostic,{constructorId:(-855308010)>>>0,flags:1,knownMask:0});assert.ok(!JSON.stringify(error).includes(auth.token));return true;});

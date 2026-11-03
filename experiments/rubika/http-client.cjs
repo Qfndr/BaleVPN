@@ -2,10 +2,11 @@
 // Discovery is anonymous; account auth/private keys never go to the DC service.
 const wire=require('./wire.cjs');
 const calls=require('./call-codec.cjs');
+const privacy=require('./privacy-wire.cjs');
 const {SocketUpdates,socketEndpoint}=require('./socket-updates.cjs');
 const DISCOVERY='https://getdcmess.iranlms.ir/';
 const DEFAULT='https://messengerg2c1.iranlms.ir/';
-const METHODS=new Set(['sendCode','signIn','registerDevice','getUserInfo','logout',...calls.PROTECTED_METHODS]);
+const METHODS=new Set(['sendCode','signIn','registerDevice','getUserInfo','logout','getPrivacySetting','setSetting',...calls.PROTECTED_METHODS]);
 const UNAUTH=new Set(['sendCode','signIn']);
 const CODES=new Set(['INVALID_AUTH','INVALID_INPUT','NOT_REGISTERED','TOO_REQUESTS','ACCESS_DENIED']);
 class ApiError extends Error{constructor(reason,status,serviceCode){super('Rubika API '+reason);this.reason=reason;if(status!==undefined)this.statusCode=status;if(CODES.has(serviceCode))this.serviceCode=serviceCode;}}
@@ -18,6 +19,8 @@ function object(value){return value&&typeof value==='object'&&!Array.isArray(val
 function exact(value,fields){return object(value)&&Object.keys(value).every(k=>fields.includes(k));}
 function text(value,max){return typeof value==='string'&&value.length>0&&Buffer.byteLength(value)<=max&&!/[\0\r\n]/.test(value);}
 function input(method,value){
+ if(method==='getPrivacySetting'){if(!exact(value,[])||Object.keys(value).length)throw new ApiError('invalid_request');return value;}
+ if(method==='setSetting'){if(!privacy.validSettingInput(value))throw new ApiError('invalid_request');return value;}
  if(calls.PROTECTED_METHODS.includes(method)){try{return calls.validateInput(method,value);}catch{throw new ApiError('invalid_request');}}
  const phone=v=>typeof v==='string'&&/^[1-9]\d{6,14}$/.test(v);
  if(method==='sendCode'){
@@ -39,7 +42,9 @@ function serviceResult(value,allowEmpty=false){
  if(!object(value))throw new ApiError('invalid_response');
  if(value.status!=='OK'){
   const code=CODES.has(value.status_det)?value.status_det:undefined;
-  const error=new ApiError(code==='INVALID_AUTH'?'not_authorized':code==='TOO_REQUESTS'?'rate_limited':code==='NOT_REGISTERED'?'registration_required':'service_rejected',undefined,code);
+  // Official Web distinguishes a revoked session from an operation denied to
+  // an otherwise usable session, even though both carry INVALID_AUTH.
+  const error=new ApiError(code==='INVALID_AUTH'?(value.status==='ERROR_GENERIC'?'access_denied':'not_authorized'):code==='TOO_REQUESTS'?'rate_limited':code==='NOT_REGISTERED'?'registration_required':'service_rejected',undefined,code);
   // Only short alphabetic status symbols; never return service data or messages.
   for(const [key,valueKey]of [['diagnosticStatus','status'],['diagnosticDetail','status_det']])if(typeof value[valueKey]==='string'&&/^[A-Z][A-Z_]{0,39}$/.test(value[valueKey]))error[key]=value[valueKey];
   throw error;
@@ -107,7 +112,7 @@ class HttpClient {
    throw new ApiError('invalid_encrypted_response');
   }
   let decoded;try{decoded=wire.decrypt(response.data_enc,session);}catch{throw new ApiError('invalid_encrypted_response');}
-  return serviceResult(decoded,['registerDevice','logout'].includes(method));
+  return serviceResult(decoded,['registerDevice','logout','setSetting'].includes(method));
  }
  close(){this.#closed=true;this.#pending?.abort();this.#updatesAbort?.abort();this.#updatesAbort=null;this.#updates?.close();this.#updates=null;this.#updateBinding=null;this.#session=null;}
 }

@@ -4,7 +4,7 @@ const {startLab}=require('../experiments/providers/lab.cjs'),{fixture}=require('
 (async()=>{
  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'rubika-browser-')),f=await fixture(),errors=[],external=[];let lab,browser;
  try{
-  lab=await startLab({directory,port:0,rubikaBridgeExecutable:path.resolve('fixture-rubika-helper'),rubikaOpenBridge:f.open,rubikaCallClientFactory:f.createClient,rubikaSessionFactory:slot=>f.accounts.get(slot),rubikaSessionPollInterval:1000});
+  lab=await startLab({privacyOperation:require('./provider-privacy-fixture.cjs').allow,directory,port:0,rubikaBridgeExecutable:path.resolve('fixture-rubika-helper'),rubikaOpenBridge:f.open,rubikaCallClientFactory:f.createClient,rubikaSessionFactory:slot=>f.accounts.get(slot),rubikaSessionPollInterval:1000});
   browser=await chromium.launch({headless:true,...process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{}});
   const page=await browser.newPage({viewport:{width:1440,height:1050}});page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>{const url=route.request().url();if(url.startsWith(lab.origin)||url.startsWith('data:'))return route.continue();if(!/(^|\.)kaspersky-labs\.com$/.test(new URL(url).hostname))external.push(new URL(url).origin);return route.abort();});

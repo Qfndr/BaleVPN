@@ -3,7 +3,7 @@ const {startLab}=require('../experiments/providers/lab.cjs'),{fixture}=require('
 async function run(fn,{helper=true}={}){
  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'rubika-lab-test-')),f=await fixture();let lab;
  try{
-  lab=await startLab({directory,port:0,...helper?{rubikaBridgeExecutable:path.resolve('fixture-rubika-helper'),rubikaOpenBridge:f.open}: {},rubikaCallClientFactory:f.createClient,rubikaSessionPollInterval:0,rubikaSessionFactory:slot=>f.accounts.get(slot)});
+  lab=await startLab({privacyOperation:require('./provider-privacy-fixture.cjs').allow,directory,port:0,...helper?{rubikaBridgeExecutable:path.resolve('fixture-rubika-helper'),rubikaOpenBridge:f.open}: {},rubikaCallClientFactory:f.createClient,rubikaSessionPollInterval:0,rubikaSessionFactory:slot=>f.accounts.get(slot)});
   const key=new URL(lab.url).hash.slice(1),request=(url,body,headers={})=>fetch(lab.origin+'/api/'+url,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
   await fn({lab,request,...f});
  }finally{await lab?.close();f.broker.close();if(!path.resolve(directory).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(directory).startsWith('rubika-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(directory,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

@@ -18,12 +18,13 @@ use webrtc::{
         media_engine::{MediaEngine, MIME_TYPE_OPUS},
         APIBuilder,
     },
+    dtls_transport::dtls_transport_state::RTCDtlsTransportState,
     ice::candidate::{
         candidate_base::unmarshal_candidate, Candidate, CandidatePairState, CandidateType,
     },
     ice_transport::{
-        ice_candidate::RTCIceCandidateInit, ice_credential_type::RTCIceCredentialType,
-        ice_server::RTCIceServer,
+        ice_candidate::RTCIceCandidateInit, ice_connection_state::RTCIceConnectionState,
+        ice_credential_type::RTCIceCredentialType, ice_server::RTCIceServer,
     },
     media::Sample,
     peer_connection::{
@@ -58,11 +59,41 @@ pub enum RelayRoute {
     Other,
 }
 
+/// Failure stage only: no candidate IDs, addresses, credentials or SDP.
+/// This classifies observed terminal state; it does not claim the root cause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaDisconnectStage {
+    Unknown,
+    Ice,
+    Dtls,
+    RelayRoute,
+}
+
+fn disconnect_stage(
+    ice: RTCIceConnectionState,
+    dtls: RTCDtlsTransportState,
+    route_rejected: bool,
+) -> MediaDisconnectStage {
+    if route_rejected {
+        MediaDisconnectStage::RelayRoute
+    } else if dtls == RTCDtlsTransportState::Failed {
+        MediaDisconnectStage::Dtls
+    } else if matches!(
+        ice,
+        RTCIceConnectionState::Failed | RTCIceConnectionState::Disconnected
+    ) {
+        MediaDisconnectStage::Ice
+    } else {
+        MediaDisconnectStage::Unknown
+    }
+}
+
 pub struct RelayMedia {
     pc: Arc<RTCPeerConnection>,
     input: CarrierInput,
     tasks: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
     closed: Arc<AtomicBool>,
+    route_rejected: Arc<AtomicBool>,
 }
 
 fn config(servers: Vec<RTCIceServer>) -> Result<RTCConfiguration, MediaError> {
@@ -183,17 +214,20 @@ impl RelayMedia {
         // Construct the owner before fallible track setup, so all later error
         // paths close the PC and invalidate the input as well as the output.
         let closed = Arc::new(AtomicBool::new(false));
+        let route_rejected = Arc::new(AtomicBool::new(false));
         let owner = Self {
             pc: pc.clone(),
             input: input.clone(),
             tasks: tasks.clone(),
             closed: closed.clone(),
+            route_rejected: route_rejected.clone(),
         };
         let weak_pc = Arc::downgrade(&pc);
         let state_input = input.clone();
         pc.on_peer_connection_state_change(Box::new(move |state| {
             let weak_pc = weak_pc.clone();
             let input = state_input.clone();
+            let route_rejected = route_rejected.clone();
             Box::pin(async move {
                 if state == RTCPeerConnectionState::Connected {
                     // Verify the nominated pair through typed stats before
@@ -202,6 +236,7 @@ impl RelayMedia {
                     if route(&pc.get_stats().await) == RelayRoute::RelayPair {
                         let _ = input.connected();
                     } else {
+                        route_rejected.store(true, Ordering::Release);
                         input.disconnect();
                         tokio::spawn(async move {
                             let _ = pc.close().await;
@@ -391,6 +426,17 @@ impl RelayMedia {
         }
         route(&self.pc.get_stats().await)
     }
+
+    /// Read-only classification used only when the owning carrier reports a
+    /// terminal event. Unknown stays unknown instead of inferring an ICE or
+    /// DTLS fault from an elapsed timeout or a generic QUIC disconnect.
+    pub fn disconnect_stage(&self) -> MediaDisconnectStage {
+        disconnect_stage(
+            self.pc.ice_connection_state(),
+            self.pc.sctp().transport().state(),
+            self.route_rejected.load(Ordering::Acquire),
+        )
+    }
     pub async fn close(&self) {
         if self.closed.swap(true, Ordering::AcqRel) {
             return;
@@ -431,6 +477,63 @@ mod tests {
             Server,
         },
     };
+
+    #[test]
+    fn disconnect_stage_requires_observed_failure_and_never_infers_from_waiting_or_closure() {
+        for ice in [
+            RTCIceConnectionState::Unspecified,
+            RTCIceConnectionState::New,
+            RTCIceConnectionState::Checking,
+            RTCIceConnectionState::Connected,
+            RTCIceConnectionState::Completed,
+            RTCIceConnectionState::Closed,
+        ] {
+            for dtls in [
+                RTCDtlsTransportState::Unspecified,
+                RTCDtlsTransportState::New,
+                RTCDtlsTransportState::Connecting,
+                RTCDtlsTransportState::Connected,
+                RTCDtlsTransportState::Closed,
+            ] {
+                assert_eq!(
+                    disconnect_stage(ice, dtls, false),
+                    MediaDisconnectStage::Unknown
+                );
+            }
+        }
+        assert_eq!(
+            disconnect_stage(
+                RTCIceConnectionState::Failed,
+                RTCDtlsTransportState::New,
+                false
+            ),
+            MediaDisconnectStage::Ice
+        );
+        assert_eq!(
+            disconnect_stage(
+                RTCIceConnectionState::Disconnected,
+                RTCDtlsTransportState::Connected,
+                false
+            ),
+            MediaDisconnectStage::Ice
+        );
+        assert_eq!(
+            disconnect_stage(
+                RTCIceConnectionState::Connected,
+                RTCDtlsTransportState::Failed,
+                false
+            ),
+            MediaDisconnectStage::Dtls
+        );
+        assert_eq!(
+            disconnect_stage(
+                RTCIceConnectionState::Closed,
+                RTCDtlsTransportState::Closed,
+                true
+            ),
+            MediaDisconnectStage::RelayRoute
+        );
+    }
 
     struct Auth;
     impl AuthHandler for Auth {

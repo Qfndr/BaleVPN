@@ -8,7 +8,7 @@ const REASONS=new Set(['arguments_not_allowed','unsafe_environment','identity_fa
  'input_closed','invalid_command','invalid_config','invalid_role','invalid_pairing','invalid_port','invalid_profile','invalid_relay',
  'invalid_description','media_setup_failed','negotiation_failed','gather_timeout','no_relay','transport_closed',
  'event_stream_unavailable','output_closed','invalid_control_command','connect_timeout','server_setup_failed',
- 'proxy_bind_failed','transport_failed','transport_disconnected']);
+ 'proxy_bind_failed','transport_failed','transport_disconnected','ice_failed','dtls_failed','relay_route_failed']);
 function fail(reason){return Object.assign(new Error('Native media '+reason),{reason});}
 function keys(v,allowed){return v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(k=>allowed.includes(k));}
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}

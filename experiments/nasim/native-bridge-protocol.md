@@ -51,6 +51,15 @@ connection a 45-second deadline, and the parent bounds each negotiation to
 20 seconds. The core separately bounds ICE gathering to ten seconds. The
 parent forcibly terminates a helper that fails to stop. Key logging and TLS
 verification bypass are refused; raw panic/network error text is not emitted.
+
+Terminal media errors may additionally use the fixed reasons `ice_failed`,
+`dtls_failed`, and `relay_route_failed`. The first reflects an observed failed
+or disconnected ICE state, the second an observed failed DTLS state, and the
+third a rejected nominated relay/relay route check. These describe the observed
+stage, not the network's root cause. Waiting, intentional closure, and an unknown
+QUIC disconnect retain the existing generic reason; a timeout alone is not
+labelled an ICE or DTLS failure. No candidate IDs, addresses, SDP, usernames,
+passwords, or raw library errors are added to the IPC protocol.
 No global logger is installed in the helper.
 
 Build and verify from `lktunnel-rust`:

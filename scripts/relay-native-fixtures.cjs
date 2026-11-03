@@ -35,6 +35,10 @@ test('answer, setAnswer and relay candidates have private correlated acknowledgm
  await assert.rejects(b.setAnswer(sdp('answer')),/operation_busy/);f.emit({event:'candidateAdded'});await candidate;
  const answer=b.setAnswer(sdp('answer'));f.emit({event:'negotiated'});await answer;stopped(f,b);
 });
+
+test('typed ICE, DTLS and route failures retain only the fixed diagnostic reason',async()=>{
+ for(const reason of ['ice_failed','dtls_failed','relay_route_failed']){const f=fixture(),b=await f.open();await configure(f,b);const pending=b.offer(),rejected=assert.rejects(pending,e=>e.reason===reason);f.emit({event:'error',reason});await rejected;assert.equal(b.state.phase,'failed');assert.equal(b.state.reason,reason);assert.ok(!JSON.stringify(b.state).includes(secret));}
+});
 test('other providers, self pairing, unsupported transports and invalid roles/ports never configure',async()=>{
  const f=fixture(),b=await f.open();
  for(const c of [{...call,provider:'bale'},{...call,provider:provider==='eitaa'?'nasim':'eitaa'},{...call,selfId:'42'},{...call,token:'private-token'},

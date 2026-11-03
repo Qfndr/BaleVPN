@@ -8,8 +8,8 @@ const fail=reason=>{throw new AccountMediaError(reason);};
 const SAFE=new Set(['not_authenticated','account_binding_changed','invalid_account_binding','call_cancelled','call_not_accepted','unsupported_media_profile',
  'invalid_media_parameters','media_lease_already_issued','media_lease_expired','media_lease_consumed','ambiguous_media_update','invalid_signal_size','invalid_signal_authentication','signal_too_old','signal_replayed',
  'invalid_signal_counter','invalid_signal_payload','unsupported_signal_type','invalid_relay','invalid_pairing','invalid_media_context','duplicate_initial_setup',
- 'too_many_candidates','invalid_media_signal','media_cancelled','media_operation_failed','transport_disconnected','transport_failed','network_error','timeout',
- 'rate_limited','not_authorized','registration_required','service_rejected','call_operation_failed','media_not_ready']);
+ 'too_many_candidates','invalid_media_signal','media_cancelled','media_operation_failed','transport_disconnected','ice_failed','dtls_failed','relay_route_failed','transport_failed','network_error','timeout',
+ 'rate_limited','not_authorized','access_denied','registration_required','service_rejected','call_operation_failed','media_not_ready']);
 const LOCAL=new Set(['media_not_prepared','media_not_paired','media_not_attached','invalid_call_options']);
 class AccountMedia{
  #session;#media;#lease;#cipher;#context;#phase='idle';#reason=null;#busy=false;#epoch=0;#timer;#started=false;#discarded=0;

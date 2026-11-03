@@ -1,0 +1,65 @@
+{
+  "provider": "eitaa",
+  "sourceSha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+  "methods": [
+    {
+      "id": -623130288,
+      "method": "account.getPrivacy",
+      "params": [
+        {
+          "name": "key",
+          "type": "InputPrivacyKey"
+        }
+      ],
+      "type": "account.PrivacyRules"
+    },
+    {
+      "id": -906486552,
+      "method": "account.setPrivacy",
+      "params": [
+        {
+          "name": "key",
+          "type": "InputPrivacyKey"
+        },
+        {
+          "name": "rules",
+          "type": "Vector<InputPrivacyRule>"
+        }
+      ],
+      "type": "account.PrivacyRules"
+    }
+  ],
+  "constructors": [
+    {
+      "id": -88417185,
+      "predicate": "inputPrivacyKeyPhoneCall",
+      "params": [],
+      "type": "InputPrivacyKey"
+    },
+    {
+      "id": 407582158,
+      "predicate": "inputPrivacyValueAllowAll",
+      "params": [],
+      "type": "InputPrivacyRule"
+    },
+    {
+      "id": 1352683077,
+      "predicate": "account.privacyRules",
+      "params": [
+        {
+          "name": "rules",
+          "type": "Vector<PrivacyRule>"
+        },
+        {
+          "name": "chats",
+          "type": "Vector<Chat>"
+        },
+        {
+          "name": "users",
+          "type": "Vector<User>"
+        }
+      ],
+      "type": "account.PrivacyRules"
+    }
+  ]
+}

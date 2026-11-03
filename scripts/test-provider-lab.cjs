@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {startLab}=require('../experiments/providers/lab.cjs');
 const {FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,eitaaFixture,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,eitaaNative=false}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,eitaaNative=false,privacyOperation=require('./provider-privacy-fixture.cjs').allow}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({privacyOperation,directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key,eitaaHarness});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
@@ -22,6 +22,38 @@ test('two Eitaa HTTP accounts distinguish bare acknowledgement, handle password 
  assert.equal(calls.filter(c=>c.action==='eitaa-auth.sendCode').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-auth.signIn').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-users.getUsers').length,4);
  await request('/api/eitaa/1/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.eitaa[0].stored,false);assert.equal(state.providerAccounts.eitaa[1].signedIn,true);
 }));
+
+test('call privacy routes require vault, account and same-origin access and auto-check both call accounts',async()=>{
+ const operations=[];await fixture(async({request})=>{
+  assert.equal((await request('/api/igap/1/call-privacy')).status,423);await request('/api/vault/unlock',{password:'fixture-passphrase-123'});assert.equal((await request('/api/igap/1/call-privacy')).status,400);
+  for(const slot of [1,2]){await request('/api/igap/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/igap/'+slot+'/verify',{code:'12345'});}
+  assert.equal((await request('/api/igap/1/allow-calls',{}, {Origin:'https://foreign.invalid'})).status,403);assert.equal((await request('/api/igap/1/allow-calls',{settings:{anything:true}})).status,400);assert.equal(operations.length,0);
+  const read=await(await request('/api/igap/1/call-privacy')).json();assert.equal(read.callPrivacy.mode,'contacts');await request('/api/igap/1/allow-calls',{});let state=await(await request('/api/state')).json();assert.equal(state.accounts[0].callPrivacy.allowedForEveryone,true);assert.equal(state.accounts[1].callPrivacy,null);
+  assert.equal((await request('/api/igap/1/call/dial',{targetSlot:2})).status,200);assert.deepEqual(operations.map(v=>v.allow),[false,true,true]);assert.notEqual(operations[1].userId,operations[2].userId);
+  await request('/api/igap/1/stop',{});state=await(await request('/api/state')).json();assert.equal(state.accounts[0].callPrivacy,null);
+ },{privacyOperation:async(provider,account,{allow})=>{operations.push({provider,userId:account.state.userId,allow});return {supported:true,verified:true,mode:allow?'everyone':'contacts',allowedForEveryone:allow,changed:allow};}});
+});
+
+test('unverified call permission blocks dialing without sending a call',()=>fixture(async({request,calls})=>{
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});for(const slot of [1,2]){await request('/api/igap/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/igap/'+slot+'/verify',{code:'12345'});}const before=calls.length;
+ const reply=await(await request('/api/igap/1/call/dial',{targetSlot:2})).json();assert.equal(reply.reason,'privacy_not_applied');assert.equal(calls.length,before);
+},{privacyOperation:async()=>({supported:true,verified:false,mode:'everyone',allowedForEveryone:true,changed:true})}));
+
+test('a late privacy response after vault lock and same-account restore cannot populate the cache',async()=>{
+ let resolve,signal,first=true;await fixture(async({request})=>{
+  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});await request('/api/igap/1/start',{country:'IR',phone:'09120000001'});await request('/api/igap/1/verify',{code:'12345'});
+  const pending=request('/api/igap/1/allow-calls',{});const deadline=Date.now()+2000;while(!resolve){if(Date.now()>deadline)throw Error('Privacy fixture did not start');await new Promise(r=>setTimeout(r,5));}
+  await request('/api/vault/lock',{});assert.equal(signal.aborted,true);await request('/api/vault/unlock',{password:'fixture-passphrase-123'});await request('/api/igap/1/resume',{});resolve({supported:true,verified:true,mode:'everyone',allowedForEveryone:true});assert.equal((await(await pending).json()).reason,'account_binding_changed');const state=await(await request('/api/state')).json();assert.equal(state.accounts[0].callPrivacy,null);assert.equal((await request('/api/igap/1/call-privacy')).status,200);
+ },{privacyOperation:async(_provider,_account,options)=>{if(first){first=false;signal=options.signal;return new Promise(r=>{resolve=r;});}return {supported:true,verified:true,mode:'everyone',allowedForEveryone:true};}});
+});
+
+test('changing account one while account two privacy is pending cannot authorize a dial',async()=>{
+ let resolve;await fixture(async({request,calls})=>{
+  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});for(const slot of [1,2]){await request('/api/igap/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/igap/'+slot+'/verify',{code:'12345'});}
+  const pending=request('/api/igap/1/call/dial',{targetSlot:2}),deadline=Date.now()+2000;while(!resolve){if(Date.now()>deadline)throw Error('Second permission check did not start');await new Promise(r=>setTimeout(r,5));}
+  await request('/api/igap/1/resume',{});const before=calls.length;resolve({supported:true,verified:true,mode:'everyone',allowedForEveryone:true});assert.equal((await(await pending).json()).reason,'account_binding_changed');assert.equal(calls.length,before);
+ },{privacyOperation:async(_provider,account)=>account.state.userId==='2'?new Promise(r=>{resolve=r;}):{supported:true,verified:true,mode:'everyone',allowedForEveryone:true}});
+});
 
 async function waitForLab(request,predicate){const deadline=Date.now()+2000;while(true){const state=await(await request('/api/state')).json();if(predicate(state))return state;if(Date.now()>deadline)throw Error('Laboratory call state timed out');await new Promise(r=>setTimeout(r,5));}}
 async function eitaaLogin(request){await request('/api/vault/unlock',{password:'fixture-passphrase-123'});for(const slot of [1,2]){await request('/api/eitaa/'+slot+'/start',{country:'IR',phone:'0912000000'+slot});await request('/api/eitaa/'+slot+'/verify',{code:'123456'});if(slot===2)await request('/api/eitaa/2/password',{password:'fixture-password'});}}

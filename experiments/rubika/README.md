@@ -1,5 +1,22 @@
 # Rubika service-wire research
 
+Call privacy is isolated in `call-privacy.cjs` and `privacy-wire.cjs`. The explicit
+read/allow operation uses the official `getPrivacySetting` and `setSetting`
+methods, writes only `can_called_by: Everybody` plus removal of `CanCalled`
+exception entries when needed, preserves non-call exception entries, and checks
+the result with an independent read. Public results contain only the permission,
+counts and verification booleans. Unrelated phone/profile/last-seen settings,
+credentials and private exception GUIDs are not returned or rewritten. A close
+or changed account aborts the operation without a late follow-up setter.
+
+The pinned Web client's `handleCustomErrors` distinguishes
+`ERROR_ACTION / INVALID_AUTH` (invalid session) from
+`ERROR_GENERIC / INVALID_AUTH` (operation access denied). The transport now
+preserves this distinction. A denied call does not by itself prove that the
+whole session is revoked, or that changing privacy will permit Web calls.
+See `call-privacy-evidence-2026-11-03.json` for the exact primary-source facts.
+Live privacy reads/writes and a successful service call still need verification.
+
 This is an isolated research component, not a supported tunnel in the product.
 The Rubika lab tab now exposes two independent experimental login forms. No Bale/iGap/Nasim data,
 device registrations, sessions or traffic paths are read or changed.
