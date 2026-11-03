@@ -66,12 +66,11 @@ libc        = "0.2"
 # `runtime-tokio` because we drive quinn from the same tokio runtime
 # the rest of the crate uses.
 quinn       = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
-# Server-side: rcgen builds a self-signed cert at startup (we live
-# inside an already-DTLS-encrypted LK channel, so the TLS cert is
-# functionally throwaway). Client-side: rustls is configured with
-# `dangerous_configuration` to skip verification.
+# rcgen generates each account's pairing identity. Authenticated QUIC TLS 1.3
+# verifies explicitly paired certificates on both ends; private identities must be
+# retained securely by the host application. DTLS is an additional outer layer.
 rcgen       = "0.13"
-# Need rustls types directly to build the no-verify ClientConfig.
+# Need rustls types directly for mutual authentication and paired trust roots.
 rustls      = { version = "0.23", default-features = false, features = ["std", "ring"] }
 # quinn::AsyncUdpSocket returns Poll::Ready(()), so we lean on
 # futures_util's poll helpers in the bridge impl.

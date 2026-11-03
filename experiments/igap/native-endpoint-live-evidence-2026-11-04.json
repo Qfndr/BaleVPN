@@ -41,7 +41,32 @@
     "payloadTransferVerified": false,
     "interpretation": "The server publisher connection did not report a state transition before service ConnectionTimeout; no SDP installation error was reported. This narrows investigation but does not establish a root cause."
   },
-  "status": "Incomplete: native signaling restoration works, but independent native media failed before proxy readiness; investigate before VPS testing or product integration",
+  "earlyIceQueueFixTrial": {
+    "defaultMediaStartup": true,
+    "mutualAuthenticationVerified": false,
+    "serverPublisherState": "unobserved",
+    "serverSubscriberState": "connected",
+    "serverLeaveReasonCode": 14,
+    "conclusion": "Retaining early ICE candidates fixes an independently tested bug but did not resolve this iGap startup failure"
+  },
+  "synchronizedStartupTrial": {
+    "controlMode": "--control-stdin --defer-media",
+    "bothAccountsRestoredWithoutOtp": true,
+    "bothTransportSessionsObtainedBeforeMediaStart": true,
+    "bothMutuallyAuthenticated": true,
+    "clientProxyReady": true,
+    "bothPublisherAndSubscriberStates": "connected",
+    "download": {"bytes": 352240, "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3", "elapsedSeconds": 2.324855},
+    "upload": {"bytes": 71680, "sha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7", "echoMatches": true, "elapsedSeconds": 2.553176},
+    "payloadTransferVerified": true,
+    "endpointErrorsDuringCleanup": false,
+    "interpretation": "Waiting for both native transport sessions before media start succeeded in this controlled comparison. A single-account service-driven startup coordination path still needs implementation and validation."
+  },
+  "rejectedCoordinationTrials": [
+    {"strategy": "Wait for a roomless service peer-join hint on the receiver", "result": "peer_join_timeout", "receiverHintObserved": false, "experimentalImplementationRemoved": true},
+    {"strategy": "Join SFU and wait for receiver subscriber connection before publishing", "result": "media_failed before publishing", "receiverPublisherOfferSent": false, "receiverPublisherState": "unobserved", "receiverSubscriberState": "unobserved", "clientPublisherState": "connected", "clientSubscriberState": "connected", "experimentalImplementationRemoved": true}
+  ],
+  "status": "Partial: independent native processes transferred verified HTTPS payloads with an explicit shared-controller startup barrier. Automatic single-account startup, foreign VPS use and product integration remain unverified.",
   "priorProof": "live-media-evidence-2026-11-03.json covers the separate JavaScript-controlled native-helper path only",
   "foreignVpsVerified": false,
   "operatorBillingVerified": false,

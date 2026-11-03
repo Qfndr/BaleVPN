@@ -282,6 +282,27 @@ async fn stop_only(
         _ => Err("invalid_control_command"),
     }
 }
+fn control_mode(args: &[String]) -> Option<bool> {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["--control-stdin"] => Some(false),
+        ["--control-stdin", "--defer-media"] => Some(true),
+        _ => None,
+    }
+}
+fn media_start_command(line: &[u8]) -> Result<bool, &'static str> {
+    if command(line, "startMedia") {
+        Ok(true)
+    } else if command(line, "stop") {
+        Ok(false)
+    } else {
+        Err("invalid_control_command")
+    }
+}
 struct Admission(PeerId);
 #[async_trait]
 impl IncomingHandler for Admission {
@@ -304,6 +325,7 @@ async fn run(
     identity: &mut Identity,
     app: &IgapSignaling,
     rx: &mut mpsc::Receiver<Result<Zeroizing<Vec<u8>>, &'static str>>,
+    defer_media: bool,
 ) -> Result<(), &'static str> {
     let line = tokio::time::timeout(Duration::from_secs(60), rx.recv())
         .await
@@ -399,8 +421,31 @@ async fn run(
         return Err("invalid_transport_session");
     }
     output(
-        json!({"event":"transportSession","role":if role==TunnelRole::Server {"server"} else {"client"},"serviceLeave":app.service_leave_diagnostic()}),
+        json!({"event":"transportSession","role":if role==TunnelRole::Server {"server"} else {"client"},"serviceLeave":app.service_leave_diagnostic(),"deferredMediaStart":defer_media}),
     )?;
+    // Diagnostic only: reproduce the successful laboratory's simultaneous
+    // start without transferring room tokens between endpoint processes.
+    if defer_media {
+        let deadline = tokio::time::sleep(Duration::from_secs(20));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                line=rx.recv()=>{
+                    let Some(line)=line else {return Ok(());};
+                    if !media_start_command(&line?)? {return Ok(());}
+                    break;
+                },
+                _=&mut deadline=>return Err("media_start_timeout"),
+                _=health.tick()=>if !app.is_connected() {return Err("signaling_disconnected");},
+                event=signaling_events.recv()=>match event {
+                    Some(SignalingEvent::CallEnded{..})=>return Err("call_ended"),
+                    Some(SignalingEvent::AuthExpired)=>return Err("auth_expired"),
+                    Some(SignalingEvent::ProtocolObsolete)=>return Err("protocol_obsolete"),
+                    None=>return Err("signaling_closed"),_=>{}
+                }
+            }
+        }
+    }
     let tunnel = LkTunnel::connect_with_options(ENDPOINT, session.token, role, options);
     let _disconnect = Disconnect(tunnel.clone());
     let mut media_events = tunnel.events().ok_or("media_events_unavailable")?;
@@ -445,10 +490,10 @@ async fn run(
     }
 }
 fn main() -> std::process::ExitCode {
-    if std::env::args().skip(1).collect::<Vec<_>>() != ["--control-stdin"] {
+    let Some(defer_media) = control_mode(&std::env::args().skip(1).collect::<Vec<_>>()) else {
         let _ = output(json!({"event":"error","reason":"explicit_control_required"}));
         return std::process::ExitCode::FAILURE;
-    }
+    };
     std::panic::set_hook(Box::new(|_| {
         let _ = output(json!({"event":"error","reason":"endpoint_panic"}));
     }));
@@ -482,7 +527,7 @@ fn main() -> std::process::ExitCode {
             Arc::new(MemoryStore::default()),
             RegistrationProfile::Independent,
         );
-        let result = run(&mut identity, &app, &mut reader()).await;
+        let result = run(&mut identity, &app, &mut reader(), defer_media).await;
         let _ = tokio::time::timeout(Duration::from_secs(10), app.hang_up()).await;
         app.disconnect().await;
         result
@@ -508,6 +553,20 @@ mod tests {
         assert!(command(br#"{"command":"stop"}"#, "stop"));
         assert!(!command(br#"{"command":"stop","token":"secret"}"#, "stop"));
         assert!(!command(br#"{"command":"connect"}"#, "listen"));
+        assert_eq!(control_mode(&[]), None);
+        assert_eq!(control_mode(&["--control-stdin".into()]), Some(false));
+        assert_eq!(
+            control_mode(&["--control-stdin".into(), "--defer-media".into()]),
+            Some(true)
+        );
+        assert_eq!(control_mode(&["--defer-media".into()]), None);
+        assert_eq!(
+            media_start_command(br#"{"command":"startMedia"}"#),
+            Ok(true)
+        );
+        assert_eq!(media_start_command(br#"{"command":"stop"}"#), Ok(false));
+        assert!(media_start_command(br#"{"command":"connect"}"#).is_err());
+        assert!(media_start_command(br#"{"command":"startMedia","token":"private"}"#).is_err());
     }
     #[test]
     fn pairing_rejects_empty_duplicate_self_and_nonhex() {

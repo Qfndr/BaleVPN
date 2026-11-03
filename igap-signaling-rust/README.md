@@ -149,3 +149,12 @@ uses a zeroizing memory store, verifies the restored self identity internally,
 and prints booleans only. It disconnects without logging out or signing out.
 Use a private pipe for session JSON, never command arguments or environment
 variables. Both probes perform no network action by default.
+
+For a controlled timing comparison only, `native_endpoint --control-stdin
+--defer-media` emits `transportSession` before starting media and then requires
+the exact `{"command":"startMedia"}` control within 20 seconds. A two-process
+controller can wait for both endpoints before starting them, without sharing
+their private room tokens. `stop`, EOF, signaling failure or call termination
+still closes the pending call. The default endpoint starts media immediately;
+this diagnostic mode does not add latency to normal startup or establish VPS
+readiness by itself.

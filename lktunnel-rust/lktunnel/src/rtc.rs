@@ -21,7 +21,7 @@
 //! [`Engine::connect`] returns the engine, the published [`RtpSender`]s,
 //! and an [`EngineEvent`] stream; [`Engine::close`] tears it down.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -469,6 +469,54 @@ fn seed_peers(
     }
 }
 
+// webrtc-rs rejects (rather than buffers) trickle received before remote SDP.
+// Keep initial negotiation candidates local to their PC; this is not an ICE
+// restart queue. The signal loop is the sole setter of both remote descriptions.
+const MAX_REMOTE_ICE_JSON: usize = 16 * 1024;
+const MAX_PENDING_REMOTE_ICE: usize = 128;
+const MAX_PENDING_REMOTE_ICE_BYTES: usize = 64 * 1024;
+#[derive(Default)]
+struct PendingRemoteIce {
+    entries: VecDeque<(RTCIceCandidateInit, usize)>,
+    bytes: usize,
+}
+impl PendingRemoteIce {
+    fn push(&mut self, init: RTCIceCandidateInit, size: usize) -> Result<(), &'static str> {
+        if size > MAX_REMOTE_ICE_JSON { return Err("ICE candidate size limit"); }
+        if self.entries.iter().any(|(item, _)| item == &init) { return Ok(()); }
+        if self.entries.len() >= MAX_PENDING_REMOTE_ICE ||
+            size > MAX_PENDING_REMOTE_ICE_BYTES.saturating_sub(self.bytes) {
+            return Err("ICE candidate queue limit");
+        }
+        self.bytes += size;
+        self.entries.push_back((init, size));
+        Ok(())
+    }
+    async fn flush(&mut self, pc: &RTCPeerConnection) -> usize {
+        let Some(remote) = pc.remote_description().await else { return 0; };
+        let mut applied = 0;
+        while let Some((init, size)) = self.entries.pop_front() {
+            self.bytes -= size;
+            // Explicit fragments must belong to the SDP which unlocked this
+            // initial queue. Legacy candidates without a fragment are retained.
+            if init.username_fragment.as_ref().is_some_and(|fragment|
+                !remote.sdp.lines().any(|line| line.strip_prefix("a=ice-ufrag:") == Some(fragment.as_str()))) {
+                continue;
+            }
+            if pc.add_ice_candidate(init).await.is_ok() { applied += 1; }
+        }
+        applied
+    }
+}
+async fn add_remote_ice(pc: &RTCPeerConnection, pending: &mut PendingRemoteIce,
+    init: RTCIceCandidateInit, size: usize) -> Result<(), &'static str> {
+    if size > MAX_REMOTE_ICE_JSON { return Err("ICE candidate size limit"); }
+    if pc.remote_description().await.is_none() { return pending.push(init, size); }
+    // Malformed candidates have always been ignored; never log their addresses.
+    let _ = pc.add_ice_candidate(init).await;
+    Ok(())
+}
+
 /// Persistent signal-event loop: routes offer/answer/trickle to the right
 /// PC and turns `ParticipantUpdate` / `Leave` into [`EngineEvent`]s. Ends
 /// (emitting `Disconnected`) when the signal stream closes.
@@ -482,6 +530,8 @@ async fn signal_loop(
     local_identity: String,
     event_tx: tokio::sync::mpsc::UnboundedSender<EngineEvent>,
 ) {
+    let mut publisher_ice = PendingRemoteIce::default();
+    let mut subscriber_ice = PendingRemoteIce::default();
     while let Some(ev) = events.recv().await {
         match ev {
             SignalEvent::Close(reason) => {
@@ -496,7 +546,9 @@ async fn signal_loop(
                         Ok(offer) => {
                             if let Err(e) = subscriber.set_remote_description(offer).await {
                                 log::warn!("rtc[{id}]: sub set_remote: {e}");
-                            } else if let Ok(answer) = subscriber.create_answer(None).await {
+                            } else {
+                              subscriber_ice.flush(&subscriber).await;
+                              if let Ok(answer) = subscriber.create_answer(None).await {
                                 if let Err(e) = subscriber.set_local_description(answer.clone()).await {
                                     log::warn!("rtc[{id}]: sub set_local: {e}");
                                 } else {
@@ -510,6 +562,7 @@ async fn signal_loop(
                                         ))
                                         .await;
                                 }
+                              }
                             }
                         }
                         Err(e) => log::warn!("rtc[{id}]: parse offer: {e}"),
@@ -521,20 +574,27 @@ async fn signal_loop(
                         Ok(answer) => {
                             if let Err(e) = publisher.set_remote_description(answer).await {
                                 log::warn!("rtc[{id}]: pub set_remote: {e}");
+                            } else {
+                                publisher_ice.flush(&publisher).await;
                             }
                         }
                         Err(e) => log::warn!("rtc[{id}]: parse answer: {e}"),
                     }
                 }
                 proto::signal_response::Message::Trickle(t) => {
+                    let (pc, pending) = if t.target == proto::SignalTarget::Publisher as i32 {
+                        (&publisher, &mut publisher_ice)
+                    } else if t.target == proto::SignalTarget::Subscriber as i32 {
+                        (&subscriber, &mut subscriber_ice)
+                    } else { continue; };
+                    if t.candidate_init.len() > MAX_REMOTE_ICE_JSON {
+                        let _ = event_tx.send(EngineEvent::Disconnected("ICE candidate size limit".into()));
+                        return;
+                    }
                     if let Ok(init) = serde_json::from_str::<RTCIceCandidateInit>(&t.candidate_init) {
-                        let pc = if t.target == proto::SignalTarget::Publisher as i32 {
-                            &publisher
-                        } else {
-                            &subscriber
-                        };
-                        if let Err(e) = pc.add_ice_candidate(init).await {
-                            log::debug!("rtc[{id}]: add_ice_candidate: {e}");
+                        if let Err(reason) = add_remote_ice(pc, pending, init, t.candidate_init.len()).await {
+                            let _ = event_tx.send(EngineEvent::Disconnected(reason.into()));
+                            return;
                         }
                     }
                 }
@@ -559,6 +619,96 @@ fn server_leave_context(leave: &proto::LeaveRequest) -> String {
     let reason = if (0..=16).contains(&leave.reason) { leave.reason } else { -1 };
     let action = if (0..=2).contains(&leave.action) { leave.action } else { -1 };
     format!("server leave reason={reason} action={action} reconnect={}", u8::from(leave.can_reconnect))
+}
+
+#[cfg(test)]
+mod remote_ice_tests {
+    use super::*;
+    fn candidate(port: u16) -> RTCIceCandidateInit {
+        RTCIceCandidateInit { candidate: format!("candidate:1 1 udp 2130706431 127.0.0.1 {port} typ host"),
+            sdp_mid: Some("0".into()), sdp_mline_index: Some(0), username_fragment: None }
+    }
+    async fn pc() -> RTCPeerConnection {
+        APIBuilder::new().build().new_peer_connection(RTCConfiguration::default()).await.unwrap()
+    }
+    async fn remote_candidates(pc: &RTCPeerConnection) -> usize {
+        pc.get_stats().await.reports.values().filter(|s| matches!(s, webrtc::stats::StatsReportType::RemoteCandidate(_))).count()
+    }
+    async fn wait_candidate(pc: &RTCPeerConnection) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while remote_candidates(pc).await == 0 { tokio::time::sleep(Duration::from_millis(10)).await; }
+        }).await.expect("Buffered candidate never reached real ICE transport");
+    }
+    #[tokio::test]
+    async fn early_candidates_reach_real_transport_only_after_their_pc_gets_remote_sdp() {
+        let source = pc().await;
+        source.create_data_channel("fixture", None).await.unwrap();
+        let offer = source.create_offer(None).await.unwrap();
+        let publisher = pc().await;
+        let subscriber = pc().await;
+        assert!(matches!(publisher.add_ice_candidate(candidate(5000)).await,
+            Err(webrtc::Error::ErrNoRemoteDescription)));
+        let mut pub_queue = PendingRemoteIce::default();
+        let mut sub_queue = PendingRemoteIce::default();
+        add_remote_ice(&publisher, &mut pub_queue, candidate(5000), 100).await.unwrap();
+        add_remote_ice(&subscriber, &mut sub_queue, candidate(5001), 100).await.unwrap();
+        assert_eq!(pub_queue.flush(&publisher).await, 0);
+        assert_eq!(pub_queue.entries.len(), 1);
+        assert_eq!(remote_candidates(&publisher).await, 0);
+        // A rejected answer cannot unlock or discard the pending queue.
+        let wrong = RTCSessionDescription::answer(offer.sdp.clone()).unwrap();
+        assert!(publisher.set_remote_description(wrong).await.is_err());
+        assert_eq!(pub_queue.flush(&publisher).await, 0);
+        subscriber.set_remote_description(offer.clone()).await.unwrap();
+        assert_eq!(sub_queue.flush(&subscriber).await, 1);
+        wait_candidate(&subscriber).await;
+        assert_eq!(remote_candidates(&publisher).await, 0);
+        assert_eq!(pub_queue.entries.len(), 1);
+        publisher.set_remote_description(offer).await.unwrap();
+        assert_eq!(pub_queue.flush(&publisher).await, 1);
+        wait_candidate(&publisher).await;
+        assert!(pub_queue.entries.is_empty()); assert_eq!(pub_queue.bytes, 0);
+        publisher.close().await.unwrap(); subscriber.close().await.unwrap(); source.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn queued_fragment_must_match_initial_sdp_and_bad_candidates_do_not_block_good_ones() {
+        let source = pc().await;
+        source.create_data_channel("fixture", None).await.unwrap();
+        let offer = source.create_offer(None).await.unwrap();
+        let fragment = offer.sdp.lines().find_map(|line| line.strip_prefix("a=ice-ufrag:")).unwrap().to_owned();
+        let receiver = pc().await; let mut queue = PendingRemoteIce::default();
+        let mut stale = candidate(5000); stale.username_fragment = Some("wrong-generation".into());
+        queue.push(stale, 100).unwrap();
+        let mut malformed = candidate(5001); malformed.candidate = "not-a-candidate".into();
+        queue.push(malformed, 100).unwrap();
+        let mut good = candidate(5002); good.username_fragment = Some(fragment);
+        queue.push(good, 100).unwrap();
+        receiver.set_remote_description(offer).await.unwrap();
+        assert_eq!(queue.flush(&receiver).await, 1);
+        wait_candidate(&receiver).await;
+        assert_eq!(queue.bytes, 0);
+        assert!(queue.entries.is_empty());
+        receiver.close().await.unwrap(); source.close().await.unwrap();
+    }
+    #[test]
+    fn pending_candidates_preserve_fifo_and_end_marker_with_strict_memory_limits() {
+        let mut queue = PendingRemoteIce::default();
+        queue.push(candidate(5000), 100).unwrap();
+        queue.push(candidate(5000), 100).unwrap(); // duplicate does not consume budget
+        queue.push(RTCIceCandidateInit::default(), 20).unwrap();
+        assert_eq!(queue.entries.len(), 2);
+        assert_eq!(queue.bytes, 120);
+        assert_eq!(queue.entries[0].0, candidate(5000));
+        assert!(queue.entries[1].0.candidate.is_empty());
+        assert!(queue.push(candidate(5001), MAX_REMOTE_ICE_JSON + 1).is_err());
+        let mut count = PendingRemoteIce::default();
+        for port in 5000..5000 + MAX_PENDING_REMOTE_ICE as u16 { count.push(candidate(port), 100).unwrap(); }
+        assert!(count.push(candidate(6000), 100).is_err());
+        let mut bytes = PendingRemoteIce::default();
+        for port in 5000..5004 { bytes.push(candidate(port), MAX_REMOTE_ICE_JSON).unwrap(); }
+        assert_eq!(bytes.bytes, MAX_PENDING_REMOTE_ICE_BYTES);
+        assert!(bytes.push(candidate(6000), 1).is_err());
+    }
 }
 
 #[cfg(test)]
