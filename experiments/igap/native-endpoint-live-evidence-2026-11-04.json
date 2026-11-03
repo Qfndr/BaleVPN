@@ -25,9 +25,21 @@
     "proxyReady": false,
     "payloadTransferVerified": false,
     "clientTerminalReason": "server_leave",
-    "serverLeave": {"reasonCode": 14, "actionCode": 1, "canReconnect": false},
+    "serverLeave": {"reasonCode": 14, "reasonEnum": "ConnectionTimeout", "actionCode": 1, "canReconnect": false},
+    "reasonSource": "livekit-protocol 0.7.7 DisconnectReason enum; this does not identify the underlying ICE or DTLS cause",
     "serverStoppedExplicitlyDuringCleanup": true,
     "bothLaboratorySessionsResumed": true
+  },
+  "peerConnectionDiagnosticTrial": {
+    "throughputProfile": false,
+    "client": {"publisherState": "connected", "subscriberState": "connected", "offerSent": true, "sdpErrorCode": 0, "peerAuthenticated": false},
+    "server": {"publisherState": "unobserved", "subscriberState": "connected", "offerSent": true, "sdpErrorCode": 0, "peerAuthenticated": false},
+    "serverTerminalReason": "server_leave",
+    "serverLeaveReasonCode": 14,
+    "receiverSelfLeaveWasDeferredDuringJoin": true,
+    "clientLaterReceivedPeerServiceLeave": true,
+    "payloadTransferVerified": false,
+    "interpretation": "The server publisher connection did not report a state transition before service ConnectionTimeout; no SDP installation error was reported. This narrows investigation but does not establish a root cause."
   },
   "status": "Incomplete: native signaling restoration works, but independent native media failed before proxy readiness; investigate before VPS testing or product integration",
   "priorProof": "live-media-evidence-2026-11-03.json covers the separate JavaScript-controlled native-helper path only",

@@ -1,0 +1,38 @@
+[package]
+name = "igap-signaling"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+[features]
+media = ["dep:lktunnel", "dep:log"]
+
+[[example]]
+name = "native_endpoint"
+required-features = ["media"]
+
+[dependencies]
+lk-signaling = { path = "../../lk-signaling-rust/lk-signaling" }
+lktunnel = { path = "../../lktunnel-rust/lktunnel", optional = true }
+log = { version = "0.4", optional = true }
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread","sync","macros","time","net"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["rustls-tls-webpki-roots","connect"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
+futures-util = { version = "0.3", features = ["sink"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parking_lot = "0.12"
+rand = "0.8"
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+zeroize = "1"
+aes = "0.8.4"
+cbc = { version = "0.1.2", features = ["alloc"] }
+aes-gcm = "0.10.3"
+rsa = { version = "0.9.10", features = ["pem"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
