@@ -219,7 +219,7 @@ verification, lab UI integration and production integration remain unfinished.
 node --test scripts/test-rubika-call-session.cjs
 ```
 
-Current full provider regression: **316 Node tests passed, 0 failed, 0 skipped**,
+Controller milestone: **316 Node tests passed, 0 failed, 0 skipped**,
 including 68 Rubika tests. The 20 controller tests cover incoming/manual acceptance,
 outgoing calls, stale/equal-time/out-of-order updates, receipt versus acceptance,
 cross-peer/call isolation, retired calls, timeout, cancellation, bounded private
@@ -264,7 +264,7 @@ Six codec tests and eight malformed-ELF tests passed. The optional SHA-pinned
 **official Eitaa legacy cipher** oracle produced six byte-identical packets and
 bidirectional decryptions, plus masked-counter checks. That proves shared legacy
 packet compatibility only: it does not execute or test a Rubika native call.
-The full provider Node suite now passes **322 tests, 0 failures, 0 skips**,
+The legacy codec milestone passed **322 Node tests, 0 failures, 0 skips**,
 including 74 Rubika tests. No account request, APK installation, lab restart,
 production build, release or change to Bale's traffic path is part of this step.
 
@@ -277,7 +277,57 @@ $env:BALEVPN_EITAA_CALL_UI = 'ABSOLUTE-PATH-TO-appDialogsManager-CtDWV_rQ.js'
 node scripts/test-rubika-official-legacy-signal.cjs
 ```
 
-Wiring this profile to typed media descriptions, the call controller and the
-relay-only native helper is still pending, as are actual Rubika interoperation,
-provider route, billing, throughput and outage verification. The presence of
-this codec does not enable a Rubika tunnel in the application.
+The local media components below now compose this profile with typed descriptions
+and the relay-only helper. Account-controller wiring, actual Rubika interoperation,
+provider route, billing, throughput and outage verification remain pending. The
+presence of this codec does not enable a Rubika tunnel in the application.
+
+## Local media/helper composition
+
+`CallMedia` now requires the explicit 6.0.0/layer-92 profile and owns one independent
+`rubika_relay_bridge` process. The shared legacy media owner is provider-bound by
+factory; Eitaa keeps its exact numeric-ID policy, Rubika keeps opaque GUIDs, and
+neither shares an auth session, key, worker or state with the other. The native
+helper's provider identity is fixed at compilation and checked over hidden pipes;
+an Eitaa/Nasim/Bale helper cannot supply Rubika pairing identity or readiness.
+
+`relay-config.cjs` only projects credentialed `WebRTC` IP entries to TURN URLs.
+It excludes Tg reflectors and accepts neither hostname guesses nor STUN/direct
+fallback. The pure legacy JSON/single-audio SDP converter is shared with the
+reviewed Eitaa converter; this reuse does **not** prove native Rubika compatibility.
+Only negotiated relay media plus independently pinned QUIC authentication makes
+the local proxy ready. Server readiness is separate from client SOCKS readiness.
+Private SDP, TURN credentials and approved certificates stay outside public state.
+
+The Windows helper was built offline from existing dependencies; artifacts and
+test scratch were kept on E. The local fixture tests passed through the real
+Rust media engine, real local TURN, DTLS/SRTP/RTP, authenticated QUIC and the Node
+legacy encryption/description projection. **262,144 bytes echoed byte-for-byte**.
+A second test used two normal Rubika helper executables and the actual Node
+`CallMedia` owner; both selected relay routes and authenticated independent QUIC
+identities, while the normal SOCKS listener retained its private-target denial.
+Accepted-call contexts and signaling transport were synthetic, not provider RPC.
+
+Current regression: **340 provider Node tests passed, 0 failed, 0 skipped**,
+including 92 Rubika tests; **62 Rust library tests and 4 Rubika helper tests passed,
+0 failed, 0 ignored**. The unchanged Eitaa media path also passed its real normal
+helper and 256 KiB projected-media regressions after the shared-owner extraction.
+These results are Windows/local-network tests, not Linux packaging, live calls,
+Internet throughput, operator routing, discounted billing or outage evidence.
+
+```powershell
+# From lktunnel-rust, with TEMP/TMP on the E drive:
+cargo build --offline --locked --release -p lktunnel --example rubika_relay_bridge
+$env:BALEVPN_RUBIKA_BRIDGE = 'ABSOLUTE-PATH-TO-rubika_relay_bridge.exe'
+$env:BALEVPN_RUBIKA_ADAPTER_NODE = (Get-Command node).Source
+cargo test --offline --locked --release -p lktunnel --lib rubika -- --include-ignored
+cargo test --offline --locked --release -p lktunnel --example rubika_relay_bridge -- --include-ignored
+# From repository root:
+node --test scripts/test-rubika-native.cjs scripts/test-rubika-call-media.cjs
+```
+
+The fixture scripts have no provider socket, OTP or retained-account operation.
+The deployed lab was not restarted and the main application's Bale traffic path
+was not modified. The accepted-account controller still needs guarded key/profile
+handoff, lifecycle cancellation and media-driven `callStarted` handling before
+real-account media tests or UI enablement. No Rubika tunnel is advertised as live.

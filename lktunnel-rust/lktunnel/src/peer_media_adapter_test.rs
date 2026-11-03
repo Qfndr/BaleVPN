@@ -10,7 +10,10 @@ impl EitaaAdapter {
         Self::with_script("../../scripts/eitaa-media-fixture-adapter.cjs")
     }
     fn with_script(relative: &str) -> Self {
-        let executable = std::env::var_os("BALEVPN_EITAA_ADAPTER_NODE")
+        Self::with_script_env(relative, "BALEVPN_EITAA_ADAPTER_NODE")
+    }
+    fn with_script_env(relative: &str, node_env: &str) -> Self {
+        let executable = std::env::var_os(node_env)
             .expect("explicit Node executable required for this opt-in fixture");
         let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join(relative);
@@ -74,17 +77,27 @@ impl EitaaAdapter {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires BALEVPN_EITAA_ADAPTER_NODE and normal BALEVPN_EITAA_BRIDGE helper"]
 async fn actual_eitaa_call_media_owns_normal_helpers_and_preserves_proxy_target_filter() {
+    actual_call_media_fixture("eitaa", "../../scripts/eitaa-native-call-fixture.cjs", "BALEVPN_EITAA_ADAPTER_NODE", "BALEVPN_EITAA_BRIDGE").await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires explicit BALEVPN_RUBIKA_ADAPTER_NODE and normal BALEVPN_RUBIKA_BRIDGE helper"]
+async fn actual_rubika_call_media_owns_normal_helpers_and_preserves_proxy_target_filter() {
+    actual_call_media_fixture("rubika", "../../scripts/rubika-native-call-fixture.cjs", "BALEVPN_RUBIKA_ADAPTER_NODE", "BALEVPN_RUBIKA_BRIDGE").await;
+}
+
+async fn actual_call_media_fixture(provider: &str, script: &str, node_env: &str, helper_env: &str) {
     use std::io::Write;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    assert!(std::env::var_os("BALEVPN_EITAA_BRIDGE").is_some(), "explicit normal Eitaa helper required");
-    let mut fixture = EitaaAdapter::with_script("../../scripts/eitaa-native-call-fixture.cjs");
+    assert!(std::env::var_os(helper_env).is_some(), "explicit matching normal helper required");
+    let mut fixture = EitaaAdapter::with_script_env(script, node_env);
     let (relay, config) = relay().await;
     let port: u16 = config.urls[0].rsplit(':').next().unwrap().parse().unwrap();
     serde_json::to_writer(&mut fixture.input, &serde_json::json!({"command":"connect","turnPort":port})).unwrap();
     fixture.input.write_all(b"\n").unwrap();fixture.input.flush().unwrap();
     let result=fixture.read();assert_eq!(result["event"],"connected","normal helper integration failed");
     for key in ["client","server"] {
-        assert_eq!(result[key]["provider"],"eitaa");assert_eq!(result[key]["phase"],"connected");
+        assert_eq!(result[key]["provider"],provider);assert_eq!(result[key]["phase"],"connected");
         for flag in ["relayPair","mediaConnected","peerAuthenticated","ready"] {assert_eq!(result[key][flag],true);}
         assert_eq!(result[key]["providerPathVerified"],false);assert_eq!(result[key]["billingVerified"],false);
     }
@@ -105,7 +118,16 @@ impl Drop for EitaaAdapter {
 #[tokio::test]
 #[ignore = "requires explicit BALEVPN_EITAA_ADAPTER_NODE and local-only Node fixture"]
 async fn real_turn_dtls_rtp_quic_survives_eitaa_json_projection() {
-    let mut adapter = EitaaAdapter::start();
+    projected_media_fixture(EitaaAdapter::start()).await;
+}
+
+#[tokio::test]
+#[ignore = "requires explicit BALEVPN_RUBIKA_ADAPTER_NODE and local-only Rubika legacy fixture"]
+async fn real_turn_dtls_rtp_quic_survives_rubika_legacy_json_projection() {
+    projected_media_fixture(EitaaAdapter::with_script_env("../../scripts/rubika-media-fixture-adapter.cjs", "BALEVPN_RUBIKA_ADAPTER_NODE")).await;
+}
+
+async fn projected_media_fixture(mut adapter: EitaaAdapter) {
     let (relay, server) = relay().await;
     let mut a_id = Identity::generate().unwrap();
     let mut b_id = Identity::generate().unwrap();

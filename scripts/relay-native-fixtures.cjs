@@ -3,7 +3,7 @@ const {EventEmitter}=require('node:events'),{PassThrough,Writable}=require('node
 function register(provider,NativeMediaBridge,executable){
 const test=(name,...args)=>nodeTest(provider+': '+name,...args);
 const own='aa'.repeat(80),peer='bb'.repeat(80),secret='fixture-private-relay-password';
-const call={provider,callUUID:'fixture-call',selfId:'41',peerId:'42',iceServers:[
+const call={provider,callUUID:'fixture-call',selfId:provider==='rubika'?'fixture_self_01':'41',peerId:provider==='rubika'?'fixture_peer_02':'42',iceServers:[
  {urls:'stun:relay.example.test:3478'}, {urls:'turn:relay.example.test:3478',username:'fixture-private-user',credential:secret}]};
 function sdp(type){return {type,sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=fingerprint:sha-256 '+Array(32).fill('AA').join(':')+'\r\na=ice-pwd:fixture-private-ice-secret\r\na=candidate:1 1 udp 1 127.0.0.1 33333 typ relay\r\n'};}
 function fixture({prepared=true}={}){
@@ -85,7 +85,7 @@ test('actual helper rejects arguments, key logging and oversized private command
 async function waitClosed(bridge){for(let i=0;i<100;i++){if(['closed','failed'].includes(bridge.state.phase))return;await new Promise(r=>setTimeout(r,30));}throw Error('Helper did not stop');}
 test('provider-specific IDs preserve exact 64-bit Eitaa values and keep the existing Nasim boundary',async()=>{
  const f=fixture(),b=await f.open(),large={...call,selfId:'9007199254740993',peerId:'9223372036854775807'};
- if(provider==='eitaa'){const configuring=b.configure(large,{role:'client',trustedCertificates:[peer]});f.emit({event:'configured',provider});await configuring;assert.equal(b.state.context.selfId,large.selfId);}
+ if(provider==='eitaa'||provider==='rubika'){const configuring=b.configure(large,{role:'client',trustedCertificates:[peer]});f.emit({event:'configured',provider});await configuring;assert.equal(b.state.context.selfId,large.selfId);}
  else {await assert.rejects(b.configure(large,{role:'client',trustedCertificates:[peer]}));assert.equal(f.commands.length,0);}
  stopped(f,b);
 });

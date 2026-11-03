@@ -2,7 +2,7 @@
 // signaling operation; state never contains SDP, TURN credentials or raw errors.
 const path=require('node:path'),{spawn}=require('node:child_process');
 function createBridge(provider){
-if(!['nasim','eitaa'].includes(provider))throw Error('Unsupported media provider');
+if(!['nasim','eitaa','rubika'].includes(provider))throw Error('Unsupported media provider');
 const MAX=192*1024;
 const REASONS=new Set(['arguments_not_allowed','unsafe_environment','identity_failed','bridge_panic','config_timeout',
  'input_closed','invalid_command','invalid_config','invalid_role','invalid_pairing','invalid_port','invalid_profile','invalid_relay',
@@ -12,7 +12,7 @@ const REASONS=new Set(['arguments_not_allowed','unsafe_environment','identity_fa
 function fail(reason){return Object.assign(new Error('Native media '+reason),{reason});}
 function keys(v,allowed){return v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).every(k=>allowed.includes(k));}
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}
-function id(v){return typeof v==='string'&&/^[1-9]\d{0,18}$/.test(v)&&BigInt(v)<=(provider==='eitaa'?(1n<<63n)-1n:BigInt(Number.MAX_SAFE_INTEGER));}
+function id(v){return provider==='rubika'?typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v):typeof v==='string'&&/^[1-9]\d{0,18}$/.test(v)&&BigInt(v)<=(provider==='eitaa'?(1n<<63n)-1n:BigInt(Number.MAX_SAFE_INTEGER));}
 function uuid(v){return typeof v==='string'&&/^[-A-Za-z0-9_:]{1,128}$/.test(v);}
 function description(v,type){
  if(!keys(v,['type','sdp'])||v.type!==type||typeof v.sdp!=='string'||Buffer.byteLength(v.sdp)>65535||v.sdp.includes('\0'))throw fail('invalid_description');
