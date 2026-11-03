@@ -1,0 +1,33 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "scope": "One bounded two-account trial on one Windows host using retained sessions and relay-only native helpers",
+  "restoration": {"bothAuthenticated": true, "otpRequested": false, "newSignInRequested": false, "sessionFilesModified": false},
+  "signaling": {
+    "incomingCallObserved": true,
+    "explicitIncomingAcceptSucceeded": true,
+    "bothConfigured": true,
+    "bothLocallyAccepted": true,
+    "bothRemotelyAccepted": true,
+    "bothNegotiated": true,
+    "callerOfferReceived": true,
+    "calleeAnswerInstalled": true,
+    "calleeOwnAcceptEchoIgnoredCount": 2,
+    "offerAcceptOrderChangedForTrial": false
+  },
+  "media": {
+    "clientTerminalReason": "ice_failed",
+    "serverTerminalReason": "ice_failed",
+    "bothPhaseBeforeEnd": "negotiating",
+    "relayPairVerified": false,
+    "mutualAuthenticationVerified": false,
+    "proxyReadyVerified": false,
+    "payloadTransferVerified": false,
+    "directFallbackEnabled": false
+  },
+  "diagnosticChange": "A bounded terminal snapshot now preserves only signaling flags/counters and native phase/reason/readiness booleans before cleanup; no credentials, SDP or ICE addresses",
+  "officialFlowDifference": "Official receiver emits its offer upon config before explicit accept; laboratory currently emits accept then offer. Both laboratory peers negotiated in this trial, so this order difference is not established as the cause of ICE failure.",
+  "cleanup": {"callEndedLocally": true, "nativeHelpersClosed": true, "eventSubscriptionsClosed": true, "accountStoresPreserved": true},
+  "limitations": {"providerPathVerified": false, "foreignVpsVerified": false, "billingVerified": false, "internationalOutageVerified": false},
+  "privacy": "No user identifiers, phone numbers, tokens, OTPs, public/private certificates, SDP, ICE addresses or raw replies are included"
+}

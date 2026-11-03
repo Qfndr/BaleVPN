@@ -61,6 +61,21 @@ test('safe signaling diagnostics distinguish pending answer installation and cle
  }finally{release?.();f.close();}
 });
 
+test('terminal snapshots preserve only bounded negotiation facts before media cleanup and cannot be mutated through state',async()=>{
+ const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  const before=b.state.signaling;f.natives[1].latest={phase:'failed',reason:'ice_failed',relayPair:false,peerAuthenticated:false,private:'fixture-private-password'};
+  await waitFor(()=>b.state.phase==='uncertain');
+  const snapshot=b.state.terminalSnapshot;assert.equal(snapshot.signaling.configured,true);assert.equal(snapshot.signaling.negotiated,true);
+  assert.equal(snapshot.signaling.receivedConfig,before.receivedConfig);assert.equal(snapshot.signaling.receivedAnswer,before.receivedAnswer);
+  assert.deepEqual(snapshot.media,{phase:'failed',reason:'ice_failed',relayPair:false,mediaConnected:false,peerAuthenticated:false,proxyReady:false});
+  assert.ok(Object.values(snapshot.signaling).every(v=>typeof v==='boolean'||Number.isSafeInteger(v)&&v>=0&&v<=1000000));
+  assert.ok(!JSON.stringify(snapshot).includes('fixture-private-password'));snapshot.signaling.receivedAnswer=999;snapshot.media.reason='changed';
+  assert.equal(b.state.terminalSnapshot.signaling.receivedAnswer,before.receivedAnswer);assert.equal(b.state.terminalSnapshot.media.reason,'ice_failed');
+  await b.end();assert.equal(b.state.terminalSnapshot.media.reason,'ice_failed');b.reset();assert.equal(b.state.terminalSnapshot,null);
+ }finally{f.close();}
+});
+
 test('bounded signaling counters separate an offer awaiting acceptance from wrong peer and device',async()=>{
  const f=fixture({autoConfig:false});try{
   const {a}=await f.prepare();await a.dial('42');

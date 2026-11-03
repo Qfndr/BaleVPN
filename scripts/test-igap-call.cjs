@@ -11,6 +11,18 @@ const offer = (sender, room, extra = Buffer.alloc(0)) => w.frame(30915,
 const boundToken=(claims={})=>'header.'+Buffer.from(JSON.stringify({sub:'41',video:{room:'99',roomJoin:true},exp:Math.floor(Date.now()/1000)+300,...claims})).toString('base64url')+'.signature';
 const joinPush=(token,user='41')=>w.frame(30914,Buffer.concat([w.string(2,token,16384),numeric(3,user)]));
 
+test('explicit leave treats a matched self or peer service end as confirmed while its own RPC completes or fails',async()=>{
+ for(const actor of ['41','42'])for(const outcome of ['reply','timeout']){const f=fixture();await f.session.dial('42');await f.session.join();const reply=deferred();f.rpc.handler=()=>reply.promise;const leaving=f.session.leave({terminate:true});await f.session.handlePush(w.frame(30918,numeric(2,actor)));assert.equal(f.session.state.phase,'ended');assert.equal(f.session.state.credentialReady,false);assert.equal(f.session.state.terminalDiagnostic.localLeaveConfirmed,true);assert.equal(f.session.state.terminalDiagnostic.endingActor,actor==='41'?'self':'peer');if(outcome==='timeout')reply.reject(new RpcError('timeout'));else reply.resolve({action:30918,fields:w.parse(numeric(2,'41'))});await leaving;assert.equal(f.session.state.phase,'ended');assert.equal(f.session.state.busy,false);assert.equal(f.session.state.error,null);assert.equal(f.calls.filter(c=>c.action===918).length,1);}
+});
+
+test('confirmed local leave cannot swallow revocation, connection replacement, reset or a new call epoch',async()=>{
+ for(const change of ['revoked','replaced','reset','newcall']){const f=fixture();await f.session.dial('42');const reply=deferred();f.rpc.handler=()=>reply.promise;const leaving=f.session.leave();await f.session.handlePush(w.frame(30918,numeric(2,'42')));if(change==='revoked')f.account.state.signedIn=false;if(change==='replaced')f.account.connection={request:async()=>{throw Error('must not call');}};if(['reset','newcall'].includes(change))f.session.reset();if(change==='newcall'){f.rpc.handler=null;await f.session.dial('42');}reply.resolve({action:30918,fields:w.parse(numeric(2,'41'))});await assert.rejects(leaving);assert.equal(f.session.state.credentialReady,false);if(change==='newcall')assert.equal(f.session.state.phase,'outgoing');}
+});
+
+test('unrelated or stale service leave cannot falsely confirm a failed local leave',async()=>{
+ for(const push of [w.frame(30918,numeric(2,'43')),w.frame(30918,Buffer.concat([w.field(1,w.string(1,'stale',32)),numeric(2,'41')]))]){const f=fixture();await f.session.dial('42');const reply=deferred();f.rpc.handler=()=>reply.promise;const leaving=f.session.leave();await f.session.handlePush(push);assert.equal(f.session.state.phase,'leaving');reply.reject(new RpcError('timeout'));await assert.rejects(leaving,/timeout/);assert.equal(f.session.state.phase,'uncertain');assert.equal(f.session.state.credentialReady,false);}
+});
+
 test('caller accepts only an authenticated outgoing push bound to the exact LiveKit room/account and does not join twice',async()=>{
  const {session,calls}=fixture();await session.dial('42');const token=boundToken();await session.handlePush(joinPush(token));assert.equal(session.state.phase,'joined');assert.equal(session.state.credentialReady,true);assert.ok(Object.values(session.state.joinPushDiagnostic).every(v=>v===true));await session.join();assert.deepEqual(calls.map(c=>c.action),[913,915]);await session.handlePush(joinPush(boundToken({exp:Math.floor(Date.now()/1000)+600})));assert.equal(session.takeTransportSession().token,token);assert.equal(session.state.joinPushDiagnostic.contextMatches,false);assert.ok(!JSON.stringify(session.state).includes(token));
 });

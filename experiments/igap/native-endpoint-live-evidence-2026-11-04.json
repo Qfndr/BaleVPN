@@ -1,0 +1,38 @@
+{
+  "provider": "igap",
+  "date": "2026-11-04",
+  "scope": "Two independent native endpoint processes on one Windows host; retained accounts loaded through private stdin",
+  "restoration": {
+    "bothAuthenticated": true,
+    "otpRequested": false
+  },
+  "media": {
+    "mutualAuthenticationVerified": false,
+    "payloadTransferVerified": false,
+    "clientTerminalReason": "call_ended",
+    "serverTerminalReason": "media_disconnected"
+  },
+  "cleanup": {
+    "bothEndpointProcessesEnded": true,
+    "localSocksListenerClosed": true,
+    "bothLaboratorySessionsResumed": true
+  },
+  "balancedDiagnosticTrial": {
+    "throughputProfile": false,
+    "bothAccountsRestoredWithoutOtp": true,
+    "bothReportedMediaConnected": true,
+    "bothPeerAuthenticated": false,
+    "proxyReady": false,
+    "payloadTransferVerified": false,
+    "clientTerminalReason": "server_leave",
+    "serverLeave": {"reasonCode": 14, "actionCode": 1, "canReconnect": false},
+    "serverStoppedExplicitlyDuringCleanup": true,
+    "bothLaboratorySessionsResumed": true
+  },
+  "status": "Incomplete: native signaling restoration works, but independent native media failed before proxy readiness; investigate before VPS testing or product integration",
+  "priorProof": "live-media-evidence-2026-11-03.json covers the separate JavaScript-controlled native-helper path only",
+  "foreignVpsVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false,
+  "privacy": "No credentials, account identifiers, public or private certificates, raw replies, SDP or ICE addresses"
+}

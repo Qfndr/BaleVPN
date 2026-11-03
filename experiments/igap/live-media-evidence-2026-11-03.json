@@ -1,0 +1,51 @@
+{
+  "provider": "igap",
+  "date": "2026-11-03",
+  "scope": "Two real accounts, two native helpers, one Windows host and one local trusted controller",
+  "registrationProfile": "web-v3-compat",
+  "call": {
+    "bothCallPrivacySettingsVerifiedEveryone": true,
+    "offerAndIncomingVerified": true,
+    "receiverCorrelatedJoinVerified": true,
+    "callerBoundTokenPushVerified": true,
+    "receiverSelfLeaveDeferralVerified": true,
+    "bothMutuallyAuthenticated": true,
+    "localSocksProxyReady": true
+  },
+  "download": {
+    "publicFixture": "bale-vpn-rust/bale-vpn/assets/fonts/InterVariable.woff2",
+    "fixtureCommit": "082dda1c65e28c18038881646f201af47a81228a",
+    "bytes": 352240,
+    "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+    "httpsStatus": 200,
+    "localRepositoryHashMatches": true,
+    "curlRemoteWasExplicitLoopbackSocks": true
+  },
+  "upload": {
+    "fixture": "Synthetic public test text; no user or account data",
+    "bytes": 71680,
+    "sha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+    "httpsEchoStatus": 200,
+    "echoHashMatches": true,
+    "curlRemoteWasExplicitLoopbackSocks": true
+  },
+  "repeatedProbe": {
+    "command": "node scripts/probe-provider-transfer.cjs --provider igap --port 1094 --connect",
+    "downloadIntegrityVerified": true,
+    "uploadIntegrityVerified": true
+  },
+  "observations": [
+    {"utc": "2026-11-03 16:09:30", "running": true, "bothMutuallyAuthenticated": true},
+    {"utc": "2026-11-03 16:23:09", "running": true, "bothMutuallyAuthenticated": true, "clientReceivedBytes": 6470050, "clientSentBytes": 680542, "serverReceivedBytes": 680542, "serverSentBytes": 6470050, "sampleRttMs": 140.757902, "quicLostPackets": 2, "quicSentPackets": 3926}
+  ],
+  "limitations": {
+    "notASpeedBenchmark": true,
+    "foreignVpsPairVerified": false,
+    "selectedDomesticRelayRouteVerified": false,
+    "operatorBillingVerified": false,
+    "internationalOutageVerified": false,
+    "productionAccountIntegrationVerified": false,
+    "longTermStabilityVerified": false
+  },
+  "privacy": "No phone numbers, account identifiers, passwords, tokens, private certificates, SDP, ICE addresses or raw server replies are included"
+}

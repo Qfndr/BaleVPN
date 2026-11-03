@@ -29,6 +29,7 @@ class CallSession {
   #terminalDiagnostic = null;
   #joinPushDiagnostic = null;
   #pendingReceiverJoin = null;
+  #pendingLocalLeave = null;
   #mediaGrants = null;
 
   constructor(account) { this.#account = account; }
@@ -164,6 +165,16 @@ class CallSession {
       } else if (response.action === 30914 && response.joinedUserId === this.#peer && !response.token) {
         this.#peerJoined = true;
       } else if (response.action === 30918 && [this.#self, this.#peer].includes(response.leftUserId)) {
+        const leaving = this.#pendingLocalLeave;
+        if (this.#phase === 'leaving' && this.#busy && leaving && leaving.epoch === this.#epoch && leaving.rpc === this.#rpc && leaving.room === this.#room) {
+          leaving.confirmed = true;
+          this.#terminalDiagnostic = {cause:'service_leave',endingActor:response.leftUserId === this.#self?'self':'peer',phaseBeforeEnd:'leaving',localLeaveConfirmed:true};
+          this.#credential = null;
+          this.#phase = 'ended';
+          this.#room = null;
+          this.#ringing = this.#peerJoined = false;
+          return;
+        }
         const pending = this.#pendingReceiverJoin;
         if (response.leftUserId === this.#self && this.#phase === 'joining' && this.#busy && pending && pending.epoch === this.#epoch && pending.rpc === this.#rpc && pending.room === this.#room) {
           pending.selfLeaveDeferred = true;
@@ -226,16 +237,29 @@ class CallSession {
     if (typeof terminate !== 'boolean') throw new RpcError('invalid_leave_intent');
     if (!this.#room || ['idle', 'ended'].includes(this.#phase)) throw new RpcError('no_active_call');
     const phaseBeforeEnd = this.#phase;
-    return this.#run(async request => {
-      this.#credential = null;
-      this.#phase = 'leaving';
-      const response = await request(918, {terminate});
-      if (response.leftUserId !== this.#self) throw new RpcError('call_leave_mismatch');
-      this.#terminalDiagnostic = {cause: 'local_leave', endingActor: 'self', phaseBeforeEnd};
-      this.#phase = 'ended';
-      this.#room = null;
+    let pending;
+    try { return await this.#run(async request => {
+        pending = {epoch:this.#epoch,rpc:this.#rpc,self:this.#self,peer:this.#peer,room:this.#room,confirmed:false};
+        this.#pendingLocalLeave = pending;
+        this.#credential = null;
+        this.#phase = 'leaving';
+        const response = await request(918, {terminate});
+        if (!pending.confirmed && response.leftUserId !== this.#self) throw new RpcError('call_leave_mismatch');
+        if (!pending.confirmed) this.#terminalDiagnostic = {cause: 'local_leave', endingActor: 'self', phaseBeforeEnd};
+        this.#phase = 'ended';
+        this.#room = null;
+        return this.state;
+      });
+    } catch(error) {
+      // The matched service event already confirmed that this specific local
+      // leave ended. A lost RPC reply must not turn that success into failure.
+      // A reset/new call or account/connection replacement still cancels it.
+      let current=false;
+      try { current=!!pending?.confirmed && this.#pendingLocalLeave===pending && pending.epoch===this.#epoch && this.#rpc===pending.rpc && this.#self===pending.self && this.#peer===pending.peer && this.#account.state.signedIn===true && this.#account.state.userId===pending.self && this.#account.connection===pending.rpc; } catch {}
+      if (!current) throw error;
+      this.#credential=null;this.#error=null;this.#phase='ended';this.#room=null;
       return this.state;
-    });
+    } finally { if (this.#pendingLocalLeave===pending) this.#pendingLocalLeave=null; }
   }
 
   takeTransportSession() {
@@ -247,6 +271,7 @@ class CallSession {
   }
 
   reset(phase = 'idle') {
+    this.#pendingLocalLeave = null;
     if (phase !== 'ended') this.#mediaGrants = null;
     this.#pendingReceiverJoin = null;
     if (phase !== 'ended') this.#joinPushDiagnostic = null;

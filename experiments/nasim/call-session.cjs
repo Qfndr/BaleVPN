@@ -19,6 +19,7 @@ class CallSession {
  #epoch=0;#queue=[];#working=false;#bytes=0;#timer;#deadline=0;#retired=new Set();#ignored=0;#reason=null;
  #signalCounts=signalCounts();
  #terminal=null;
+ #terminalSnapshot=null;
  #countSignal(key){this.#signalCounts[key]=Math.min(1000000,this.#signalCounts[key]+1);}
  constructor(account,{executable,open=NativeMediaBridge.open}={}){this.#account=account;this.#executable=executable;this.#open=open;}
  #context(){
@@ -69,8 +70,16 @@ class CallSession {
  #mediaReady(media){return media?.mediaConnected===true&&media.relayPair===true&&media.peerAuthenticated===true&&
   (this.#options?.role==='server'?media.phase==='connected':media.proxyReady===true);}
  #finish(phase,reason=null,disconnect=false,terminal=null){
-  if(phase==='idle')this.#terminal=null;
+  if(phase==='idle'){this.#terminal=null;this.#terminalSnapshot=null;}
   else if(terminal&&!this.#terminal)this.#terminal={...terminal,phaseBeforeEnd:this.#phase};
+  if(phase!=='idle'&&!this.#terminalSnapshot){
+   const media=this.#bridge?.state;
+   this.#terminalSnapshot={signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
+    localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
+    media:media?{phase:['prepared','configured','gathering','connecting','connected','failed','closed'].includes(media.phase)?media.phase:null,
+     reason:SAFE.has(media.reason)?media.reason:null,relayPair:media.relayPair===true,mediaConnected:media.mediaConnected===true,
+     peerAuthenticated:media.peerAuthenticated===true,proxyReady:media.proxyReady===true}:null};
+  }
   this.#epoch++;if(this.#call){this.#retired.add(this.#call);while(this.#retired.size>128)this.#retired.delete(this.#retired.values().next().value);}
   clearInterval(this.#timer);this.#timer=null;this.#bridge?.close();this.#bridge=null;this.#own=null;this.#trusted=[];
   this.#config=null;this.#earlyOffers.clear();this.#early=[];this.#earlyBytes=0;this.#ice=[];this.#iceSeen.clear();this.#configured=this.#negotiated=false;
@@ -96,7 +105,7 @@ class CallSession {
   return this.#enqueue(async guard=>{
    if(!['idle','ended'].includes(this.#phase)||this.#bridge)throw error('call_busy');
    if(!['client','server'].includes(role)||!Number.isInteger(socksPort)||socksPort<0||socksPort>65535||socksPort>0&&socksPort<1024||typeof throughput!=='boolean')throw error('invalid_media_options');
-   this.#terminal=null;this.#phase='preparing';this.#reason=null;
+   this.#terminal=null;this.#terminalSnapshot=null;this.#phase='preparing';this.#reason=null;
    const bridge=await this.#io(async()=>{
     const bridge=await this.#open(this.#executable);try{guard();return bridge;}catch(e){bridge.close();throw e;}
    },guard);
@@ -237,6 +246,7 @@ class CallSession {
   return {provider:'nasim',phase,busy:this.#working||this.#queue.length>0,direction:this.#direction||null,peerId:this.#peer||null,callUUID:this.#call||null,
    selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,terminal:this.#terminal?{...this.#terminal}:null,
+   terminalSnapshot:this.#terminalSnapshot?{signaling:{...this.#terminalSnapshot.signaling},media:this.#terminalSnapshot.media?{...this.#terminalSnapshot.media}:null}:null,
    signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
     pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
    liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};
