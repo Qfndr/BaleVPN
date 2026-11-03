@@ -13,7 +13,9 @@
     "id": 1577067778,
     "predicate": "auth.sentCode",
     "webKnownMask": 6,
-    "androidAdditionalMask": 256,
+    "androidAdditionalMask": 257,
+    "androidIgnoredPayloadFreeMask": 1,
+    "bit0Meaning": "Not established: Android reads flags and then type/hash without examining bit 0; only masks 2, 4 and 256 control subsequent reads. No phone_registered interpretation is invented.",
     "additionalField": {"name": "message", "type": "flags.8?string"}
   },
   "boundedDexInspection": {
@@ -41,8 +43,8 @@
     },
     "scope": "Exact bounded instruction and field references, not Android execution or original-source recovery."
   },
-  "implementation": "The generated pinned Web auth-schema.json is unchanged. auth-wire.cjs applies only this constructor-specific additional field. All other unknown flags, truncation and trailing bytes remain errors.",
-  "liveDiagnosticFlags": null,
+  "implementation": "The generated pinned Web auth-schema.json is unchanged. auth-wire.cjs applies only this constructor-specific message field and ignored payload-free bit 0. Other unknown flags, truncation and trailing bytes remain errors. Ignored bit 0 is neither emitted nor exposed as a decoded field.",
+  "liveDiagnosticFlags": 7,
   "liveLoginAfterFixVerified": false,
   "privacy": {
     "methods": ["account.getPrivacy", "account.setPrivacy"],

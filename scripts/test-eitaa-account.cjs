@@ -30,6 +30,17 @@ test('official Android sentCode bit-8 message extension parses without relaxing 
  const unknown=Buffer.from(encoded);unknown.writeUInt32LE(260|512,4);assert.throws(()=>codec.response(unknown,'auth.sendCode'),{reason:'unknown_flags'});
  assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.sendCode'));
 });
+
+test('live sentCode flags 7 consume no bit-0 payload, matching the official Android reader',()=>{
+ const value={...sent,next_type:{_:'auth.codeTypeSms'}},encoded=codec.object(value);
+ assert.equal(encoded.readUInt32LE(4),6);encoded.writeUInt32LE(7,4);
+ assert.deepEqual(codec.response(encoded,'auth.sendCode'),value);
+ const extended={...value,message:'fixture-private-message'},withMessage=codec.object(extended);withMessage.writeUInt32LE(263,4);
+ assert.deepEqual(codec.response(withMessage,'auth.sendCode'),extended);
+ const unknown=Buffer.from(encoded);unknown.writeUInt32LE(15,4);assert.throws(()=>codec.response(unknown,'auth.sendCode'),{reason:'unknown_flags'});
+ assert.throws(()=>codec.response(Buffer.concat([encoded,Buffer.alloc(4)]),'auth.sendCode'));
+ assert.throws(()=>codec.response(encoded.subarray(0,encoded.length-4),'auth.sendCode'));
+});
 test('unknown flags, truncation, wrong result types, malformed vectors and nested RPC wrappers fail closed',()=>{
  const body=codec.object(auth),bad=Buffer.from(body);bad.writeInt32LE(1,4);assert.throws(()=>codec.response(bad,'auth.signIn'),{reason:'unknown_flags'});
  assert.throws(()=>codec.response(bad,'auth.signIn'),error=>{assert.deepEqual(error.schemaDiagnostic,{constructorId:(-855308010)>>>0,flags:1,knownMask:0});assert.ok(!JSON.stringify(error).includes(auth.token));return true;});

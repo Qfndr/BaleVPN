@@ -25,6 +25,13 @@ Implemented:
   The public `registrationProfile` state reflects the account profile; an unsent
   UI selection survives polling and language changes. Service `deliveryMethod`
   hints distinguish SMS, existing-session delivery, both, and phone calls.
+- `privacy.cjs`: call-only voice/video permissions with service readback. The
+  current Web schema describes repeated nested rules in response field 4, while
+  the live service also returns the original single-rule type 2 / level 3 shape
+  defined in the [pinned official API](https://github.com/KianIranian-STDG/iGap-API/blob/2b1d7d9e27ddc81f7839ee300a2f2a06f4f805fe/app/assets/proto/UserPrivacyGetRule.proto).
+  Both forms require an exact matching call type and valid level. Empty,
+  conflicting and duplicate responses fail closed. Shape diagnostics contain
+  bounded field numbers, wire types, lengths and fixed privacy enums only.
 - `secure-connection.cjs`, `rpc-connection.cjs`: actual v3 connection securing and
   correlated encrypted requests. Key exchange and unauthenticated InfoConfig
   round-trip were tested against the real service; no login or call was made.

@@ -26,6 +26,7 @@ class CallSession {
   #peerJoined = false;
   #ringing = false;
   #ignored = 0;
+  #terminalDiagnostic = null;
 
   constructor(account) { this.#account = account; }
 
@@ -95,6 +96,7 @@ class CallSession {
     this.#context();
     if (peerId === this.#self) throw new RpcError('call_self_not_allowed');
     return this.#run(async request => {
+      this.#terminalDiagnostic = null;
       this.#peer = peerId;
       this.#room = null;
       this.#credential = null;
@@ -132,6 +134,7 @@ class CallSession {
         }
         this.#room = response.roomId;
         this.#peer = response.peerId;
+        this.#terminalDiagnostic = null;
         this.#phase = 'incoming';
         this.#credential = null;
         this.#peerJoined = this.#ringing = false;
@@ -145,6 +148,7 @@ class CallSession {
       } else if (response.action === 30914 && response.joinedUserId === this.#peer && !response.token) {
         this.#peerJoined = true;
       } else if (response.action === 30918 && [this.#self, this.#peer].includes(response.leftUserId)) {
+        this.#terminalDiagnostic = {cause: 'service_leave', endingActor: response.leftUserId === this.#self ? 'self' : 'peer', phaseBeforeEnd: this.#phase};
         this.reset('ended');
       } else {
         // Join pushes have no room ID. Never turn an unsolicited token into
@@ -181,11 +185,13 @@ class CallSession {
   async leave({terminate = false} = {}) {
     if (typeof terminate !== 'boolean') throw new RpcError('invalid_leave_intent');
     if (!this.#room || ['idle', 'ended'].includes(this.#phase)) throw new RpcError('no_active_call');
+    const phaseBeforeEnd = this.#phase;
     return this.#run(async request => {
       this.#credential = null;
       this.#phase = 'leaving';
       const response = await request(918, {terminate});
       if (response.leftUserId !== this.#self) throw new RpcError('call_leave_mismatch');
+      this.#terminalDiagnostic = {cause: 'local_leave', endingActor: 'self', phaseBeforeEnd};
       this.#phase = 'ended';
       this.#room = null;
       return this.state;
@@ -201,6 +207,7 @@ class CallSession {
   }
 
   reset(phase = 'idle') {
+    if (phase !== 'ended') this.#terminalDiagnostic = null;
     this.#epoch++;
     this.#busy = false;
     this.#credential = null;
@@ -218,6 +225,7 @@ class CallSession {
       roomId: this.#room || null, peerId: this.#peer || null,
       ringing: this.#ringing, peerJoined: this.#peerJoined,
       credentialReady: !!this.#credential, ignoredEvents: this.#ignored, error: this.#error,
+      terminalDiagnostic: this.#terminalDiagnostic ? {...this.#terminalDiagnostic} : null,
       liveCallVerified: false, tunnelReady: false, billingVerified: false};
   }
 }

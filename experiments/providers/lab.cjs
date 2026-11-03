@@ -2,6 +2,7 @@ const http=require('node:http'),fs=require('node:fs/promises'),path=require('nod
 const privacy=require('./call-privacy.cjs');
 const {SessionVault}=require('./session-vault.cjs');const {AuthSession}=require('../igap/auth-session.cjs');const {normalize,countries}=require('./phone.cjs');
 const {RpcError}=require('../igap/rpc-connection.cjs');const ASSETS=path.resolve(__dirname,'../../bale-vpn-rust/bale-vpn/assets');
+const {PrivacyError:IgapPrivacyError}=require('../igap/privacy.cjs');
 const {CallSession}=require('../igap/call-session.cjs');
 const {MediaPair}=require('./media-pair.cjs');
 const {AuthSession:NasimAuth}=require('../nasim/auth-session.cjs');
@@ -205,7 +206,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
   else if(['/fonts/InterVariable.woff2','/fonts/Vazirmatn.woff2'].includes(url.pathname)){file=path.join(ASSETS,url.pathname.slice(1));type='font/woff2';}
   else throw error('not_found',404);
   const data=uiAssets.get(url.pathname)||await fs.readFile(file);res.writeHead(200,{'Content-Type':type});res.end(data);
- }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e instanceof NasimError?{statusCode:e.statusCode,serviceType:e.serviceType}:{},...e instanceof EitaaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e instanceof RubikaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
+ }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof IgapPrivacyError&&e.privacyDiagnostic?{privacyDiagnostic:e.privacyDiagnostic}:{},...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e instanceof NasimError?{statusCode:e.statusCode,serviceType:e.serviceType}:{},...e instanceof EitaaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e instanceof RubikaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{origin='http://127.0.0.1:'+server.address().port;resolve();});});
  async function close(){if(closing)return;closing=true;for(const controller of privacyControllers.values())controller.abort();media?.close();nasimCalls.reset();eitaaCalls.reset();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values()]);vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  return {origin,url:origin+'/#'+secret,close,server};

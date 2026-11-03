@@ -14,7 +14,10 @@ const VECTOR=481674261,MAX_VECTOR=256,MAX_NODES=2048,MAX_DEPTH=16;
 const EXCEPTIONAL=new Set(['error','eitta_error','pong','eitaa_updates_expire_token','eitaa_token_updating']);
 const plain=v=>v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
 function optional(type){const m=type.match(/^(\w+)\.(\d+)\?(.+)$/);if(!m)return null;const bit=Number(m[2]);if(bit>31)throw new WireError('invalid_schema');return {flag:m[1],bit,type:m[3]};}
-function knownFlags(def){const masks={};for(const p of def.params){if(p.type==='#')masks[p.name]=0;const f=optional(p.type);if(f){if(!Object.hasOwn(masks,f.flag))throw new WireError('invalid_schema');masks[f.flag]=(masks[f.flag]|(1<<f.bit))>>>0;}}return masks;}
+function knownFlags(def){const masks={};for(const p of def.params){if(p.type==='#')masks[p.name]=0;const f=optional(p.type);if(f){if(!Object.hasOwn(masks,f.flag))throw new WireError('invalid_schema');masks[f.flag]=(masks[f.flag]|(1<<f.bit))>>>0;}}
+ // Only locally reviewed schema metadata can admit ignored payload-free bits.
+ // They never create decoded fields or get set by the encoder.
+ for(const [flag,bits]of Object.entries(def.ignoredFlags||{})){if(!Object.hasOwn(masks,flag)||!Number.isInteger(bits)||bits<1||bits>0xffffffff||(bits&masks[flag])!==0)throw new WireError('invalid_schema');masks[flag]=(masks[flag]|bits)>>>0;}return masks;}
 for(const def of [...constructors.values(),...methods.values()])knownFlags(def);
 function encode(def,value){
  const w=new Writer();let nodes=0;

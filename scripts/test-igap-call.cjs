@@ -8,6 +8,17 @@ const token = 'fixtureHeader.fixturePayload.fixtureSignature';
 const numeric = (field, value) => w.field(field, BigInt(value), 0);
 const offer = (sender, room, extra = Buffer.alloc(0)) => w.frame(30915,
   Buffer.concat([numeric(2, sender), numeric(3, room), extra]));
+
+test('service leave during a pending join retains safe terminal actor/stage and rejects the stale credential reply',async()=>{
+ for(const [actor,id]of [['self','41'],['peer','42']]){const {session,rpc}=fixture();await session.handlePush(offer('42','99'));const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();assert.equal(session.state.phase,'joining');await session.handlePush(w.frame(30918,numeric(2,id)));assert.equal(session.state.phase,'ended');assert.deepEqual(session.state.terminalDiagnostic,{cause:'service_leave',endingActor:actor,phaseBeforeEnd:'joining'});
+  reply.resolve({action:30914,fields:w.parse(Buffer.concat([w.string(2,token,100),numeric(3,'41')]))});await assert.rejects(joining,/call_cancelled/);assert.equal(session.state.credentialReady,false);assert.equal(session.state.busy,false);assert.equal(session.state.terminalDiagnostic.endingActor,actor);const diagnostic=JSON.stringify(session.state.terminalDiagnostic);for(const secret of [token,'41','42','99'])assert.ok(!diagnostic.includes(secret));
+  const exported=session.state.terminalDiagnostic;exported.endingActor='altered';assert.equal(session.state.terminalDiagnostic.endingActor,actor);session.reset('ended');assert.equal(session.state.terminalDiagnostic.endingActor,actor);await session.handlePush(offer('42','100'));assert.equal(session.state.terminalDiagnostic,null);session.reset();assert.equal(session.state.terminalDiagnostic,null);
+ }
+});
+
+test('unrelated and stale correlated leave pushes during a pending join do not end the call',async()=>{
+ const {session,rpc}=fixture();await session.dial('42');const reply=deferred();rpc.handler=()=>reply.promise;const joining=session.join();await session.handlePush(w.frame(30918,numeric(2,'43')));await session.handlePush(w.frame(30918,Buffer.concat([w.field(1,w.string(1,'stale-correlation',64)),numeric(2,'41')])));assert.equal(session.state.phase,'joining');assert.equal(session.state.terminalDiagnostic,null);reply.resolve({action:30914,fields:w.parse(Buffer.concat([w.string(2,token,100),numeric(3,'41')]))});await joining;assert.equal(session.state.phase,'joined');assert.equal(session.state.credentialReady,true);assert.equal(session.state.terminalDiagnostic,null);session.reset();
+});
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

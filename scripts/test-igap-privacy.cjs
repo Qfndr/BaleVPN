@@ -9,3 +9,29 @@ test('missing or duplicate matching rules fail closed, and a lost mutation reply
 test('an inconsistent read-back cannot report call privacy applied',async()=>{const f=fixture({hook:async(action,type)=>action===144?{action:30144,fields:w.parse(w.field(2,type,0))}:null});await assert.rejects(f.privacy.ensureEveryone(),/privacy_not_applied/);});
 test('duplicate matching rules and invalid enum levels cannot authorize a privacy write',async()=>{for(const body of [Buffer.concat([w.field(4,w.field(2,4,0)),w.field(4,w.field(2,4,0))]),w.field(4,Buffer.concat([w.field(2,4,0),w.field(1,3,0)]))]){const f=fixture({hook:async()=>({action:30143,fields:w.parse(body)})});await assert.rejects(f.privacy.ensureEveryone(),/invalid_privacy_response/);assert.equal(f.calls.length,1);}});
 test('concurrent privacy operations and closing during a read cannot start a later mutation',async()=>{let release;const pending=new Promise(resolve=>{release=resolve;}),f=fixture({hook:async(action,type)=>{if(action===143&&type===4)await pending;}});const opening=f.privacy.ensureEveryone();await assert.rejects(f.privacy.read(),/account_busy/);f.privacy.close();release();await assert.rejects(opening,/closed/);assert.equal(f.calls.length,1);});
+
+test('typed privacy shape failures expose bounded enum/length diagnostics without private response contents',async()=>{
+ const {PrivacyError,privacyDiagnostic}=require('../experiments/igap/privacy.cjs'),secret='private-token-phone-identity';
+ const fields=w.parse(Buffer.concat([w.string(1,secret,128),w.field(4,Buffer.concat([w.field(1,1,0),w.field(2,5,0),w.string(9,secret,128)])),w.string(7,secret,128)]));
+ const f=fixture({hook:async()=>({action:30143,fields})});await assert.rejects(f.privacy.read(),error=>{assert.ok(error instanceof PrivacyError);assert.equal(error.reason,'invalid_privacy_response');assert.equal(error.privacyDiagnostic.action,30143);assert.equal(error.privacyDiagnostic.emptyRules,false);assert.deepEqual(error.privacyDiagnostic.rules,[{level:1,type:5}]);assert.ok(!JSON.stringify(error.privacyDiagnostic).includes(secret));return true;});assert.equal(f.calls.length,1);
+ const empty=privacyDiagnostic({action:30143,fields:new Map()});assert.equal(empty.emptyRules,true);assert.deepEqual(empty.rules,[]);
+ const untyped=privacyDiagnostic({action:secret,fields:secret});assert.equal(untyped.action,null);assert.equal(untyped.malformed,true);assert.ok(!JSON.stringify(untyped).includes(secret));
+ const hostile=new Map([[4,[{wire:2,value:Buffer.from([255])},{wire:0,value:123456789012345678n},{wire:2,value:secret}]],['private-field',[{wire:2,value:Buffer.from(secret)}]]]);for(let n=10;n<40;n++)hostile.set(n,[{wire:2,value:Buffer.from(secret)}]);const bounded=privacyDiagnostic({action:30143,fields:hostile});assert.ok(bounded.fields.length<=16);assert.equal(bounded.truncated,true);assert.equal(bounded.malformed,true);assert.ok(!JSON.stringify(bounded).includes(secret));assert.ok(!JSON.stringify(bounded).includes('123456789012345678'));
+ const plain=new PrivacyError('not_authenticated',{action:30143,fields});assert.equal(plain.privacyDiagnostic,undefined);
+});
+
+test('invalid mutation responses carry shape diagnostics and never skip verification or retry',async()=>{
+ const f=fixture({hook:async action=>action===144?{action:30144,fields:new Map()}:null});await assert.rejects(f.privacy.ensureEveryone(),error=>{assert.equal(error.reason,'invalid_privacy_response');assert.equal(error.privacyDiagnostic.action,30144);return true;});assert.equal(f.calls.filter(v=>v.action===144).length,1);
+});
+
+test('original documented single-rule replies are verified by exact type and support omitted proto3 ALLOW_ALL',async()=>{
+ const f=fixture({hook:async(action,type)=>action===143?{action:30143,fields:w.parse(Buffer.concat([w.field(2,type,0),...f.levels.get(type)===0?[]:[w.field(3,f.levels.get(type),0)]]))}:null});
+ const result=await f.privacy.ensureEveryone();assert.equal(result.allowed,true);assert.deepEqual(result.changed,['voice','video']);assert.deepEqual([...f.levels.values()],[0,0]);assert.equal(f.calls.filter(c=>c.action===144).length,2);
+});
+
+test('legacy rule shape rejects mismatched types, invalid levels, duplicates, ambiguous mixed shapes and empty replies',async()=>{
+ for(const body of [w.field(2,5,0),w.field(3,0,0),Buffer.concat([w.field(2,4,0),w.field(3,3,0)]),Buffer.concat([w.field(2,4,0),w.field(2,4,0)]),Buffer.concat([w.field(2,4,0),w.field(3,1,0),w.field(3,1,0)]),Buffer.concat([w.field(2,4,0),w.field(4,w.field(2,4,0))]),Buffer.alloc(0)]){
+  const f=fixture({hook:async()=>({action:30143,fields:w.parse(body)})});await assert.rejects(f.privacy.ensureEveryone(),/invalid_privacy_response/);assert.equal(f.calls.length,1);
+ }
+ const {privacyDiagnostic}=require('../experiments/igap/privacy.cjs');assert.deepEqual(privacyDiagnostic({action:30143,fields:w.parse(Buffer.concat([w.field(2,4,0),w.field(3,1,0)]))}).fields.map(f=>f.items[0].enum),[4,1]);assert.equal(privacyDiagnostic({action:30914,fields:w.parse(w.field(2,4,0))}).fields[0].items[0].enum,undefined);
+});
