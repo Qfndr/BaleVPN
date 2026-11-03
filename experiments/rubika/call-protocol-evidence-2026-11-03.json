@@ -102,7 +102,24 @@
     "normalHangupPreservesAuthSession": true,
     "realAccountServiceTested": false
   },
-  "offlineValidation": {"providerNodeTestsPassed": 355, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 107, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "accountMediaHandoffTestsPassed": 15, "legacyCipherTestsPassed": 6, "rubikaMediaOwnerTestsPassed": 6, "rubikaNativeBridgeTestsPassed": 12, "rustLibraryTestsPassed": 62, "rustRubikaHelperTestsPassed": 4, "rustTestsIgnored": 0, "nativeInspectorTestsPassed": 8, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
+  "localCallLab": {
+    "sourceIntegrated": true,
+    "helperArgument": "--rubika-bridge",
+    "routes": ["prepare", "dial", "accept", "end", "reset"],
+    "vaultAndSameOriginRequired": true,
+    "distinctConfirmedAccounts": true,
+    "localPairingOnly": true,
+    "explicitDialAndAccept": true,
+    "profile": "6.0.0/layer-92",
+    "preparedPollIntervalMs": 2000,
+    "waitForCompleteNegotiationBeforeMedia": true,
+    "accountAndVaultInvalidation": true,
+    "browserFixtures": {"passed": true, "languages": ["fa", "en"], "themes": ["dark", "light"], "widthRangePx": [320, 1440], "applicationExternalRequests": 0},
+    "previousFourProviderBrowserRegressionPassed": true,
+    "liveLabRestarted": false,
+    "productionTunnelVerified": false
+  },
+  "offlineValidation": {"providerNodeTestsPassed": 366, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 118, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "accountMediaHandoffTestsPassed": 15, "pairManagerTestsPassed": 7, "callLabHttpTestsPassed": 4, "legacyCipherTestsPassed": 6, "rubikaMediaOwnerTestsPassed": 6, "rubikaNativeBridgeTestsPassed": 12, "rustLibraryTestsPassed": 62, "rustRubikaHelperTestsPassed": 4, "rustTestsIgnored": 0, "nativeInspectorTestsPassed": 8, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
   "unverified": ["minimum API protocol layer and live negotiation", "Web-session acceptance of Android call methods", "live call lifecycle", "native media library interoperability", "key length and encoding on live service", "provider-carried relay route", "international number acceptance", "billing", "throughput", "outage behavior"],
   "releasePublished": false
 }

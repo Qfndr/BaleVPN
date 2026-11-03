@@ -195,12 +195,14 @@ class CallSession{
  }
  // Private single-consumer handoff, never an HTTP/session-export object.
  // Nonenumerable methods make accidental JSON logging produce {}.
- issueLegacyMedia(){
-  this.#guard(this.#epoch);if(this.#phase!=='accepted')fail('call_not_accepted');
-  if(this.#leaseIssued)fail('media_lease_already_issued');
+ #validateLegacy(){
   if(this.#profile.library_versions.length!==1||this.#profile.library_versions[0]!=='6.0.0'||this.#profile.min_layer>92||this.#profile.max_layer<92||
    this.#call.protocol_layer!==92||!this.#call.library_versions?.includes('6.0.0'))fail('unsupported_media_profile');
   let key;try{key=serviceKey(this.#call.key);relayServers(this.#call.connections);}catch{fail('invalid_media_parameters');}finally{key?.fill(0);}
+ }
+ issueLegacyMedia(){
+  this.#guard(this.#epoch);if(this.#phase!=='accepted')fail('call_not_accepted');
+  if(this.#leaseIssued)fail('media_lease_already_issued');this.#validateLegacy();
   const epoch=this.#epoch,revision=this.#mediaRevision,callId=this.#call.call_id;let consumed=false;
   const check=()=>{this.#guard(epoch);if(this.#phase!=='accepted'||this.#call?.call_id!==callId||this.#mediaRevision!==revision)fail('media_lease_expired');};
   this.#leaseIssued=true;
@@ -222,10 +224,11 @@ class CallSession{
  close(){if(this.#closed)return;this.#closed=true;this.#fail('closed');this.#phase='closed';}
  get state(){
   if(this.#ready&&!this.#closed)this.#tick();
+  let legacyMediaAvailable=false;if(this.#phase==='accepted'&&!this.#leaseIssued)try{this.#validateLegacy();legacyMediaAvailable=true;}catch{}
   return {provider:'rubika',phase:this.#phase,ready:this.#ready,busy:this.#busy,reason:this.#reason,callId:this.#call?.call_id??null,
    peerId:this.#peer??null,direction:this.#call?(this.#outgoing?'outgoing':'incoming'):null,serviceState:this.#call?.state??null,
    serviceDuration:this.#call?.duration??null,
-   queuedSignals:this.#signals.length,ignoredEvents:this.#ignored,mediaStarted:this.#mediaStarted,mediaReady:false,peerAuthenticated:false,providerVerified:false};
+   queuedSignals:this.#signals.length,ignoredEvents:this.#ignored,legacyMediaAvailable,mediaStarted:this.#mediaStarted,mediaReady:false,peerAuthenticated:false,providerVerified:false};
  }
 }
 module.exports={CallSession,CallError};

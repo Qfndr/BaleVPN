@@ -6,7 +6,7 @@ const {CallClient}=require('../experiments/rubika/call-client.cjs'),{CallSession
 const codec=require('../experiments/rubika/call-codec.cjs');
 async function pair({connections=[{type:'WebRTC',ip:'192.0.2.1',port:3478,turn_username:'fixture',turn_password:'fixture-private-password'}],hook}={}){
  const ids=['fixture_account_01','fixture_account_02'],key=crypto.randomBytes(128).toString('hex'),callId='fixture_call_01',calls=[],events=[[],[]],signals=[[],[]],started=[0,0],records=[],accountStates=[],accounts=[];
- let timestamp=Math.floor(Date.now()/1000),accepted=false;
+ let timestamp=Math.floor(Date.now()/1000),accepted=false,caller=0;
  const profile={min_layer:92,max_layer:92,library_versions:['6.0.0']};
  const update=(slot,state,action='Edit')=>({action,call_id:callId,timestamp:++timestamp,object_guid:ids[1-slot],type:'User',
   call:{call_id:callId,call_type:'Voice',state,protocol_layer:92,library_versions:['6.0.0'],connections:structuredClone(connections),...(state==='Accepted'?{key}:{}),other_participants:[{type:'User',object_guid:ids[1-slot]}]},
@@ -20,8 +20,8 @@ async function pair({connections=[{type:'WebRTC',ip:'192.0.2.1',port:3478,turn_u
   async request(method,input,{credentials}){
    assert.equal(credentials.auth,records[slot].auth);assert.equal(credentials.privateKey,records[slot].privateKey);codec.validateInput(method,input);calls.push({slot,method,input:structuredClone(input)});
    if(hook){const result=await hook(slot,method,input);if(result!==undefined)return result;}
-   if(method==='requestCall'){assert.equal(slot,0);assert.equal(input.user_guid,ids[1]);events[1].push(update(1,'Requested','New'));return {call_type:'WebRtc',call_update:update(0,'Waiting','New')};}
-   if(method==='acceptCall'){assert.equal(slot,1);accepted=true;events[0].push(update(0,'Accepted'));return {call_update:update(1,'Accepted')};}
+   if(method==='requestCall'){caller=slot;assert.equal(input.user_guid,ids[1-slot]);events[1-slot].push(update(1-slot,'Requested','New'));return {call_type:'WebRtc',call_update:update(slot,'Waiting','New')};}
+   if(method==='acceptCall'){assert.notEqual(slot,caller);accepted=true;events[caller].push(update(caller,'Accepted'));return {call_update:update(slot,'Accepted')};}
    if(method==='receivedCall')return {call_update:update(slot,'Waiting')};
    if(method==='getUpdate')return {update_data:{user_guid:ids[slot],call_updates:events[slot].splice(0),call_signal_data:signals[slot].splice(0)}};
    assert.equal(input.call_id,callId);
@@ -32,7 +32,7 @@ async function pair({connections=[{type:'WebRTC',ip:'192.0.2.1',port:3478,turn_u
    throw Error('Unexpected fixture request');
   },close(){this.closed=true;}})});
  const a=new CallSession(accounts[0],{allowedPeers:[ids[1]],protocol:profile,createClient:create(0)}),b=new CallSession(accounts[1],{allowedPeers:[ids[0]],protocol:profile,createClient:create(1)});
- return {a,b,ids,callId,key,calls,events,signals,started,records,accountStates,update,
+ return {a,b,ids,callId,key,calls,events,signals,started,records,accountStates,accounts,createClient:account=>{const slot=accounts.indexOf(account);assert.ok(slot>=0);return create(slot)(account);},update,
   async negotiate(){await a.start();await b.start();await a.dial(ids[1]);await b.pollOnce();await b.accept();await a.pollOnce();assert.equal(a.state.phase,'accepted');assert.equal(b.state.phase,'accepted');},
   close(){a.close();b.close();}};
 }

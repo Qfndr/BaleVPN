@@ -373,7 +373,7 @@ it does not log out the owning account or promise a remote network ACK.
 node --test scripts/test-rubika-account-media.cjs
 ```
 
-Current provider regression: **355 Node tests passed, 0 failed, 0 skipped**,
+Account-media milestone: **355 Node tests passed, 0 failed, 0 skipped**,
 including 107 Rubika tests. Fifteen handoff/owner tests cover single consumption,
 negotiation, key/profile revocation, same-second changes, readiness and one-time
 ACK, redelivery, tampering, account isolation, hangup and cancellation. All
@@ -386,4 +386,55 @@ provider discovery/HTTP and notifications in these fixtures remain synthetic.
 No live account request, lab restart, production build, release or change to the
 Bale packet path occurred. Real service acceptance, native Rubika interoperability,
 live key shape/clock semantics, external-VPS route, tariff and outage tests are
-still required, followed by guarded lab UI and product integration.
+still required, followed by product integration. The guarded lab UI is now
+implemented below.
+
+## Explicit two-account call lab
+
+The isolated lab now accepts `--rubika-bridge` and provides authenticated,
+same-origin `/api/rubika/media/{prepare,dial,accept,end,reset}` routes. Only exact
+typed options and an unlocked vault are accepted. `CallPair` binds two distinct,
+confirmed accounts and prepares fresh local helpers/QUIC pins without dialing.
+Either account can explicitly dial the other; acceptance remains manual and
+transport client/server roles are independent of call direction. Account IDs
+come from each confirmed session, not guessed phone/GUID conversions.
+
+After explicit preparation, a serialized two-second event poll handles account
+notifications. Media attachment waits for complete, eligible negotiated fields
+on both sides; it does not fail simply because Accepted arrived before a key or
+relay update. Account changes, vault lock/reset, stop/resume/logout/forget cancel
+the experiment and owned workers. Public state excludes account keys, raw SDP,
+TURN credentials and pairing certificates. Uncertain remote hangup is separate
+from confirmed termination. No automatic answer, redial or device registration
+is introduced. Local API readiness never changes the provider capability flags
+to a verified tunnel or tariff.
+
+The Rubika tab has compact controls, per-account role/status/actions, byte/RTT/
+loss metrics, tooltip help and bilingual errors. The existing local FA/EN fonts,
+theme/language persistence and responsive layout are retained. The browser test
+completed prepare/call/manual accept/end in FA/EN, dark/light at 320–1440 px,
+checked no horizontal overflow, cleared vault input, no sensitive state and zero
+application external requests. The earlier four-provider browser flow also
+passed. Both are synthetic provider/native-media fixtures, not live login/calls.
+
+Current provider suite: **366 Node tests passed, 0 failures, 0 skips**, including
+118 Rubika tests. Seven pair-manager and four HTTP tests cover explicit actions,
+either caller direction, cancellation, revocation, fixed-provider helpers,
+vault/origin/auth guards, private output and uncertain shutdown. Both targeted
+Rust local-media tests passed; the normal Rubika helper fixture now exercises
+this actual pair manager, typed account/call clients, media owner and one-time
+start ACK. The 256 KiB projected real-media echo remains byte-identical. The
+latest full Rust library regression remains 62 passed with no ignored tests;
+no Rust core source changed in this lab step.
+
+```powershell
+node --test scripts/test-rubika-call-pair.cjs scripts/test-rubika-call-lab.cjs
+node scripts/test-rubika-call-lab-browser.cjs
+```
+
+See [the Persian call-lab guide](../../docs/rubika-call-lab-fa.md). Production
+UI/binaries and the live running lab were not restarted or published in this
+step. Each lab serves UI/backend from its startup snapshot; changed source does
+not upgrade an existing process. Real-account login, API/native interoperation,
+cross-machine persistent pairing, Linux packaging and external-VPS route/tariff/
+outage checks remain unfinished. No provider tunnel is advertised as verified.
