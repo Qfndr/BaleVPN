@@ -19,7 +19,7 @@
     "callFields": ["user_guid", "call_updates", "call_signal_data"],
     "inspectionClasses": ["ir.aaap.messengercore.NotificationUtils", "ir.aaap.messengercore.network.NetworkHelperImpl", "ir.aaap.messengercore.CoreMainClassImpl", "androidMessenger.notificationCenter.NotificationCenter", "androidMessenger.proxy.CallProxy"],
     "localPolicy": "Require exact self user_guid in update_data; live presence of that field is unverified",
-    "partialEditsMerged": false,
+    "partialEditsMerged": "Private controller uses named updated_parameters and per-field local timestamps; live compatibility unverified",
     "callerReceiverIdentityInferred": false
   },
   "normalRequestFields": ["call_type", "user_guid", "min_layer", "max_layer", "library_versions"],
@@ -42,7 +42,24 @@
   },
   "mediaKeyObservation": "VoIPService.processAcceptedCall references PhoneCall.key, String.getBytes and Utilities.computeSHA1; not a base64 signaling decode",
   "localImplementation": {"voiceOnly": true, "signedAuthenticatedRequests": true, "honestWebClient": true, "automaticCallOrRetry": false, "mediaEngine": false, "productionUi": false},
-  "offlineValidation": {"providerNodeTestsPassed": 296, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 48, "accountBoundCallClientTestsPassed": 17, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
+  "privateController": {
+    "singleCallPerAccount": true,
+    "explicitProtocolAndPeerAllowList": true,
+    "manualReceiptAndAcceptance": true,
+    "automaticPollingOrRedial": false,
+    "localPendingDeadlineSeconds": 60,
+    "localIncomingWindowSeconds": 120,
+    "localForwardClockSkewSeconds": 30,
+    "liveTimestampSemanticsVerified": false,
+    "signals": "Opaque bytes only; native signaling encryption and media adapter are pending",
+    "queuedSignalEntryBound": 32,
+    "queuedSignalByteBound": 49152,
+    "retainedCallIdBound": 128,
+    "equalTimestampStateProgression": true,
+    "privateBufferCleanup": true,
+    "mediaReady": false
+  },
+  "offlineValidation": {"providerNodeTestsPassed": 316, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 68, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
   "unverified": ["numeric protocol layers", "Web-session acceptance of Android call methods", "live call lifecycle", "native media library interoperability", "key length and encoding on live service", "provider-carried relay route", "international number acceptance", "billing", "throughput", "outage behavior"],
   "releasePublished": false
 }

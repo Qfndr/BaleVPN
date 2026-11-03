@@ -101,7 +101,7 @@ test('partial edits and deletion keep explicit metadata without inventing absent
 });
 test('unsafe numeric connection IDs, malformed endpoints, unsupported call types and oversized lists fail closed',()=>{
  const base=callUpdate();
- for(const change of [v=>{v.call.call_type='Video';},v=>{v.call.connections[0].ip='https://attacker.invalid';},
+ for(const change of [v=>{v.call.call_type='Unknown';},v=>{v.call.connections[0].ip='https://attacker.invalid';},
   v=>{v.call.connections[0].id=9223372036854776000;},v=>{v.call.connections[0].id='9223372036854775808';},
   v=>{v.call.connections[0].port=0;},v=>{v.call.connections[0].turn_password='private\nsecret';},
   v=>{v.call.other_participants[0].type='Bot';},v=>{v.call.key='x'.repeat(8193);},

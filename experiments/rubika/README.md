@@ -146,7 +146,8 @@ input objects are snapshotted, and service failures never trigger retries.
 field's presence in every live response is not yet verified. Per-call replies
 must match the requested call ID and any nested PhoneCall ID. Partial Edit and
 Delete records stay partial, not fabricated full snapshots. This reader does not
-merge edits or infer caller/receiver roles; those belong in the pending controller.
+merge edits or infer caller/receiver roles. The private controller below now
+merges edits under explicit local policy.
 Java long connection IDs are preserved as exact decimal strings, with unsafe
 numeric JSON representations rejected. Endpoint syntax is checked without
 connecting to an address. Tg/WebRTC is preserved as a type, not treated as proof
@@ -162,9 +163,65 @@ this does not make it safe to interpret as plaintext SDP or Eitaa signaling.
 node --test scripts/test-rubika-call-client.cjs
 ```
 
-Current regression: **296 provider Node tests passed, 0 failed, 0 skipped**,
-including 48 Rubika tests. The 17 new tests cover account isolation, account/key
+Account-bound reader milestone: **296 provider Node tests passed, 0 failed, 0 skipped**,
+including 48 Rubika tests. Its 17 tests cover account isolation, account/key
 changes, late completion, cancellation, mutation during pending I/O, update/self
 and nested call-ID mismatches, partial updates, exact numeric IDs, bounded signal
 batches, private error redaction and the real HTTP crypto pipeline against an
 offline service fixture. No real account, live call or tariff test is included.
+
+## Private single-call controller
+
+`call-session.cjs` now owns one call per confirmed Rubika account. It requires
+an explicit reviewed protocol profile and a peer allow-list. There is no assumed
+layer default, native `9.0.0` media implementation or production call button.
+Explicit `start`, `dial`, `pollOnce`, `acknowledge`, `accept`, and `hangup` actions
+use the account-bound client; a receipt does not accept a call. Polling is manual,
+with no periodic API traffic, automatic answering or redial. A 250 ms local timer
+checks cancellation/account binding and the 60-second pending-call deadline; it
+does not send network requests. No `callStarted` is sent without a media engine.
+
+The controller only admits a New Requested **voice** event with an allowed
+`object_guid`. For this local profile the event's object GUID must equal the
+selected peer, and any participant GUID must be that peer or self. These are
+explicit admission rules requiring live verification, not an inference of native
+caller/receiver identity or cryptographic peer authentication. Other call IDs,
+retired calls, unapproved peers and unsupported incoming Video/CallOut are ignored.
+The typed reader preserves those declared call types so an unrelated video call
+does not terminate voice-call monitoring.
+
+Local timestamp policy treats update timestamps as Unix seconds, allowing 30
+seconds forward clock skew and a 120-second New-event window. Clock semantics
+and compatibility are **not yet live verified**. Only named `updated_parameters`
+are merged for Edit. Per-field timestamps preserve newer values; state transitions
+remain monotonic, including forward transitions with equal timestamps. An ambiguous
+Edit stops this experimental controller rather than overwriting retained keys
+with serializer defaults. Deletion at least as recent as the latest observed
+update clears the call. Acceptance on another device ends an incoming local
+ring unless local accept was explicitly requested.
+
+Signals are opaque protocol bytes, bounded to 32 queued entries / 48 KiB total,
+and isolated by call ID. Service-owned buffers are copied and wiped; queued data
+is wiped on hangup, failure, timeout or close. `takeOpaqueSignals()` transfers
+ownership only after service acceptance; its caller must wipe the returned bytes
+after use. `sendOpaqueSignal` **does not encrypt**: its future media adapter must
+provide the correct native ciphertext. Completed IDs are retained for this
+controller's lifetime with a 128-call bound; reaching it requires a new explicit
+controller, never silently evicting IDs and reaccepting an old call.
+
+Public metadata contains no service keys, credentials or signal payloads.
+`accepted` is service signaling state. `mediaReady`, `peerAuthenticated` and
+`providerVerified` remain **false**, and there is no SOCKS listener or proxy-ready
+state. The native signaling encryption/media adapter, live calls, path/billing
+verification, lab UI integration and production integration remain unfinished.
+
+```powershell
+node --test scripts/test-rubika-call-session.cjs
+```
+
+Current full provider regression: **316 Node tests passed, 0 failed, 0 skipped**,
+including 68 Rubika tests. The 20 controller tests cover incoming/manual acceptance,
+outgoing calls, stale/equal-time/out-of-order updates, receipt versus acceptance,
+cross-peer/call isolation, retired calls, timeout, cancellation, bounded private
+signal queues and the complete offline lifecycle through the actual signed HTTP
+client and service encryption. No new live account request or lab restart occurred.

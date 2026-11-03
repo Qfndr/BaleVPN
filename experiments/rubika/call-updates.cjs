@@ -34,7 +34,7 @@ function phoneCall(value,{partial=false}={}){
  for(const name of FIELDS){
   if(!Object.hasOwn(value,name)||value[name]===null)continue;const v=value[name];let valid=true,out=v;
   if(name==='call_id')valid=id(v);
-  else if(name==='call_type')valid=v==='Voice';
+  else if(name==='call_type')valid=['Voice','Video','CallOut'].includes(v);
   else if(name==='state')valid=STATES.includes(v);
   else if(name==='key')valid=text(v,8192);
   else if(name==='protocol_layer')valid=Number.isInteger(v)&&v>=1&&v<=1000;
@@ -49,7 +49,7 @@ function phoneCall(value,{partial=false}={}){
   else valid=uint(v);
   if(!valid)fail();result[name]=out;
  }
- if(!partial&&(!id(result.call_id)||result.call_type!=='Voice'||!STATES.includes(result.state)))fail();return result;
+ if(!partial&&(!id(result.call_id)||!['Voice','Video','CallOut'].includes(result.call_type)||!STATES.includes(result.state)))fail();return result;
 }
 function callUpdate(value,{callId}={}){
  if(!plain(value)||!id(value.call_id)||!['New','Edit','Delete'].includes(value.action)||!uint(value.timestamp))fail();
