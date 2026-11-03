@@ -20,6 +20,7 @@ function fixture({base='https://stream.gaplication.com',onEvent,apiResponse}={})
  const seen=[],events=[];let stream,cancelled=false;
  const fetchImpl=async(url,options)=>{
   seen.push({url,options});assert.equal(options.redirect,'error');
+  if(url==='https://api.gaplication.com/groupList?page=reset')return Response.json({data:{groups:[]}});
   if(url==='https://core.gaplication.com/message/get/config'){
    assert.equal(options.method,'POST');assert.equal(options.body,undefined);assert.equal(options.headers.token,token);
    return reply({SSEServerAddress:base});
@@ -100,9 +101,9 @@ test('call requests use v2.5 encrypted JSON on the fixed topic and do not retry 
  const f=fixture(),connection=await f.open();
  try{
   assert.deepEqual(await connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'}),{acknowledged:true,reply:null});
-  assert.equal(f.seen.length,3);assert.equal(f.seen[2].options.headers['api-version'],'v2.5');
-  assert.ok(f.seen[2].options.body.every(value=>value===0));
-  await assert.rejects(connection.send({type:'msgText',callData:{}},{peerId:'42'}),/invalid_call_signal/);assert.equal(f.seen.length,3);
+  assert.equal(f.seen.length,4);assert.equal(f.seen[3].options.headers['api-version'],'v2.5');
+  assert.ok(f.seen[3].options.body.every(value=>value===0));
+  await assert.rejects(connection.send({type:'msgText',callData:{}},{peerId:'42'}),/invalid_call_signal/);assert.equal(f.seen.length,4);
  }finally{connection.close();}
 });
 
@@ -114,7 +115,7 @@ test('cleanSession resets old call state and continues receiving fresh events wi
   assert.equal(connection.state.phase,'connected');assert.equal(connection.state.historyGaps,1);assert.equal(connection.state.awaitingFreshEvent,true);
   f.push(frame(1,[config()]));await waitFor(()=>f.events.length===2);
   assert.deepEqual(f.events.map(event=>event.type),['streamReset','config']);
-  assert.equal(connection.state.callEvents,1);assert.equal(connection.state.awaitingFreshEvent,false);assert.equal(f.seen.length,2);
+  assert.equal(connection.state.callEvents,1);assert.equal(connection.state.awaitingFreshEvent,false);assert.equal(f.seen.length,3);
  }finally{connection.close();}
 });
 
@@ -124,24 +125,24 @@ test('callback failures and truncated EOF end the stream visibly without automat
   if(mode==='callback')f.push(frame(1,[config()]));
   else{const bytes=frame(1,[config()]);f.push(bytes.subarray(0,bytes.length-1));f.end();}
   await waitFor(()=>connection.state.phase==='failed');
-  assert.equal(f.seen.length,2);assert.ok(!JSON.stringify(connection.state).includes('private callback detail'));
+  assert.equal(f.seen.length,3);assert.ok(!JSON.stringify(connection.state).includes('private callback detail'));
   await assert.rejects(connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'}),/not_connected/);connection.close();
  }
 });
 
 test('an untrusted stream server is rejected before receiving account headers',async()=>{
- const f=fixture({base:'https://attacker.invalid'});await assert.rejects(f.open(),/invalid_stream_server/);assert.equal(f.seen.length,1);
+ const f=fixture({base:'https://attacker.invalid'});await assert.rejects(f.open(),/invalid_stream_server/);assert.equal(f.seen.length,2);
 });
 
-test('abort during config fetch cannot open a late stream or create a new device',async()=>{
+test('abort during cursor fetch cannot open a late stream or create a new device',async()=>{
  const abort=new AbortController();let finish;const pending=new Promise(resolve=>{finish=resolve;}),urls=[];
  const opening=SignalingConnection.open(session,{signal:abort.signal,fetchImpl:async(url)=>{urls.push(url);return pending;}});
  abort.abort();finish(reply({SSEServerAddress:'https://stream.gap.im'}));await assert.rejects(opening,/closed/);
- assert.deepEqual(urls,['https://core.gaplication.com/message/get/config']);
+ assert.deepEqual(urls,['https://api.gaplication.com/groupList?page=reset']);
 });
 
 test('call HTTP authorization failure invalidates the event connection and cannot turn a failed request into a call acknowledgment',async()=>{
  const f=fixture({apiResponse:()=>new Response('private gateway error',{status:401})}),connection=await f.open();
  await assert.rejects(connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'}),/not_authorized/);
- assert.equal(connection.state.phase,'failed');assert.equal(connection.state.reason,'not_authorized');assert.equal(f.seen.length,3);connection.close();
+ assert.equal(connection.state.phase,'failed');assert.equal(connection.state.reason,'not_authorized');assert.equal(f.seen.length,4);connection.close();
 });

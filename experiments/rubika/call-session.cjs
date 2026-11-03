@@ -1,6 +1,7 @@
 // Private single-call controller; no native media, automatic answering/redial,
 // or connected-proxy state. All signaling here is opaque protocol ciphertext.
 'use strict';
+const {diagnostic}=require('./call-diagnostic.cjs');
 const {CallClient}=require('./call-client.cjs'),codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
 const {serviceKey}=require('./legacy-signal-cipher.cjs'),{relayServers}=require('./relay-config.cjs');
 class CallError extends Error{constructor(reason){super('Rubika call '+reason);this.reason=reason;}}
@@ -57,7 +58,7 @@ class CallSession{
   catch(e){
    if(this.#closed||epoch!==this.#epoch)throw new CallError('call_cancelled');
    const reason=e instanceof CallError||SAFE.has(e?.reason)?e.reason:'call_operation_failed';
-   if(!LOCAL.has(reason))this.#fail(reason);throw new CallError(reason);
+   if(!LOCAL.has(reason))this.#fail(reason);throw Object.assign(new CallError(reason),diagnostic(e));
   }finally{this.#busy=false;}
  }
  #wipeReply(reply){

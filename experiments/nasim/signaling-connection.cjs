@@ -2,6 +2,7 @@ const {HttpClient,ApiError}=require('./http-client.cjs');
 const wire=require('./wire.cjs');
 const codec=require('./call-codec.cjs');
 const {SSEParser}=require('./sse-parser.cjs');
+const {initialCursor}=require('./stream-cursor.cjs');
 const MAX_REPLY=256*1024+28;
 const DOMAINS=['gaplication.com','gap.im','nasimrezvan.com'];
 function serverBase(value){
@@ -60,6 +61,8 @@ class SignalingConnection{
   clientid:this.#session.clientId,duid:this.#session.deviceId,os:'web',token:this.#session.token,
   project:'nasimrezvan','content-type':'application/octet-stream',origin:'https://web.nasimrezvan.com',referer:'https://web.nasimrezvan.com/'};}
  async #start(){
+  if(this.#cursor===0n)this.#cursor=BigInt(await initialCursor(this.#session,{fetchImpl:this.#fetch,signal:this.#abort.signal}));
+  if(this.#abort.signal.aborted)throw new ApiError('closed');
   const config=await this.#api.request('/message/get/config',{}, {token:this.#session.token,clientId:this.#session.clientId});
   if(this.#abort.signal.aborted)throw new ApiError('closed');
   const base=serverBase(config?.SSEServerAddress);

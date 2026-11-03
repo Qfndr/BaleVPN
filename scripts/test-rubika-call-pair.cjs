@@ -2,6 +2,12 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {CallPair}=require('../experiments/rubika/call-pair.cjs'),{fixture}=require('./rubika-lab-call-fixture.cjs');
 async function create(t,options={}){const f=await fixture(options),pair=new CallPair(f.accounts,{executable:'fixture',open:f.open,createClient:f.createClient,pollInterval:0});t.after(()=>{pair.reset();f.broker.close();});return {...f,pair};}
+
+test('a rejected live-update request retains only whitelisted operation diagnostics after closing workers',async t=>{
+ const {ApiError}=require('../experiments/rubika/http-client.cjs');
+ const f=await create(t,{hook:async(_slot,method)=>{if(method==='getUpdate'){const e=new ApiError('service_rejected',400,'INVALID_INPUT');e.privateBody='private-response';throw e;}}});
+ await f.pair.prepare();await assert.rejects(f.pair.pollOnce(),/service_rejected/);assert.equal(f.pair.state.phase,'failed');assert.deepEqual(f.pair.state.diagnostic,{serviceCode:'INVALID_INPUT',statusCode:400,operation:'getUpdate'});assert.ok(!JSON.stringify(f.pair.state).includes('private-response'));f.pair.reset();assert.equal(f.pair.state.diagnostic,null);
+});
 test('local pair prepares without dialing, requires manual acceptance and exchanges only locally owned QUIC pins',async t=>{
  const f=await create(t);await f.pair.prepare({clientSlot:1,socksPort:1092});assert.equal(f.pair.state.phase,'ready');assert.equal(f.broker.calls.some(x=>x.method==='requestCall'),false);
  await f.pair.dial(1);assert.equal(f.pair.getCall(2).phase,'ringing');assert.equal(f.broker.calls.some(x=>x.method==='acceptCall'),false);

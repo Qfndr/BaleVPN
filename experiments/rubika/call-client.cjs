@@ -1,6 +1,7 @@
 // Authenticated account-bound call transport. No retries, media, automatic
 // polling or device registration. Incoming data remains private to the caller.
 'use strict';
+const {diagnostic}=require('./call-diagnostic.cjs');
 const crypto=require('node:crypto'),{HttpClient,ApiError}=require('./http-client.cjs');
 const codec=require('./call-codec.cjs'),updates=require('./call-updates.cjs');
 const SAFE=new Set(['closed','account_busy','invalid_request','invalid_credentials','not_authorized','rate_limited',
@@ -24,16 +25,16 @@ class CallClient{
  }
  #guard(epoch){if(this.#closed||epoch!==this.#epoch)fail('closed');this.#context();}
  #retire(){this.#epoch++;this.#ready=false;this.#client?.close();this.#client=null;this.#binding=null;}
- async #run(action){
+ async #run(action,operation='start'){
   if(this.#closed)fail('closed');if(this.#busy)fail('account_busy');this.#busy=true;this.#error=null;const epoch=this.#epoch;
   try{this.#guard(epoch);const result=await action(()=>this.#guard(epoch));this.#guard(epoch);return result;}
   catch(e){
    if(this.#closed||epoch!==this.#epoch)throw new ApiError('closed');
    const reason=e instanceof ApiError&&SAFE.has(e.reason)||e instanceof updates.UpdateError&&UPDATE_ERRORS.has(e.reason)?e.reason:
     ['not_authenticated','invalid_account_binding','account_binding_changed','call_not_started','call_already_started'].includes(e?.reason)?e.reason:'call_operation_failed';
-   this.#error={reason};
+   const detail=diagnostic({...e,operation});this.#error={reason,...detail};
    if(!['invalid_request','call_not_started','call_already_started'].includes(reason))this.#retire();
-   throw new ApiError(reason);
+   throw Object.assign(new ApiError(reason),detail);
   }finally{this.#busy=false;}
  }
  start(){return this.#run(async guard=>{
@@ -54,7 +55,7 @@ class CallClient{
    if(!this.#ready||!this.#client)fail('call_not_started');
    const result=await this.#client.request(method,input,{credentials:{...this.#binding}});guard();
    return updates.response(method,result,{selfId:this.#binding.userId,callId:input.call_id});
-  });
+  },method);
  }
  close(){if(this.#closed)return;this.#closed=true;this.#retire();}
  get state(){
