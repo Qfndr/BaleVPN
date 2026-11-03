@@ -174,7 +174,9 @@ class CallSession {
   }
   if(event.callUUID!==this.#call){this.#ignored++;return;}
   if(event.type==='callLog'){
-   if(event.peerId===this.#peer&&['finished','rejected','busied','notAnswered','not_answered'].includes(event.status))this.#finish('ended');
+   // Official Web treats callLog as history metadata, including the initial
+   // not_answered placeholder. It is not a bye/reject/busy control message.
+   this.#ignored++;
    return;
   }
   try{clientId(event.senderClientId);}catch{this.#ignored++;return;}

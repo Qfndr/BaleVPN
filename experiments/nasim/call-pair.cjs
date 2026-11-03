@@ -25,6 +25,9 @@ class CallPair {
   const epoch=++this.#epoch;this.#preparing=true;this.#phase='preparing';this.#reason=null;
   const guard=()=>{if(epoch!==this.#epoch)throw new CallError('call_cancelled');};
   try{
+   // A completed call can still pin its old event subscription. Retire those
+   // bindings before establishing fresh subscriptions for an explicit attempt.
+   for(const call of this.#calls.values())call.reset();
    const connections=await Promise.allSettled([1,2].map(async slot=>{
     if(this.#accounts.get(slot).state.events?.phase!=='connected')await this.connectEvents(slot);
     guard();

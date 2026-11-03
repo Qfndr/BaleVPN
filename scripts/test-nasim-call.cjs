@@ -21,6 +21,13 @@ test('wrong peer, self dialing and unpaired or unauthenticated accounts cannot s
   assert.equal(f.sent.length,0);assert.equal(f.natives[0].state.phase,'closed');
  }finally{f.close();}
 });
+
+test('call-log history placeholders cannot terminate a ringing or connected call; explicit peer bye still can',async()=>{
+ const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  for(const status of ['notAnswered','not_answered','rejected','busied','finished']){const log=f.config('41');log.data.type='callLog';log.data.callData.status=status;f.deliver('41',log);}await waitFor(()=>a.state.ignoredEvents===5);assert.equal(a.state.phase,'outgoing');assert.notEqual(a.state.media,null);
+  await b.accept();await waitFor(()=>a.state.phase==='connected');const log=f.config('41');log.data.type='callLog';log.data.callData.status='not_answered';f.deliver('41',log);await waitFor(()=>a.state.ignoredEvents===6);assert.equal(a.state.phase,'connected');await b.end();await waitFor(()=>a.state.phase==='ended');
+ }finally{f.close();}
+});
 test('config for another local device, unapproved callers and duplicate config cannot replace private media credentials',async()=>{
  const f=fixture({autoConfig:false});try{const {a,b}=await f.prepare();await a.dial('42');
   const other=f.config('41');other.senderClientID='different-local-device';f.deliver('41',other);await waitFor(()=>a.state.ignoredEvents===1);assert.equal(a.state.callUUID,null);
