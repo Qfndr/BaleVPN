@@ -225,3 +225,59 @@ outgoing calls, stale/equal-time/out-of-order updates, receipt versus acceptance
 cross-peer/call isolation, retired calls, timeout, cancellation, bounded private
 signal queues and the complete offline lifecycle through the actual signed HTTP
 client and service encryption. No new live account request or lab restart occurred.
+
+## Native legacy signaling profile research
+
+The bounded ELF reader now checks the SHA-pinned APK's x86-64 shared library
+without loading it. [Recorded native observations](native-profile-evidence-2026-11-03.json)
+contain function hashes and six selected symbols. The three
+`GetConnectionMaxLayer` functions are exactly `mov eax, 92; ret`; the legacy
+`InstanceV2_4_0_0Impl.GetVersions` function contains the literal writes for `6.0.0`.
+That literal is not a full C++ data-flow proof. No whole source equivalence,
+native execution, negotiated minimum layer or server acceptance is asserted.
+
+For comparison, the pinned upstream [6.0.0 implementation](https://github.com/DrKLO/Telegram/blob/fb2e545101f41303f1e2712de2e7611a9335f1c3/TMessagesProj/jni/voip/tgcalls/v2_4_0_0/InstanceV2_4_0_0Impl.cpp)
+uses the legacy raw signaling cipher, through
+[SignalingEncryption](https://github.com/DrKLO/Telegram/blob/fb2e545101f41303f1e2712de2e7611a9335f1c3/TMessagesProj/jni/voip/tgcalls/v2/SignalingEncryption.cpp)
+and [EncryptedConnection](https://github.com/DrKLO/Telegram/blob/fb2e545101f41303f1e2712de2e7611a9335f1c3/TMessagesProj/jni/voip/tgcalls/EncryptedConnection.cpp).
+The inspected native class/symbols and literal support this compatibility
+**hypothesis**, not a claim that Rubika's modified binary equals upstream.
+Upstream source is linked for review, not copied into this MIT repository.
+
+`legacy-signal-cipher.cjs` provides an independent experimental raw packet codec,
+enabled only by explicit `libraryVersion: '6.0.0'` and `protocolLayer: 92`.
+It never downgrades a newer profile. It requires an owned 256-byte nonzero key;
+the optional `serviceKey()` conversion requires exactly 256 bytes of round-tripping
+UTF-8, without guessing base64 or stretching a short key. Live key shape/encoding
+is unverified, so an incompatible service key is refused.
+
+This is compatibility keyed-hash/AES-CTR framing, **not new AEAD**, and the service
+supplies the key. It cannot establish provider-blind peer authentication; a future
+tunnel still requires independent pinned QUIC authentication/encryption. Raw
+payloads are opaque bytes, not automatically trusted JSON/SDP. The codec uses a
+64-counter replay window, strips the native receive sequence flag bits, rejects
+zero counters, and stops outgoing counters before flag-bit exhaustion. Its local
+payload bound leaves room for the 20-byte envelope within the existing 48 KiB
+signaling limit. Close wipes retained key and replay state.
+
+Six codec tests and eight malformed-ELF tests passed. The optional SHA-pinned
+**official Eitaa legacy cipher** oracle produced six byte-identical packets and
+bidirectional decryptions, plus masked-counter checks. That proves shared legacy
+packet compatibility only: it does not execute or test a Rubika native call.
+The full provider Node suite now passes **322 tests, 0 failures, 0 skips**,
+including 74 Rubika tests. No account request, APK installation, lab restart,
+production build, release or change to Bale's traffic path is part of this step.
+
+```powershell
+node --test scripts/test-rubika-legacy-signal.cjs
+python scripts/test-rubika-native-profile.py
+python scripts/inspect-rubika-native-profile.py PATH-TO-PINNED-APK --output LOCAL-NATIVE-PROFILE.json
+# Optional offline oracle; source stays outside the repository:
+$env:BALEVPN_EITAA_CALL_UI = 'ABSOLUTE-PATH-TO-appDialogsManager-CtDWV_rQ.js'
+node scripts/test-rubika-official-legacy-signal.cjs
+```
+
+Wiring this profile to typed media descriptions, the call controller and the
+relay-only native helper is still pending, as are actual Rubika interoperation,
+provider route, billing, throughput and outage verification. The presence of
+this codec does not enable a Rubika tunnel in the application.

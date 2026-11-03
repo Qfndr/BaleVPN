@@ -1,0 +1,43 @@
+{
+  "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "member": "lib/x86_64/libtmessages.38.so",
+  "nativeSha256": "396a4c0a4e1625e10942dcb97f2a83671a967aebfa531fcc80ec1ba73c31da3d",
+  "functions": [
+    {
+      "symbol": "_ZN7tgcalls14InstanceV2Impl11GetVersionsEv",
+      "bytes": 417,
+      "sha256": "55ea3de1a76b1456b35c146929482083fb222ee3d42e6a1a96382b6bfbbb3180"
+    },
+    {
+      "symbol": "_ZN7tgcalls14InstanceV2Impl21GetConnectionMaxLayerEv",
+      "bytes": 6,
+      "sha256": "4b53261243eeace80613755a0a801b15b4794c1b60298b922677ba3505316905",
+      "immediateReturn": 92
+    },
+    {
+      "symbol": "_ZN7tgcalls20InstanceV2_4_0_0Impl11GetVersionsEv",
+      "bytes": 193,
+      "sha256": "3a4835db12bf8b7f932ef30da34971684124ca8fc2f47b44c7d1e4d9a650d7ab",
+      "legacyVersionLiteralPresent": true
+    },
+    {
+      "symbol": "_ZN7tgcalls20InstanceV2_4_0_0Impl21GetConnectionMaxLayerEv",
+      "bytes": 6,
+      "sha256": "4b53261243eeace80613755a0a801b15b4794c1b60298b922677ba3505316905",
+      "immediateReturn": 92
+    },
+    {
+      "symbol": "_ZN7tgcalls23InstanceV2ReferenceImpl11GetVersionsEv",
+      "bytes": 305,
+      "sha256": "95026565f7898b89c4b6673495275d0ace6a43fc48fec8b6144712a1af148c7c"
+    },
+    {
+      "symbol": "_ZN7tgcalls23InstanceV2ReferenceImpl21GetConnectionMaxLayerEv",
+      "bytes": 6,
+      "sha256": "4b53261243eeace80613755a0a801b15b4794c1b60298b922677ba3505316905",
+      "immediateReturn": 92
+    }
+  ],
+  "installedOrExecuted": false,
+  "binaryEquivalentToUpstreamProven": false
+}

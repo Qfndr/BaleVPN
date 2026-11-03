@@ -59,7 +59,20 @@
     "privateBufferCleanup": true,
     "mediaReady": false
   },
-  "offlineValidation": {"providerNodeTestsPassed": 316, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 68, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
-  "unverified": ["numeric protocol layers", "Web-session acceptance of Android call methods", "live call lifecycle", "native media library interoperability", "key length and encoding on live service", "provider-carried relay route", "international number acceptance", "billing", "throughput", "outage behavior"],
+  "nativeInspection": {"artifact": "native-profile-evidence-2026-11-03.json", "maxLayerImmediateReturn": 92, "legacyVersionLiteral": "6.0.0", "binaryEquivalentToUpstreamProven": false, "installedOrExecuted": false},
+  "legacySignalProfile": {
+    "explicitOnly": "6.0.0/layer-92",
+    "serviceKeyBytes": 256,
+    "keyEncodingPolicy": "Strict UTF-8, live service encoding unverified",
+    "nativeInteropVerified": false,
+    "providerBlindPeerAuthentication": false,
+    "upstreamRef": "fb2e545101f41303f1e2712de2e7611a9335f1c3",
+    "upstreamGitBlobs": {"legacyInstance": "a0b792ed06fe58787d6abfc5428f8dd21f1fc0b8", "signalingEncryption": "7ad3304e9f60ac93f45516f14895722083dc35d2", "encryptedConnection": "81b528212f13081a5bbb271ac0897502f89f3758"},
+    "offlineOracle": "Pinned official Eitaa legacy raw cipher, not Rubika native execution",
+    "byteIdenticalOraclePackets": 6,
+    "mediaAdapterWired": false
+  },
+  "offlineValidation": {"providerNodeTestsPassed": 322, "providerNodeTestsFailed": 0, "providerNodeTestsSkipped": 0, "rubikaTestsPassed": 74, "accountBoundCallClientTestsPassed": 17, "callControllerTestsPassed": 20, "legacyCipherTestsPassed": 6, "nativeInspectorTestsPassed": 8, "dexReferenceTestsPassed": 8, "otherResearchParserTestsPassed": 7, "realAccountsUsed": 0},
+  "unverified": ["minimum API protocol layer and live negotiation", "Web-session acceptance of Android call methods", "live call lifecycle", "native media library interoperability", "key length and encoding on live service", "provider-carried relay route", "international number acceptance", "billing", "throughput", "outage behavior"],
   "releasePublished": false
 }
