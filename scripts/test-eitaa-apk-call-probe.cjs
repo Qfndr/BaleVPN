@@ -2,8 +2,30 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {ApkCallProbe,apkEnvelope,socketEnvelope,SOCKET,ENDPOINT}=require('../experiments/eitaa/apk-call-probe.cjs'),wire=require('../experiments/eitaa/wire.cjs'),codec=require('../experiments/eitaa/call-wire.cjs');
 const fixture=require('./fixtures/eitaa-apk-envelope.json');
+const {CallClient}=require('../experiments/eitaa/call-client.cjs');
 const payload=Buffer.from(fixture.requestHex,'hex');
 function reply(overrides={}){return codec.object({_:'messages.dhConfig',g:3,p:Buffer.alloc(256,0x91),version:1,random:Buffer.alloc(256,0x19),...overrides});}
+
+test('normal Android call client and APK probe match the independently packed UUID-profile DH frame',async()=>{
+ const expected=Buffer.from(fixture.androidFaHex,'hex');
+ const requests=[];
+ const fetchImpl=async(url,options)=>{
+  requests.push({url,body:Buffer.from(options.body),headers:options.headers});
+  return new Response(reply());
+ };
+ const client=new CallClient({...fixture.androidRecord,fetchImpl});
+ const probe=new ApkCallProbe({record:fixture.androidRecord,fetchImpl});
+ try{
+  await client.request('messages.getDhConfig');
+  await probe.getDhConfig();
+  assert.equal(requests.length,2);
+  for(const request of requests){
+   assert.equal(request.url,ENDPOINT);
+   assert.deepEqual(request.body,expected);
+   assert.deepEqual(request.headers,{'content-type':'text/stream'});
+  }
+ }finally{client.close();probe.close();}
+});
 test('APK envelope matches independent exact Android serialization fixtures and truthful flag choices',()=>{
  for(const frame of fixture.frames)assert.equal(apkEnvelope(payload,{record:fixture.record,language:frame.language}).toString('hex'),frame.hex);
  const buffer=apkEnvelope(payload,{record:fixture.record,wifi:true,mobileData:true,paused:true,background:true});const r=new wire.Reader(buffer);assert.equal(r.int(),2059302894);assert.equal(r.string(),fixture.record.token);assert.equal(r.string(),fixture.record.imei);assert.equal(r.int(),32|2|4|8|16);assert.deepEqual(r.bytes(),payload);assert.equal(r.int(),138);assert.equal(r.int(),2637);assert.equal(r.string(),'fa');r.end();

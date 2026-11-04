@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-04",
+  "apkSha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb",
+  "scope": "Offline comparison of pinned Android DH request and current normal CallClient/ApkCallProbe entry points",
+  "dhRequest": {
+    "constructor": 651135312,
+    "fieldOrder": [
+      "version:int",
+      "random_length:int"
+    ],
+    "uncachedVersion": 0,
+    "randomLength": 256,
+    "syntheticHex": "5089cf260000000000010000"
+  },
+  "officialCallSites": [
+    {
+      "method": "VoIPService.startOutgoingCall",
+      "randomLengthWriteOffset": 47,
+      "storedVersionReadOffset": 55,
+      "versionWriteOffset": 59,
+      "connectionType64Offset": 74,
+      "sendRequestOffset": 76
+    },
+    {
+      "method": "VoIPService.acceptIncomingCall",
+      "randomLengthWriteOffset": 50,
+      "storedVersionReadOffset": 52,
+      "versionWriteOffset": 56,
+      "connectionType64Offset": 69,
+      "sendRequestOffset": 71
+    }
+  ],
+  "constructorSerializer": {
+    "class": "TL_messages_getDhConfig",
+    "constructorLiteralOffset": 0,
+    "versionReadOffset": 6,
+    "randomLengthReadOffset": 11
+  },
+  "httpWrapper": {
+    "constructor": 2059302894,
+    "layer": 138,
+    "buildVersion": 2637,
+    "fieldOrder": [
+      "token:string",
+      "imei:string",
+      "flags:int",
+      "packed_data:bytes",
+      "layer:int",
+      "buildVersion:int",
+      "lang:string"
+    ],
+    "endpoint": "https://armita.eitaa.com/eitaa/index.php",
+    "contentType": "text/stream"
+  },
+  "nativeWrapper": {
+    "constructor": 2059302894,
+    "layer": 136,
+    "flags": 2048,
+    "fieldOrder": [
+      "token:string",
+      "imei:string",
+      "flags:int",
+      "packed_data:bytes",
+      "layer:int"
+    ]
+  },
+  "test": {
+    "file": "scripts/test-eitaa-apk-call-probe.cjs",
+    "casesPassed": 6,
+    "normalEntryPoint": "CallClient.request(messages.getDhConfig)",
+    "comparisonEntryPoint": "ApkCallProbe.getDhConfig",
+    "reference": "Independent Python struct.pack with canonical TL string/bytes padding, synthetic Android UUID record",
+    "network": "mocked",
+    "requestBytesMatch": true
+  },
+  "conclusion": "The pinned DH constructor, field order and uncached synthetic request match. The normal Android CallClient and APK probe also emit the same source-matched HTTPS frame. The pinned official callsite selects native connection type64, so this HTTPS test does not reproduce its actual call transport.",
+  "limits": [
+    "INVALID_CONSTRUCTOR establishes rejection of the tested HTTPS request only. It does not prove the native method or service call feature is unsupported.",
+    "Official Android uses the stored DH version when available; version0 requests the uncached configuration.",
+    "No new live request, credentials, session mutation, native connection or production implementation change was made."
+  ]
+}
