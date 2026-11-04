@@ -75,10 +75,48 @@ function safeState(controller,role){
   cleanupPending:call.cleanup?.pending===true,metrics:safeMetrics(call,role),termination:safeTermination(call)};
 }
 
+async function runCleanup(raw,dependencies){
+ let password=raw.vaultPassword;raw.vaultPassword='';
+ if(!exact(raw,['command','vaultDirectory','vaultPassword','slot'])||![1,2].includes(raw.slot)||
+    typeof raw.vaultDirectory!=='string'||!path.isAbsolute(raw.vaultDirectory)||
+    typeof password!=='string'||!password||password.length>1024)throw fail('invalid_input');
+ let vault,session,timer,expired=false,completed=false,acknowledged=false;
+ try{
+  vault=dependencies.vault(raw.vaultDirectory);
+  try{await vault.unlock(password);}finally{password='';}
+  if(!await vault.hasCleanupIntent('nasim',raw.slot)){
+   completed=true;
+  }else{
+   const record=await vault.load('nasim',raw.slot);
+   if(!record||record.provider!=='nasim')throw fail('session_binding_changed');
+   session=dependencies.session();
+   // Reserve time for the receipt and vault lock before the parent IPC timeout.
+   timer=setTimeout(()=>{expired=true;try{session.close();}catch{}},15000);
+   await session.restore(record);
+   if(expired||session.state.userId!==record.userId||session.state.clientId!==record.clientId)throw fail('session_binding_changed');
+   const cleanup=dependencies.cleanup(session,vault,raw.slot);
+   if(!await cleanup.restore()||expired)throw fail('cleanup_pending');
+   const stream=await session.connectSignals();
+   if(expired||stream?.eventsConnected!==true)throw fail('cleanup_pending');
+   const result=await cleanup.cleanup();
+   acknowledged=result.serviceAcknowledged===true;
+   completed=acknowledged&&!await vault.hasCleanupIntent('nasim',raw.slot);
+  }
+ }catch{
+  // Emit only the conservative receipt; provider errors and binding data stay private.
+ }finally{
+  clearTimeout(timer);
+  try{session?.close();}finally{vault?.lock();}
+ }
+ return {event:'closed',endCompleted:completed,cleanupAcknowledged:acknowledged,cleanupPending:!completed};
+}
+
 async function runEndpoint(read,write,dependencies,now=Date.now){
  const prepDeadline=now()+prepBudgetMs;
  let callDeadline=Infinity;
- const raw=await read(prepDeadline),start=validateStart(raw);raw.vaultPassword='';
+ const raw=await read(prepDeadline);
+ if(raw?.command==='cleanup'){write(await runCleanup(raw,dependencies));return;}
+ const start=validateStart(raw);raw.vaultPassword='';
  let session,controller,vault,cleanup,ended=false,attempted=false;
  try{
   vault=dependencies.vault(start.vaultDirectory);
@@ -160,7 +198,7 @@ function runtimeDependencies(){
 }
 
 async function main(){
- if(process.argv.length===3&&process.argv[2]==='--capabilities'){emit({callDurations});return;}
+ if(process.argv.length===3&&process.argv[2]==='--capabilities'){emit({callDurations,cleanupOnly:true});return;}
  if(process.argv.includes('--self-test'))return selfTest();
  if(process.argv.length!==3||process.argv[2]!=='--run-once')throw fail('invalid_invocation');
  const dependencies=runtimeDependencies();
@@ -203,6 +241,48 @@ async function selfTest(){
   assert.deepEqual(records.at(-1),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false});
  }
  for(const invalid of [null,0,299,901,'300'])assert.throws(()=>validateStart({...start,vaultPassword:'fixture-pass',callLimitSeconds:invalid}));
+ const cleanupModule=path.join(__dirname,'cleanup-intent.cjs');
+ const {CleanupIntent}=require(fs.existsSync(cleanupModule)?cleanupModule:path.join(__dirname,'source/experiments/nasim/cleanup-intent.cjs'));
+ const cleanupRecord={...record,signedIn:true,token:'fixture-private-auth-token'};
+ const cleanupCommand={command:'cleanup',vaultDirectory:root,vaultPassword:'fixture-pass',slot:1};
+ let saved=null,confirmed=true,connections=0,locks=0,closes=0;
+ const sent=[];
+ const rpc={async send(signal,{peerId}){
+  sent.push({signal,peerId});
+  return {acknowledged:true,terminalAcknowledgement:{type:'bye',callUUID:confirmed?signal.callUUID:'other-call',peerId}};
+ }};
+ const cleanupSession={state:cleanupRecord,signalConnection:rpc,exportSession:()=>cleanupRecord,restore:async()=>{},
+  connectSignals:async()=>{connections++;return {eventsConnected:true};},close:()=>{closes++;}};
+ const storage={loadIntent:async()=>saved,saveIntent:async(value,guard)=>{guard();saved=value;},
+  clearIntent:async(_,guard)=>{guard();saved=null;}};
+ const cleanupDeps={vault:()=>({unlock:async()=>{},hasCleanupIntent:async()=>Boolean(saved),load:async()=>cleanupRecord,lock:()=>{locks++;}}),
+  session:()=>cleanupSession,cleanup:session=>new CleanupIntent(session,storage),
+  controller:()=>{throw Error('cleanup_must_not_open_media');}};
+ const cleanupRun=async(extra={})=>{
+  const input={...cleanupCommand,...extra},results=[];
+  let reads=0;
+  await runEndpoint(async()=>{assert.equal(++reads,1);return input;},value=>results.push(value),cleanupDeps);
+  assert.equal(input.vaultPassword,'');
+  assert.equal(results.length,1);
+  assert.ok(!JSON.stringify(results).includes('fixture-private'));
+  return results[0];
+ };
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false});
+ assert.equal(connections,0);
+ const seed=new CleanupIntent(cleanupSession,storage);
+ await seed.capture({peerId:'42',callUUID:'fixture-private-call'});
+ const original=saved;
+ cleanupRecord.token='fixture-different-token';
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true});
+ assert.deepEqual(saved,original);assert.equal(connections,0);assert.equal(sent.length,0);
+ cleanupRecord.token='fixture-private-auth-token';confirmed=false;
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true});
+ assert.deepEqual(saved,original);
+ confirmed=true;
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:true,cleanupAcknowledged:true,cleanupPending:false});
+ assert.equal(saved,null);assert.equal(connections,2);assert.equal(closes,3);assert.equal(locks,4);
+ assert.deepEqual(sent,Array(2).fill({signal:{type:'bye',callUUID:'fixture-private-call',callData:null},peerId:'42'}));
+ await assert.rejects(cleanupRun({peerUserId:'42'}),error=>error.safeReason==='invalid_input');
  const connected={phase:'connected',media:{mediaConnected:true,routeProof:proof,peerAuthenticated:true,proxyReady:true,
   receivedBytes:1024,sentBytes:512,quic:{rttMs:25,sentPackets:10,lostPackets:1,private:'fixture-secret'}}};
  const totals={receivedBytes:1024,sentBytes:512};

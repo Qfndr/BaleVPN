@@ -255,6 +255,29 @@ struct StartMessage<'a> {
 struct Trust {
     public_certificate: String,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Cleanup {
+    slot: u8,
+    vault_password: String,
+}
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        use zeroize::Zeroize;
+        self.vault_password.zeroize();
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CleanupMessage<'a> {
+    command: &'static str,
+    slot: u8,
+    vault_directory: &'a Path,
+    vault_password: &'a str,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Empty {}
@@ -328,6 +351,10 @@ struct Snapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     termination: Option<&'static str>,
     cleanup_pending: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cleanup_acknowledged: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    end_completed: Option<bool>,
     error: Option<&'static str>,
 }
 impl Default for Snapshot {
@@ -344,6 +371,8 @@ impl Default for Snapshot {
             metrics: None,
             termination: None,
             cleanup_pending: false,
+            cleanup_acknowledged: None,
+            end_completed: None,
             error: None,
         }
     }
@@ -413,14 +442,18 @@ impl Worker {
         Ok(())
     }
 
-    async fn check_call_duration(kit: &Kit, seconds: u16) -> Result<(), ()> {
+    async fn capabilities(kit: &Kit) -> Result<Value, ()> {
         let endpoint = kit.directory.join(ENDPOINT);
         let output = Self::node_output(
             kit,
             &[endpoint.as_os_str(), std::ffi::OsStr::new("--capabilities")],
         )
         .await?;
-        let value: Value = serde_json::from_slice(&output).map_err(|_| ())?;
+        serde_json::from_slice(&output).map_err(|_| ())
+    }
+
+    async fn check_call_duration(kit: &Kit, seconds: u16) -> Result<(), ()> {
+        let value = Self::capabilities(kit).await?;
         if !value["callDurations"].as_array().is_some_and(|values| {
             values
                 .iter()
@@ -507,10 +540,34 @@ impl Worker {
             }
         });
     }
+
+    async fn wait_for_exit(mut self) -> bool {
+        self.input.take();
+        match timeout(STOP_TIMEOUT, self.child.wait()).await {
+            Ok(Ok(status)) => status.success(),
+            _ => {
+                self.kill_and_reap();
+                false
+            }
+        }
+    }
 }
 
 fn clean_closed(event: &Value) -> bool {
     event["event"] == "closed" && event["endCompleted"] == true && event["cleanupPending"] == false
+}
+
+fn cleanup_receipt(event: &Value, successful_exit: bool) -> Snapshot {
+    let acknowledged = event["cleanupAcknowledged"].as_bool();
+    let clean = successful_exit && clean_closed(event) && acknowledged.is_some();
+    Snapshot {
+        phase: if clean { "idle" } else { "failed" },
+        cleanup_pending: !clean,
+        cleanup_acknowledged: clean.then_some(acknowledged.unwrap_or(false)),
+        end_completed: clean.then_some(true),
+        error: (!clean).then_some("cleanup_unconfirmed"),
+        ..Snapshot::default()
+    }
 }
 
 #[derive(Default)]
@@ -536,15 +593,8 @@ impl Runtime {
         let clean = if let Some(event) = event.filter(|event| event["event"] == "closed") {
             // The worker already emitted the cleanup result. Reap it without
             // trying to read a second result as a new response.
-            if let Some(mut worker) = self.worker.take() {
-                worker.input.take();
-                match timeout(STOP_TIMEOUT, worker.child.wait()).await {
-                    Ok(Ok(status)) => status.success() && clean_closed(event),
-                    _ => {
-                        worker.kill_and_reap();
-                        false
-                    }
-                }
+            if let Some(worker) = self.worker.take() {
+                worker.wait_for_exit().await && clean_closed(event)
             } else {
                 false
             }
@@ -663,6 +713,7 @@ impl Service {
             let runtime = &mut *runtime;
             match operation {
                 Operation::Start(start) => self.start(runtime, &start).await,
+                Operation::Cleanup(cleanup) => self.cleanup(runtime, &cleanup).await,
                 Operation::Stop => {
                     runtime.stop().await;
                     Ok(Json(runtime.snapshot.clone()))
@@ -737,17 +788,7 @@ impl Service {
         {
             return Err(StatusCode::BAD_REQUEST);
         }
-        let kit = self.kit.clone();
-        let (hash, lock) = tokio::task::spawn_blocking(move || {
-            let hash = kit.verify().map_err(|_| StatusCode::PRECONDITION_FAILED)?;
-            let lock = kit.lock_vault().map_err(|_| StatusCode::CONFLICT)?;
-            Ok::<_, StatusCode>((hash, lock))
-        })
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)??;
-        Worker::check_node(&self.kit)
-            .await
-            .map_err(|_| StatusCode::PRECONDITION_FAILED)?;
+        let (hash, lock) = self.prepare_worker().await?;
         if seconds != 90
             && Worker::check_call_duration(&self.kit, seconds)
                 .await
@@ -802,10 +843,71 @@ impl Service {
         }
         Ok(Json(runtime.failed(event.as_ref().ok()).await))
     }
+
+    async fn prepare_worker(&self) -> Result<(String, std::fs::File), StatusCode> {
+        let kit = self.kit.clone();
+        let prepared = tokio::task::spawn_blocking(move || {
+            let hash = kit.verify().map_err(|_| StatusCode::PRECONDITION_FAILED)?;
+            let lock = kit.lock_vault().map_err(|_| StatusCode::CONFLICT)?;
+            Ok::<_, StatusCode>((hash, lock))
+        })
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)??;
+        Worker::check_node(&self.kit)
+            .await
+            .map_err(|_| StatusCode::PRECONDITION_FAILED)?;
+        Ok(prepared)
+    }
+
+    async fn cleanup(&self, runtime: &mut Runtime, request: &Cleanup) -> Reply {
+        if runtime.worker.is_some() {
+            return Err(StatusCode::CONFLICT);
+        }
+        if !matches!(request.slot, 1 | 2)
+            || request.vault_password.is_empty()
+            || request.vault_password.encode_utf16().count() > 1024
+        {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+        let (hash, lock) = self.prepare_worker().await?;
+        let capabilities = Worker::capabilities(&self.kit)
+            .await
+            .map_err(|_| StatusCode::PRECONDITION_FAILED)?;
+        if capabilities["cleanupOnly"] != true {
+            return Err(StatusCode::PRECONDITION_FAILED);
+        }
+        if self.closing.load(Ordering::Acquire) {
+            return Err(StatusCode::SERVICE_UNAVAILABLE);
+        }
+        let encoded = Zeroizing::new(
+            serde_json::to_vec(&CleanupMessage {
+                command: "cleanup",
+                slot: request.slot,
+                vault_directory: &self.kit.vault,
+                vault_password: &request.vault_password,
+            })
+            .map_err(|_| StatusCode::BAD_REQUEST)?,
+        );
+        let mut worker =
+            Worker::launch(&self.kit, &hash, lock).map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        runtime.snapshot = match worker.exchange(&encoded).await {
+            Ok(event) if event["event"] == "closed" => {
+                cleanup_receipt(&event, worker.wait_for_exit().await)
+            }
+            _ => {
+                // Try graceful EOF/reaping. A malformed or missing first
+                // receipt remains uncertain even if shutdown succeeds.
+                worker.stop().await;
+                cleanup_receipt(&Value::Null, false)
+            }
+        };
+        Ok(Json(runtime.snapshot.clone()))
+    }
 }
 
 enum Operation {
     Start(Start),
+    Cleanup(Cleanup),
     Stop,
     Command(Value),
 }
@@ -843,7 +945,7 @@ async fn csrf(State(service): State<Arc<Service>>, request: Request, next: Next)
 }
 async fn info(State(s): State<Arc<Service>>) -> Json<Value> {
     Json(
-        json!({"available":true,"csrfToken":s.csrf,"singleCall":true,"callLimitSeconds":90,"callDurationChoices":[90,300,900],"freshPairing":true}),
+        json!({"available":true,"csrfToken":s.csrf,"singleCall":true,"callLimitSeconds":90,"callDurationChoices":[90,300,900],"freshPairing":true,"cleanupOnly":true}),
     )
 }
 async fn state(State(s): State<Arc<Service>>) -> Reply {
@@ -852,6 +954,9 @@ async fn state(State(s): State<Arc<Service>>) -> Reply {
 }
 async fn start(State(s): State<Arc<Service>>, Json(start): Json<Start>) -> Reply {
     s.operation(Operation::Start(start)).await
+}
+async fn cleanup(State(s): State<Arc<Service>>, Json(cleanup): Json<Cleanup>) -> Reply {
+    s.operation(Operation::Cleanup(cleanup)).await
 }
 async fn trust(State(s): State<Arc<Service>>, Json(body): Json<Trust>) -> Reply {
     if !certificate(&body.public_certificate) {
@@ -891,6 +996,7 @@ pub(crate) fn router(service: Arc<Service>) -> Router {
         .route("/info", get(info))
         .route("/state", get(state))
         .route("/start", post(start))
+        .route("/cleanup", post(cleanup))
         .route("/trust", post(trust))
         .route("/dial", post(dial))
         .route("/accept", post(accept))
@@ -937,6 +1043,28 @@ mod tests {
             let response = app
                 .clone()
                 .oneshot(request.body(Body::from("{}")).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+        }
+        for (token, status) in [
+            (None, StatusCode::FORBIDDEN),
+            (Some(service.csrf.as_str()), StatusCode::BAD_REQUEST),
+        ] {
+            let mut request = Request::builder()
+                .method("POST")
+                .uri("/cleanup")
+                .header(header::CONTENT_TYPE, "application/json");
+            if let Some(token) = token {
+                request = request.header("x-provider-csrf", token);
+            }
+            let response = app
+                .clone()
+                .oneshot(
+                    request
+                        .body(Body::from(r#"{"slot":0,"vaultPassword":"fixture"}"#))
+                        .unwrap(),
+                )
                 .await
                 .unwrap();
             assert_eq!(response.status(), status);
@@ -1053,6 +1181,35 @@ mod tests {
         event["endCompleted"] = json!(true);
         event["cleanupPending"] = json!(true);
         assert!(!clean_closed(&event));
+    }
+
+    #[test]
+    fn cleanup_requires_a_complete_receipt_and_successful_exit() {
+        let mut event = json!({
+            "event": "closed", "endCompleted": true, "cleanupAcknowledged": true,
+            "cleanupPending": false, "private": "fixture-secret"
+        });
+        let state = cleanup_receipt(&event, true);
+        assert_eq!(state.phase, "idle");
+        assert_eq!(state.cleanup_acknowledged, Some(true));
+        assert_eq!(state.end_completed, Some(true));
+        assert!(!state.cleanup_pending);
+        assert!(!serde_json::to_string(&state)
+            .unwrap()
+            .contains("fixture-secret"));
+        assert!(cleanup_receipt(&event, false).cleanup_pending);
+
+        // No stored intent is an idempotent success without a service ACK.
+        event["cleanupAcknowledged"] = json!(false);
+        assert_eq!(
+            cleanup_receipt(&event, true).cleanup_acknowledged,
+            Some(false)
+        );
+        event["cleanupAcknowledged"] = Value::Null;
+        let failed = cleanup_receipt(&event, true);
+        assert_eq!(failed.phase, "failed");
+        assert!(failed.cleanup_pending);
+        assert_eq!(failed.error, Some("cleanup_unconfirmed"));
     }
 
     #[test]

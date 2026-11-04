@@ -21,6 +21,8 @@ const labels = {
     carrierRx:'دریافت حامل', carrierTx:'ارسال حامل', carrierRtt:'زمان رفت‌وبرگشت',
     carrierLoss:'افت تجمعی بسته‌های QUIC', carrierHint:'حجم و نرخ در حامل QUIC اندازه‌گیری می‌شوند.',
     cleanup:'پاک‌سازی تماس قبلی هنوز تأیید نشده است.',
+    recoverCleanup:'پاک‌سازی تماس ثبت‌شده',cleanupConfirmed:'سرویس پایان تماس ثبت‌شده را تأیید کرد.',
+    noCleanup:'رکورد پاک‌سازی در این جایگاه وجود ندارد.',cleanupKitRequired:'پاک‌سازی جداگانه به کیت سازگار نسیم نیاز دارد.',
     termination:{
       bye:'طرف مقابل تماس را پایان داد.',reject:'تماس رد شد.',busy:'حساب طرف مقابل مشغول بود.',
       other_device:'تماس در دستگاه دیگری پاسخ داده شد.',media_failure:'مسیر رسانه از دسترس خارج شد.',
@@ -53,6 +55,8 @@ const labels = {
     carrierRx:'Carrier received', carrierTx:'Carrier sent', carrierRtt:'Round-trip time',
     carrierLoss:'Cumulative QUIC packet loss', carrierHint:'Traffic totals and rates are measured at the QUIC carrier.',
     cleanup:'Cleanup of the previous call is still unconfirmed.',
+    recoverCleanup:'Clean up recorded call',cleanupConfirmed:'The service acknowledged the recorded call’s end.',
+    noCleanup:'There is no cleanup record in this slot.',cleanupKitRequired:'Separate cleanup requires a compatible Nasim kit.',
     termination:{
       bye:'The peer ended the call.',reject:'The call was declined.',busy:'The peer account was busy.',
       other_device:'The call was answered on another device.',media_failure:'The media path became unavailable.',
@@ -80,6 +84,7 @@ let lang = 'fa', csrf = '', configured = false, busy = false, pollTask = null;
 let state = {phase:'idle'};
 let notice = null;
 let durationChoices = [];
+let cleanupOnly = false;
 let sample = null, rates = null;
 
 const counter = value => Number.isSafeInteger(value) && value >= 0;
@@ -185,6 +190,7 @@ function render() {
   $('passwordField').hidden = active;
   $('callDurationField').hidden = durationChoices.length === 0;
   $('start').hidden = active;
+  $('recoverCleanup').hidden = active || !cleanupOnly;
   for (const control of $('startForm').elements) control.disabled = active || busy;
   $('startForm').elements.socksPort.disabled ||= role !== 'client';
   const duration = $('startForm').elements.callLimitSeconds;
@@ -219,7 +225,7 @@ function render() {
 }
 
 async function api(path,body) {
-  const options = {cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(30000)};
+  const options = {cache:'no-store',credentials:'same-origin',signal:AbortSignal.timeout(path === '/cleanup' ? 40000 : 30000)};
   if (body !== undefined) {
     options.method = 'POST';
     options.headers = {'Content-Type':'application/json','X-Provider-CSRF':csrf};
@@ -227,6 +233,7 @@ async function api(path,body) {
   }
   const response = await fetch(base+path,options);
   if (path === '/start' && body?.callLimitSeconds && response.status === 412) throw new Error('longerKitRequired');
+  if (path === '/cleanup' && response.status === 412) throw new Error('cleanupKitRequired');
   if (!response.ok) throw new Error('request_failed');
   const value = await response.json();
   if (!value || typeof value !== 'object' || value.ok === false) throw new Error('request_failed');
@@ -242,9 +249,10 @@ async function action(path,body) {
     await pollTask;
     setState(await api(path,body));
     if (badPhases.has(state.phase)) setNotice('requestFailed',true);
+    else if (path === '/cleanup' && state.cleanupPending === false) setNotice(state.cleanupAcknowledged === true ? 'cleanupConfirmed' : 'noCleanup');
   } catch (error) {
     sample = rates = null;
-    setNotice(error.message === 'longerKitRequired' ? 'longerKitRequired' : 'requestFailed',true);
+    setNotice(['longerKitRequired','cleanupKitRequired'].includes(error.message) ? error.message : 'requestFailed',true);
     try { setState(await api('/state')); } catch {}
   } finally {
     busy = false;
@@ -287,6 +295,14 @@ $('startForm').onsubmit = event => {
   fields.vaultPassword.value = '';
   void action('/start',body);
 };
+$('recoverCleanup').onclick = () => {
+  if (busy || !cleanupOnly || activePhases.has(state.phase)) return;
+  const fields = $('startForm').elements;
+  if (!fields.vaultPassword.reportValidity()) return;
+  const body = {slot:Number(fields.slot.value),vaultPassword:fields.vaultPassword.value};
+  fields.vaultPassword.value = '';
+  void action('/cleanup',body);
+};
 $('trustForm').onsubmit = event => {
   event.preventDefault();
   const field = event.currentTarget.elements.publicCertificate;
@@ -312,6 +328,7 @@ appearance();
     if (configured) {
       csrf = info.csrfToken;
       durationChoices = Array.isArray(info.callDurationChoices) ? [300,900].filter(seconds => info.callDurationChoices.includes(seconds)) : [];
+      cleanupOnly = info.cleanupOnly === true;
       setState(await api('/state'));
       setInterval(poll,1200);
     }

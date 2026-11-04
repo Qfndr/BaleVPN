@@ -18,7 +18,7 @@ const files = new Map([
   ['/fonts/InterVariable.woff2',['fonts/InterVariable.woff2','font/woff2']]
 ]);
 
-async function installFixture(page,available,{durationChoices,olderKit=false}={}) {
+async function installFixture(page,available,{durationChoices,olderKit=false,cleanupOnly=false}={}) {
   let state = {phase:'idle'};
   const posts = [], external = [], errors = [];
   page.on('pageerror',error => errors.push(error.message));
@@ -33,7 +33,7 @@ async function installFixture(page,available,{durationChoices,olderKit=false}={}
     if (file) return route.fulfill({contentType:file[1],body:await fs.readFile(path.join(assets,file[0]))});
     const command = url.pathname.slice(prefix.length);
     const respond = value => route.fulfill({json:value});
-    if (command === '/info') return respond({available,csrfToken:token,callDurationChoices:durationChoices});
+    if (command === '/info') return respond({available,csrfToken:token,callDurationChoices:durationChoices,cleanupOnly});
     if (command === '/state') {
       if (state.metrics) state.metrics.receivedBytes += 512;
       return respond(state);
@@ -57,6 +57,9 @@ async function installFixture(page,available,{durationChoices,olderKit=false}={}
         break;
       case '/stop':
         state = {phase:'stopped',cleanupPending:false};
+        break;
+      case '/cleanup':
+        state = {phase:'idle',cleanupPending:false,cleanupAcknowledged:true};
         break;
       default:
         return route.fulfill({status:404,json:{ok:false}});
@@ -88,12 +91,19 @@ async function main() {
   });
   try {
     const page = await browser.newPage({viewport:{width:360,height:800},colorScheme:'dark'});
-    const fixture = await installFixture(page,true);
+    const fixture = await installFixture(page,true,{cleanupOnly:true});
     await page.goto(base+prefix+'/ui');
     await page.locator('#workspace').waitFor();
     assert.equal(await page.locator('html').getAttribute('dir'),'rtl');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
     assert.equal(await page.locator('#callDurationField').isHidden(),true);
+    await page.locator('select[name=slot]').selectOption('2');
+    await page.locator('input[name=vaultPassword]').fill('fixture-vault-password');
+    await page.locator('#recoverCleanup').click();
+    await page.getByText('سرویس پایان تماس ثبت‌شده را تأیید کرد.').waitFor();
+    assert.deepEqual(fixture.posts.shift(),{command:'/cleanup',input:{slot:2,vaultPassword:'fixture-vault-password'}});
+    assert.equal(await page.locator('input[name=vaultPassword]').inputValue(),'');
+    await page.locator('select[name=slot]').selectOption('1');
     await start(page,'client');
     await page.locator('#dial').click();
     await page.locator('#proxy').waitFor();
