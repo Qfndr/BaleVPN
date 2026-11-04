@@ -267,7 +267,37 @@
     "signaledPeerReflexiveCandidatesAllowed": false,
     "mutualQuicAuthenticationStillRequired": true,
     "standalonePolicyAndDestinationTestsPassed": 19,
-    "liveRetestVerified": false
+    "sameHostLiveRetestVerified": true
   },
-  "nextDiagnostic": "Verify the selected-pair policy change with a new live test and a separate-network VPS test."
+  "asymmetricMediaPeerReflexivePolicyLiveVerification": {
+    "sourceCommit": "f6b1c6bcbbf77f4a582ea1345eb175176a4223a0",
+    "windowsHelperSha256": "32e6cc43df3306d2e7dcbf414199928d3c84b5a89c14d3a148e64865d0e8e269",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41798145979",
+    "topology": "Two retained accounts on one Windows host",
+    "attempts": 2,
+    "mutuallyAuthenticatedTransfers": 2,
+    "routeProofOnBothEndpoints": "client-relay/server-public",
+    "firstTransfer": {
+      "downloadBytes": 1024,
+      "uploadBytes": 8192,
+      "downloadSha256": "6ab72eeb9e77b07540897e0c8d6d23ec8eef0f8c3a47e1b3f4e93443d9536bed",
+      "bothPayloadsVerified": true
+    },
+    "secondTransfer": {
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "downloadSeconds": 2.142711,
+      "uploadSeconds": 2.558437,
+      "downloadSha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+      "uploadSha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+      "bothPayloadsVerified": true
+    },
+    "remainingEncryptedCleanupIntentsAfterEachAttempt": [false, false],
+    "labEventSubscriptionsRestoredAfterEachAttempt": [true, true],
+    "operatorBillingVerified": false,
+    "internationalOutageVerified": false,
+    "separateNetworkVpsVerified": false,
+    "interpretation": "Both calls carried integrity-verified HTTPS traffic through the local SOCKS proxy after mutual QUIC authentication. The transfer durations describe these small samples, not maximum throughput or a comparison against Bale."
+  },
+  "nextDiagnostic": "Run the verified Windows and Linux endpoints on separate networks and measure operator accounting independently."
 }
