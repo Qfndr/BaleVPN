@@ -65,6 +65,23 @@ def request(base, path, body=None, origin=None):
         return json.load(response)
 
 
+@contextmanager
+def reserved_test_port(excluded):
+    """Hold a free OS-selected port without colliding with configured accounts."""
+    for _ in range(100):
+        listener = socket.socket()
+        try:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+            if port in excluded:
+                continue
+            yield port
+            return
+        finally:
+            listener.close()
+    raise RuntimeError("Could not select a non-conflicting test port")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
@@ -129,9 +146,23 @@ def main():
                 assert not blocked.exists()
                 # Same requests the mode picker and settings screen make.
                 assert request(base, "/config", {"mode": mode})["ok"] is True
-                assert request(base, "/config", {"socks5Port": 1081})["ok"] is True
+                original = request(base, "/config")
+                aggregate = request(base, "/aggregate")["config"]
+                reserved = {aggregate["listenPort"], int(occupied_port)}
+                for account in aggregate["paths"]:
+                    reserved.update((account["port"], account["managementPort"]))
+                # The default 1081 belongs to aggregate account 1. Treating it
+                # as an available main-account port bypassed the real policy.
+                collision = aggregate["paths"][0]["port"]
+                assert request(base, "/config", {"socks5Port": collision})["ok"] is False
+                assert request(base, "/config") == original
+                with reserved_test_port(reserved | {original["socks5_port"]}) as socks_port:
+                    assert request(base, "/config", {"socks5Port": socks_port})["ok"] is False
+                    assert request(base, "/config") == original
+                assert request(base, "/config", {"socks5Port": socks_port})["ok"] is True
+                assert request(base, "/config", {"socks5Port": socks_port})["ok"] is True
                 saved = json.loads((directory / ".bale-vpn_config.json").read_text())
-                assert saved["mode"] == mode and saved["socks5Port"] == 1081
+                assert saved["mode"] == mode and saved["socks5Port"] == socks_port
                 if os.name == "posix":
                     assert directory.stat().st_mode & 0o777 == 0o700
                     assert (directory / ".bale-vpn_config.json").stat().st_mode & 0o777 == 0o600
@@ -158,7 +189,7 @@ def main():
                 restored = request(base, "/config")
                 assert request(base, "/settings")["publicCode"] == public_code
                 assert request(base, "/settings")["preferences"] == preferences
-                assert restored["mode"] == mode and restored["socks5_port"] == 1081
+                assert restored["mode"] == mode and restored["socks5_port"] == socks_port
             print(f"PASS: fresh {mode} selection, repeated saves, restart, auth validation, Origin guard")
     report = {
         "version": version, "fresh_client_selection": True,
@@ -169,6 +200,7 @@ def main():
         "malformed_pairing_rejected": True, "redacted_diagnostics": True,
         "client_privacy_change_rejected": True,
         "second_instance_rejected": True, "hostile_settings_downgrade_rejected": True,
+        "reserved_account_port_rejected": True, "occupied_socks_port_rejected": True,
     }
     if args.report:
         args.report.write_text(json.dumps(report, indent=2), encoding="utf-8")
