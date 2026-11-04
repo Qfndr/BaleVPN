@@ -37,6 +37,14 @@
     "requestSha256": "f6678ad91f34b6450e4c9f9220ceeb347aa23d9d10127f1eac1b8a06e6cd9e0e",
     "scope": "Synthetic call ID/access hash and zero limit. Existing generic TL codec compared against the pinned serializer in a test-only schema. Production CallClient remains unable to invoke this method."
   },
+  "existingGroupLookupFixture": {
+    "ordinaryGroup": {"method": "messages.getFullChat", "methodId": -1364194508, "webByteOffset": 829624, "input": "chat_id:long", "fullConstructorId": 1304281241, "callFlag": 12},
+    "supergroupOrChannel": {"method": "channels.getFullChannel", "methodId": 141781513, "webByteOffset": 833920, "input": "inputChannel(-212145112) with selected channel ID and access hash", "fullConstructorId": -374179305, "callFlag": 21},
+    "responseConstructorId": -438840932,
+    "source": "Both AppProfileManager processResult functions read full_chat.call and save it to the group call cache. getGroupCallInput then derives the matching InputGroupCall from that cached record. The operator can select an existing group locally without sending a call ID or access hash through chat.",
+    "fixtureValidation": "Pinned Web serializer and existing generic codec match for both requests and complete synthetic metadata replies with/without the optional call reference. Missing reference stops before any group-read fixture. Mismatched or truncated metadata fails closed. Output reports only two booleans, without group, call or participant identifiers or names.",
+    "scope": "Test-only, bounded selected group metadata. No production RPC enablement, provider read, session access or group creation."
+  },
   "nextSafeProtocolAction": "With a known consented existing test group call, compare a single read-only phone.getGroupCall on its previously verified Web HTTPS session endpoint. This cannot establish secure create/join/termination by itself. No new group call, join, or termination attempt is justified until exact cleanup acknowledgement is verified for that route.",
   "liveGroupCallVerified": false,
   "liveGroupCleanupVerified": false,
