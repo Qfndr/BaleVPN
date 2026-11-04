@@ -40,6 +40,8 @@ pub mod tun;
 pub mod security;
 pub mod carrier;
 pub mod peer_media;
+pub mod nasim_route_policy;
+mod nasim_media_policy;
 #[cfg(test)]
 mod recovery_tests;
 

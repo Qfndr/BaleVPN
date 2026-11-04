@@ -5,6 +5,7 @@
 //! TURN credentials must come from the authenticated provider call controller;
 //! relay-only ICE alone does not establish provider ownership or billing.
 use crate::carrier::{CarrierInput, CarrierOutput};
+use crate::nasim_route_policy::{NasimRoutePolicy, Role as NasimRole, RouteEpoch, RouteProof};
 use crate::rtp;
 use bytes::Bytes;
 use parking_lot::Mutex;
@@ -57,6 +58,7 @@ pub enum RelayRoute {
     Unknown,
     RelayPair,
     Other,
+    ClientRelayServerPublic,
 }
 
 /// Failure stage only: no candidate IDs, addresses, credentials or SDP.
@@ -96,6 +98,54 @@ pub struct RelayMedia {
     route_rejected: Arc<AtomicBool>,
     gathered_local_relay_candidates: AtomicU64,
     remote_description_relay_candidates: AtomicU64,
+    nasim_policy: Option<NasimRoutePolicy>,
+    route_epoch: Arc<RouteEpoch>,
+    route_task: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+}
+
+async fn verify_nasim_route(
+    pc: Arc<RTCPeerConnection>,
+    input: CarrierInput,
+    policy: NasimRoutePolicy,
+    epoch: Arc<RouteEpoch>,
+    generation: u64,
+    rejected: Arc<AtomicBool>,
+) {
+    let finished = tokio::time::timeout(Duration::from_millis(250), async {
+        for _ in 0..10 {
+            if !epoch.is_current(generation)
+                || pc.connection_state() != RTCPeerConnectionState::Connected
+            {
+                return true;
+            }
+            let selected = pc
+                .sctp()
+                .transport()
+                .ice_transport()
+                .get_selected_candidate_pair()
+                .await
+                .is_some();
+            let proof = crate::nasim_media_policy::proof(policy, selected, &pc.get_stats().await);
+            if !epoch.is_current(generation) {
+                return true;
+            }
+            if proof == RouteProof::ClientRelayServerPublic && epoch.verify(generation) {
+                let _ = input.connected();
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        false
+    })
+    .await
+    .unwrap_or(false);
+    if !finished && epoch.is_current(generation) {
+        rejected.store(true, Ordering::Release);
+        input.disconnect();
+        tokio::spawn(async move {
+            let _ = pc.close().await;
+        });
+    }
 }
 
 /// Counts only: intentionally excludes candidate IDs, addresses and credentials.
@@ -126,8 +176,12 @@ fn ice_diagnostics(stats: &StatsReport) -> IceDiagnostics {
     let add = |total: &mut u64, value: u64| *total = total.saturating_add(value).min(1_000_000_000);
     for report in stats.reports.values() {
         match report {
-            StatsReportType::LocalCandidate(c) if c.candidate_type == CandidateType::Relay => add(&mut result.local_relay_candidates, 1),
-            StatsReportType::RemoteCandidate(c) if c.candidate_type == CandidateType::Relay => add(&mut result.remote_relay_candidates, 1),
+            StatsReportType::LocalCandidate(c) if c.candidate_type == CandidateType::Relay => {
+                add(&mut result.local_relay_candidates, 1)
+            }
+            StatsReportType::RemoteCandidate(c) if c.candidate_type == CandidateType::Relay => {
+                add(&mut result.remote_relay_candidates, 1)
+            }
             StatsReportType::CandidatePair(pair) => {
                 let count = match pair.state {
                     CandidatePairState::Waiting => &mut result.pair_waiting,
@@ -137,7 +191,9 @@ fn ice_diagnostics(stats: &StatsReport) -> IceDiagnostics {
                     _ => &mut result.pair_unspecified,
                 };
                 add(count, 1);
-                if pair.nominated { add(&mut result.nominated_pairs, 1); }
+                if pair.nominated {
+                    add(&mut result.nominated_pairs, 1);
+                }
             }
             _ => {}
         }
@@ -226,6 +282,13 @@ fn relay_candidate(value: &str) -> bool {
 }
 
 fn secure_audio(sdp: &str) -> bool {
+    secure_audio_structure(sdp)
+        && !sdp
+            .lines()
+            .any(|s| s.starts_with("a=candidate:") && !relay_candidate(&s[2..]))
+}
+
+fn secure_audio_structure(sdp: &str) -> bool {
     sdp.len() <= 65535
         && sdp.starts_with("v=0")
         && !sdp.contains('\0')
@@ -234,10 +297,7 @@ fn secure_audio(sdp: &str) -> bool {
             .lines()
             .any(|s| s.starts_with("m=audio ") && s.contains(" UDP/TLS/RTP/SAVPF "))
         && sdp.lines().any(|s| s.starts_with("a=fingerprint:sha-256 "))
-        && !sdp.lines().any(|s| {
-            s.starts_with("a=crypto:")
-                || (s.starts_with("a=candidate:") && !relay_candidate(&s[2..]))
-        })
+        && !sdp.lines().any(|s| s.starts_with("a=crypto:"))
 }
 
 fn relay_description_count(sdp: &str) -> u64 {
@@ -251,7 +311,9 @@ impl RelayMedia {
     pub async fn ice_diagnostics(&self) -> IceDiagnostics {
         let mut counts = ice_diagnostics(&self.pc.get_stats().await);
         let local = self.gathered_local_relay_candidates.load(Ordering::Acquire);
-        let remote = self.remote_description_relay_candidates.load(Ordering::Acquire);
+        let remote = self
+            .remote_description_relay_candidates
+            .load(Ordering::Acquire);
         counts.gathered_local_relay_candidates = (local != u64::MAX).then_some(local);
         counts.remote_description_relay_candidates = (remote != u64::MAX).then_some(remote);
         counts
@@ -260,15 +322,55 @@ impl RelayMedia {
     /// output and disconnects QUIC, rather than leaving a half-ready proxy.
     pub async fn new(
         input: CarrierInput,
-        mut output: CarrierOutput,
+        output: CarrierOutput,
         servers: Vec<RTCIceServer>,
     ) -> Result<Self, MediaError> {
-        let configuration = config(servers)?;
+        Self::new_with_policy(input, output, servers, None).await
+    }
+
+    /// Explicit Nasim experiment. The public server endpoint must be locally
+    /// assigned on the server; no implicit NAT or hostname rewrite is enabled.
+    pub async fn new_nasim_asymmetric(
+        input: CarrierInput,
+        output: CarrierOutput,
+        servers: Vec<RTCIceServer>,
+        policy: NasimRoutePolicy,
+    ) -> Result<Self, MediaError> {
+        Self::new_with_policy(input, output, servers, Some(policy)).await
+    }
+
+    async fn new_with_policy(
+        input: CarrierInput,
+        mut output: CarrierOutput,
+        servers: Vec<RTCIceServer>,
+        nasim_policy: Option<NasimRoutePolicy>,
+    ) -> Result<Self, MediaError> {
+        let mut configuration = config(servers)?;
         let mut media = MediaEngine::default();
         media
             .register_default_codecs()
             .map_err(|_| MediaError::Setup)?;
-        let api = APIBuilder::new().with_media_engine(media).build();
+        let mut builder = APIBuilder::new().with_media_engine(media);
+        if let Some(policy) = nasim_policy {
+            let mut settings = webrtc::api::setting_engine::SettingEngine::default();
+            settings.set_network_types(vec![if policy.server().is_ipv4() {
+                webrtc::ice::network_type::NetworkType::Udp4
+            } else {
+                webrtc::ice::network_type::NetworkType::Udp6
+            }]);
+            if policy.role() == NasimRole::Server {
+                configuration.ice_transport_policy = RTCIceTransportPolicy::All;
+                configuration.ice_servers.clear();
+                let server = policy.server();
+                settings.set_ip_filter(Box::new(move |ip| ip == server.ip()));
+                settings.set_udp_network(webrtc::ice::udp_network::UDPNetwork::Ephemeral(
+                    webrtc::ice::udp_network::EphemeralUDP::new(server.port(), server.port())
+                        .map_err(|_| MediaError::Setup)?,
+                ));
+            }
+            builder = builder.with_setting_engine(settings);
+        }
+        let api = builder.build();
         let pc = Arc::new(
             api.new_peer_connection(configuration)
                 .await
@@ -279,6 +381,8 @@ impl RelayMedia {
         // paths close the PC and invalidate the input as well as the output.
         let closed = Arc::new(AtomicBool::new(false));
         let route_rejected = Arc::new(AtomicBool::new(false));
+        let route_epoch = Arc::new(RouteEpoch::default());
+        let route_task = Arc::new(Mutex::new(None::<tokio::task::AbortHandle>));
         let owner = Self {
             pc: pc.clone(),
             input: input.clone(),
@@ -287,18 +391,44 @@ impl RelayMedia {
             route_rejected: route_rejected.clone(),
             gathered_local_relay_candidates: AtomicU64::new(u64::MAX),
             remote_description_relay_candidates: AtomicU64::new(u64::MAX),
+            nasim_policy,
+            route_epoch: route_epoch.clone(),
+            route_task: route_task.clone(),
         };
         let weak_pc = Arc::downgrade(&pc);
         let state_input = input.clone();
+        let state_epoch = route_epoch.clone();
+        let state_route_task = route_task.clone();
         pc.on_peer_connection_state_change(Box::new(move |state| {
             let weak_pc = weak_pc.clone();
             let input = state_input.clone();
             let route_rejected = route_rejected.clone();
+            let epoch = state_epoch.clone();
+            let route_task = state_route_task.clone();
             Box::pin(async move {
                 if state == RTCPeerConnectionState::Connected {
                     // Verify the nominated pair through typed stats before
                     // exposing media readiness. Never infer this from SDP.
                     let Some(pc) = weak_pc.upgrade() else { return };
+                    if let Some(policy) = nasim_policy {
+                        let generation = epoch.revoke();
+                        let mut active = route_task.lock();
+                        if let Some(previous) = active.take() {
+                            previous.abort();
+                        }
+                        *active = Some(
+                            tokio::spawn(verify_nasim_route(
+                                pc,
+                                input,
+                                policy,
+                                epoch,
+                                generation,
+                                route_rejected,
+                            ))
+                            .abort_handle(),
+                        );
+                        return;
+                    }
                     if route(&pc.get_stats().await) == RelayRoute::RelayPair {
                         let _ = input.connected();
                     } else {
@@ -314,19 +444,58 @@ impl RelayMedia {
                         | RTCPeerConnectionState::Disconnected
                         | RTCPeerConnectionState::Closed
                 ) {
+                    if nasim_policy.is_some() {
+                        epoch.revoke();
+                    }
                     input.disconnect();
                 }
             })
         }));
+        if let Some(policy) = nasim_policy {
+            let weak_pc = Arc::downgrade(&pc);
+            let input = input.clone();
+            let epoch = route_epoch.clone();
+            let rejected = owner.route_rejected.clone();
+            let selection_route_task = route_task.clone();
+            pc.sctp()
+                .transport()
+                .ice_transport()
+                .on_selected_candidate_pair_change(Box::new(move |_| {
+                    let generation = epoch.revoke();
+                    let weak_pc = weak_pc.clone();
+                    let input = input.clone();
+                    let epoch = epoch.clone();
+                    let rejected = rejected.clone();
+                    let route_task = selection_route_task.clone();
+                    Box::pin(async move {
+                        if let Some(pc) = weak_pc.upgrade() {
+                            if pc.connection_state() == RTCPeerConnectionState::Connected {
+                                let mut active = route_task.lock();
+                                if let Some(previous) = active.take() {
+                                    previous.abort();
+                                }
+                                *active = Some(
+                                    tokio::spawn(verify_nasim_route(
+                                        pc, input, policy, epoch, generation, rejected,
+                                    ))
+                                    .abort_handle(),
+                                );
+                            }
+                        }
+                    })
+                }));
+        }
         let track_seen = Arc::new(AtomicBool::new(false));
         let receive_input = input.clone();
         let receive_tasks = tasks.clone();
         let receive_closed = closed.clone();
+        let receive_epoch = route_epoch.clone();
         pc.on_track(Box::new(move |track, _, _| {
             let input = receive_input.clone();
             let tasks = receive_tasks.clone();
             let closed = receive_closed.clone();
             let seen = track_seen.swap(true, Ordering::AcqRel);
+            let epoch = receive_epoch.clone();
             Box::pin(async move {
                 if seen
                     || !track
@@ -344,6 +513,9 @@ impl RelayMedia {
                 }
                 let task = tokio::spawn(async move {
                     while let Ok((packet, _)) = track.read_rtp().await {
+                        if nasim_policy.is_some() && !epoch.is_verified() {
+                            continue;
+                        }
                         if packet.payload.len() > rtp::MAX_FRAME_BYTES {
                             break;
                         }
@@ -376,6 +548,9 @@ impl RelayMedia {
         tasks.lock().push(
             tokio::spawn(async move {
                 while let Some(frame) = output.recv().await {
+                    if nasim_policy.is_some() && !route_epoch.is_verified() {
+                        continue;
+                    }
                     // QUIC's datagram MTU already fits one carrier RTP payload.
                     // No extra queue, sleeps, JS roundtrips or second reliability
                     // layer: QUIC handles carrier loss and congestion above RTP.
@@ -421,11 +596,21 @@ impl RelayMedia {
             self.close().await;
             return Err(MediaError::GatherTimeout);
         }
-        let description = self
+        let mut description = self
             .pc
             .local_description()
             .await
             .ok_or(MediaError::Negotiation)?;
+        if let Some(policy) = self.nasim_policy {
+            description = crate::nasim_media_policy::description(policy, description, true)
+                .ok_or(MediaError::NoRelay)?;
+            if !secure_audio_structure(&description.sdp) {
+                return Err(MediaError::InvalidDescription);
+            }
+            self.gathered_local_relay_candidates
+                .store(relay_description_count(&description.sdp), Ordering::Release);
+            return Ok(description);
+        }
         if !secure_audio(&description.sdp)
             || !description
                 .sdp
@@ -452,9 +637,19 @@ impl RelayMedia {
     }
     pub async fn answer(
         &self,
-        offer: RTCSessionDescription,
+        mut offer: RTCSessionDescription,
     ) -> Result<RTCSessionDescription, MediaError> {
-        if offer.sdp_type != RTCSdpType::Offer || !secure_audio(&offer.sdp) {
+        if let Some(policy) = self.nasim_policy {
+            offer = crate::nasim_media_policy::description(policy, offer, false)
+                .ok_or(MediaError::InvalidDescription)?;
+        }
+        if offer.sdp_type != RTCSdpType::Offer
+            || !(if self.nasim_policy.is_some() {
+                secure_audio_structure(&offer.sdp)
+            } else {
+                secure_audio(&offer.sdp)
+            })
+        {
             return Err(MediaError::InvalidDescription);
         }
         let remote_candidates = relay_description_count(&offer.sdp);
@@ -471,8 +666,18 @@ impl RelayMedia {
             .map_err(|_| MediaError::Negotiation)?;
         self.local(answer).await
     }
-    pub async fn set_answer(&self, answer: RTCSessionDescription) -> Result<(), MediaError> {
-        if answer.sdp_type != RTCSdpType::Answer || !secure_audio(&answer.sdp) {
+    pub async fn set_answer(&self, mut answer: RTCSessionDescription) -> Result<(), MediaError> {
+        if let Some(policy) = self.nasim_policy {
+            answer = crate::nasim_media_policy::description(policy, answer, false)
+                .ok_or(MediaError::InvalidDescription)?;
+        }
+        if answer.sdp_type != RTCSdpType::Answer
+            || !(if self.nasim_policy.is_some() {
+                secure_audio_structure(&answer.sdp)
+            } else {
+                secure_audio(&answer.sdp)
+            })
+        {
             return Err(MediaError::InvalidDescription);
         }
         let remote_candidates = relay_description_count(&answer.sdp);
@@ -484,8 +689,15 @@ impl RelayMedia {
             .store(remote_candidates, Ordering::Release);
         Ok(())
     }
-    pub async fn add_candidate(&self, candidate: RTCIceCandidateInit) -> Result<(), MediaError> {
-        if !relay_candidate(&candidate.candidate) {
+    pub async fn add_candidate(
+        &self,
+        mut candidate: RTCIceCandidateInit,
+    ) -> Result<(), MediaError> {
+        if let Some(policy) = self.nasim_policy {
+            candidate.candidate =
+                crate::nasim_media_policy::candidate(policy, &candidate.candidate, false)
+                    .ok_or(MediaError::InvalidDescription)?;
+        } else if !relay_candidate(&candidate.candidate) {
             return Err(MediaError::InvalidDescription);
         }
         self.pc
@@ -498,6 +710,13 @@ impl RelayMedia {
             || self.pc.connection_state() != RTCPeerConnectionState::Connected
         {
             return RelayRoute::Unknown;
+        }
+        if self.nasim_policy.is_some() {
+            return if self.route_epoch.is_verified() {
+                RelayRoute::ClientRelayServerPublic
+            } else {
+                RelayRoute::Unknown
+            };
         }
         route(&self.pc.get_stats().await)
     }
@@ -516,6 +735,10 @@ impl RelayMedia {
         if self.closed.swap(true, Ordering::AcqRel) {
             return;
         }
+        self.route_epoch.revoke();
+        if let Some(task) = self.route_task.lock().take() {
+            task.abort();
+        }
         self.input.disconnect();
         for task in self.tasks.lock().drain(..) {
             task.abort();
@@ -525,6 +748,10 @@ impl RelayMedia {
 }
 impl Drop for RelayMedia {
     fn drop(&mut self) {
+        self.route_epoch.revoke();
+        if let Some(task) = self.route_task.lock().take() {
+            task.abort();
+        }
         let was_closed = self.closed.swap(true, Ordering::AcqRel);
         self.input.disconnect();
         for task in self.tasks.lock().drain(..) {
@@ -713,6 +940,100 @@ mod tests {
         ));
     }
     #[tokio::test]
+    async fn asymmetric_nasim_route_keeps_client_on_turn_and_authenticates_quic() {
+        let (relay, turn_server) = relay().await;
+        let reservation = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let server_address = reservation.local_addr().unwrap();
+        drop(reservation);
+        let client_identity = Identity::generate().unwrap();
+        let server_identity = Identity::generate().unwrap();
+        let (client, client_in, client_out) = carrier::authenticated(
+            TunnelRole::Client,
+            client_identity
+                .options(&[server_identity.certificate.clone()], false, false)
+                .unwrap(),
+        )
+        .unwrap();
+        let (server, server_in, server_out) = carrier::authenticated(
+            TunnelRole::Server,
+            server_identity
+                .options(&[client_identity.certificate.clone()], true, false)
+                .unwrap(),
+        )
+        .unwrap();
+        let client_media = RelayMedia::new_nasim_asymmetric(
+            client_in,
+            client_out,
+            vec![turn_server.clone()],
+            NasimRoutePolicy::local_fixture(NasimRole::Client, server_address),
+        )
+        .await
+        .unwrap();
+        let server_media = RelayMedia::new_nasim_asymmetric(
+            server_in,
+            server_out,
+            vec![turn_server],
+            NasimRoutePolicy::local_fixture(NasimRole::Server, server_address),
+        )
+        .await
+        .unwrap();
+        let offer = server_media.offer().await.unwrap();
+        assert!(!offer.sdp.contains("typ relay"));
+        let answer = client_media.answer(offer).await.unwrap();
+        assert!(answer.sdp.contains("typ relay"));
+        assert!(!answer.sdp.contains("raddr"));
+        server_media.set_answer(answer).await.unwrap();
+        tokio::join!(media_connected(&client), media_connected(&server));
+        assert_eq!(
+            client_media.selected_route().await,
+            RelayRoute::ClientRelayServerPublic
+        );
+        assert_eq!(
+            server_media.selected_route().await,
+            RelayRoute::ClientRelayServerPublic
+        );
+        assert_eq!(
+            server_media.ice_diagnostics().await.local_relay_candidates,
+            0
+        );
+        assert!(client_media.ice_diagnostics().await.local_relay_candidates > 0);
+        let endpoint = server.enable_quic_server().unwrap();
+        let echo = tokio::spawn(async move {
+            let connection = endpoint.endpoint.accept().await.unwrap().await.unwrap();
+            let (mut writer, mut reader) = connection.accept_bi().await.unwrap();
+            tokio::io::copy(&mut reader, &mut writer).await.unwrap();
+        });
+        tokio::time::timeout(Duration::from_secs(15), client.ensure_quic_client())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(client.is_peer_authenticated());
+        let connection = client
+            .quic_client
+            .lock()
+            .as_ref()
+            .unwrap()
+            .connection
+            .clone();
+        let (mut writer, mut reader) = connection.open_bi().await.unwrap();
+        let payload = vec![0xa5; 4096];
+        let mut received = vec![0; payload.len()];
+        tokio::time::timeout(Duration::from_secs(15), async {
+            let (sent, read) =
+                tokio::join!(writer.write_all(&payload), reader.read_exact(&mut received));
+            sent.unwrap();
+            read.unwrap();
+        })
+        .await
+        .unwrap();
+        assert_eq!(payload, received);
+        client_media.close().await;
+        server_media.close().await;
+        relay.close().await.unwrap();
+        echo.abort();
+    }
+
+    #[tokio::test]
     async fn real_relay_only_webrtc_carries_mutually_authenticated_quic_without_byte_changes() {
         let (relay, server) = relay().await;
         let a_id = Identity::generate().unwrap();
@@ -743,7 +1064,9 @@ mod tests {
         let gathering_only = b_media.ice_diagnostics().await;
         assert!(gathering_only.local_relay_candidates > 0);
         assert_eq!(gathering_only.remote_relay_candidates, 0);
-        assert!(gathering_only.gathered_local_relay_candidates.is_some_and(|count| count > 0));
+        assert!(gathering_only
+            .gathered_local_relay_candidates
+            .is_some_and(|count| count > 0));
         assert_eq!(gathering_only.remote_description_relay_candidates, None);
         assert_eq!(gathering_only.pair_succeeded, 0);
         let answer = a_media.answer(offer).await.unwrap();
@@ -755,8 +1078,12 @@ mod tests {
             let counts = media.ice_diagnostics().await;
             assert!(counts.local_relay_candidates > 0);
             assert!(counts.remote_relay_candidates > 0);
-            assert!(counts.gathered_local_relay_candidates.is_some_and(|count| count > 0));
-            assert!(counts.remote_description_relay_candidates.is_some_and(|count| count > 0));
+            assert!(counts
+                .gathered_local_relay_candidates
+                .is_some_and(|count| count > 0));
+            assert!(counts
+                .remote_description_relay_candidates
+                .is_some_and(|count| count > 0));
             assert!(counts.pair_succeeded > 0);
             assert!(counts.nominated_pairs > 0);
             assert!(counts.requests_sent.is_none() && counts.requests_received.is_none());
@@ -798,8 +1125,12 @@ mod tests {
         assert_eq!(a_media.selected_route().await, RelayRoute::Unknown);
         for media in [&a_media, &b_media] {
             let counts = media.ice_diagnostics().await;
-            assert!(counts.gathered_local_relay_candidates.is_some_and(|count| count > 0));
-            assert!(counts.remote_description_relay_candidates.is_some_and(|count| count > 0));
+            assert!(counts
+                .gathered_local_relay_candidates
+                .is_some_and(|count| count > 0));
+            assert!(counts
+                .remote_description_relay_candidates
+                .is_some_and(|count| count > 0));
         }
     }
 
