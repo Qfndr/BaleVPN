@@ -63,5 +63,66 @@
   },
   "rootCauseOfLaterLiveCredentialFailureProven": false,
   "newLiveActionsPerformedForThisAudit": false,
-  "privacy": "No account IDs, phone numbers, auth tokens, session keys, RSA keys or live private response content"
+  "privacy": "No account IDs, phone numbers, auth tokens, session keys, RSA keys or live private response content",
+  "reverseSetAuthScan": {
+    "date": "2026-11-04",
+    "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+    "dex": "classes.dex",
+    "dexSha256": "43bce5c83430e31b3b894a66811c284949140cca444981fd79e207dbead90802",
+    "inspector": "scripts/inspect-dex-call-references.py",
+    "inspectorSha256": "c0577300d66572d44ce052b8a08fc18d5958fe674c6018c55e7825e15acc8555",
+    "method": "Bounded linear instruction-width scan of each defined classes.dex method; matches invoke-virtual/static/interface/direct/super and range variants against the exact KeyValueStorageHelper.setAuth DEX method ID. Uses the existing Dex and instruction_width helpers.",
+    "targetMethods": [
+      {
+        "dexMethodId": 50857,
+        "owner": "Lir/aaap/messengercore/KeyValueStorageHelper;",
+        "name": "setAuth",
+        "prototype": "(Ljava/lang/String;)V"
+      }
+    ],
+    "definedMethodsScanned": 51423,
+    "methodsOverCodeUnitBound": 0,
+    "instructionDecodeFailures": 0,
+    "callers": [
+      {
+        "dexMethodId": 49657,
+        "owner": "Lir/aaap/messengercore/CoreMainClass$-CC;",
+        "name": "setLastAuth",
+        "prototype": "(Ljava/lang/String;Lir/aaap/messengercore/KeyValueStorage;Lir/aaap/messengercore/JsonHelper;Lir/aaap/messengercore/utilites/CoreLog;)V",
+        "invokeCodeUnitOffset": 6,
+        "targetDexMethodId": 50857
+      },
+      {
+        "dexMethodId": 49658,
+        "owner": "Lir/aaap/messengercore/CoreMainClass$-CC;",
+        "name": "setLastAuthV6",
+        "prototype": "(Ljava/lang/String;Ljava/lang/String;Lir/aaap/messengercore/KeyValueStorage;Lir/aaap/messengercore/JsonHelper;Lir/aaap/messengercore/utilites/CoreLog;)V",
+        "invokeCodeUnitOffset": 6,
+        "targetDexMethodId": 50857
+      },
+      {
+        "dexMethodId": 50796,
+        "owner": "Lir/aaap/messengercore/KeyValueStorageHelper;",
+        "name": "clearForDebug",
+        "prototype": "()V",
+        "invokeCodeUnitOffset": 36,
+        "targetDexMethodId": 50857
+      },
+      {
+        "dexMethodId": 51040,
+        "owner": "Lir/aaap/messengercore/LoginUtils$2;",
+        "name": "onResponse",
+        "prototype": "(Lir/aaap/messengercore/model/api/SignInOutput;)V",
+        "invokeCodeUnitOffset": 113,
+        "targetDexMethodId": 50857
+      }
+    ],
+    "callerInterpretation": "LoginUtils$2.onResponse saves sign-in auth; CoreMainClass$-CC.setLastAuth and setLastAuthV6 import a supplied auth unchanged and select API version; clearForDebug clears test state. No generic response-time auth setter caller was found in this scan.",
+    "limitations": [
+      "Only classes.dex was scanned. This is not a whole-APK reflection/native/dynamic-code proof.",
+      "Linear DEX references do not establish all runtime control flow.",
+      "Does not prove the cause of NOT_REGISTERED or INVALID_AUTH, nor remote revocation.",
+      "No APK execution, account-store access, network operation or token mutation."
+    ]
+  }
 }
