@@ -1,5 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {HttpClient,endpoint,DISCOVERY}=require('../experiments/rubika/http-client.cjs'),wire=require('../experiments/rubika/wire.cjs');
+const profiles=require('../experiments/rubika/client-profile.cjs');
 const tmp='abcdefghijklmnopqrstuvwxyzabcdef',auth='abcdefghijklmnopqrstuvwxyz012345',guid='u0'+'a'.repeat(32);
 const response=(data,key=tmp)=>new Response(JSON.stringify({data_enc:wire.encrypt({status:'OK',data},key)}));
 
@@ -26,10 +27,14 @@ test('explicit Android JSON content type applies to auth and protected requests 
  }
 });
 test('anonymous DC discovery sends no session and cannot select non-provider or credential-bearing destinations',async()=>{
- const seen=[],client=new HttpClient({temporarySession:tmp,fetchImpl:async(url,o)=>{seen.push({url,o});return new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}}));}});
- assert.deepEqual(await client.discover(),{apiServerSelected:true});assert.equal(seen.length,1);assert.equal(seen[0].url,DISCOVERY);
- const body=JSON.parse(seen[0].o.body);assert.equal(body.method,'getDCs');assert.equal(body.api_version,'4');assert.equal(body.auth,undefined);assert.equal(body.tmp_session,undefined);assert.equal(body.sign,undefined);
- assert.equal(seen[0].o.redirect,'error');client.close();
+ for(const mode of [profiles.WEB,profiles.ANDROID]){
+  const seen=[],client=new HttpClient({protocolProfile:mode,temporarySession:tmp,fetchImpl:async(url,o)=>{seen.push({url,o});return new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}}));}});
+  try{
+   assert.deepEqual(await client.discover(),{apiServerSelected:true});assert.equal(seen.length,1);assert.equal(seen[0].url,DISCOVERY);
+   assert.deepEqual(JSON.parse(seen[0].o.body),{api_version:mode===profiles.ANDROID?4:'4',method:'getDCs',client:profiles.client(mode,'fa')});
+   assert.equal(seen[0].o.redirect,'error');
+  }finally{client.close();}
+ }
  for(const value of ['http://messengerg2c1.iranlms.ir/','https://iranlms.ir.attacker.invalid/','https://user:password@messengerg2c1.iranlms.ir/',
   'https://messengerg2c1.iranlms.ir:444/','https://messengerg2c1.iranlms.ir/?auth=secret','https://messengerg2c1.iranlms.ir/path','https://127.0.0.1/'])assert.throws(()=>endpoint(value));
 });
@@ -73,8 +78,23 @@ test('only fixed error codes survive raw response errors; a response never trigg
 });
 
 test('official status semantics distinguish a denied operation from a revoked authentication',async()=>{
- for(const [status,reason]of [['ERROR_GENERIC','access_denied'],['ERROR_ACTION','not_authorized']]){
+ for(const [status,reason]of [['ERROR_GENERIC','access_denied'],['ERROR_ACTION','not_authorized'],['ERROR_UNKNOWN','service_rejected']]){
   const client=new HttpClient({fetchImpl:async()=>Response.json({status,status_det:'INVALID_AUTH',message:'private service detail'})});await assert.rejects(client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'}),e=>e.reason===reason&&e.diagnosticStatus===status&&e.serviceCode==='INVALID_AUTH'&&!e.message.includes('private'));client.close();
+ }
+});
+
+test('Android registration action requires ERROR_ACTION and keeps generic service detail typed',async()=>{
+ const identity=await wire.createIdentity(),mode=profiles.ANDROID;
+ const credentials={provider:'rubika',auth,privateKey:identity.privateKey,profile:{protocolProfile:mode}};
+ for(const [status,reason]of [['ERROR_GENERIC','service_rejected'],['ERROR_ACTION','registration_required']]){
+  let requests=0;
+  const client=new HttpClient({protocolProfile:mode,fetchImpl:async()=>{
+   requests++;return Response.json({data_enc:wire.encrypt({status,status_det:'NOT_REGISTERED',message:'private fixture'},auth,mode)});
+  }});
+  try{await assert.rejects(client.request('getMySessions',{}, {credentials}),error=>
+   error.reason===reason&&error.serviceCode==='NOT_REGISTERED'&&error.diagnosticStatus===status&&!error.message.includes('private'));
+   assert.equal(requests,1);
+  }finally{client.close();}
  }
 });
 

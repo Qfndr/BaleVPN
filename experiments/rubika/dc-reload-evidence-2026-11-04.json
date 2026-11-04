@@ -55,5 +55,20 @@
     "authenticationRestoredByDcReload": false,
     "interpretation": "None of the three returned official DCs accepted the protected session read. Routing alone did not restore this retained session in the tested set; the cause of the later authentication failure remains unproven. No further registration was attempted."
   },
+  "statusAndAnonymousDiscoveryParity": {
+    "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+    "androidStatusBranches": [
+      {"method": "NetworkImpl$2.onNext(retrofit2.Response)", "dexMethodId": 4827, "errorActionBranchOffsets": [196, 214], "notRegisteredCallbackOffset": 210, "invalidAuthCallbackOffset": 228},
+      {"method": "NetworkImpl$5.onNext(retrofit2.Response)", "dexMethodId": 4842, "errorActionBranchOffsets": [144, 162], "notRegisteredCallbackOffset": 158, "invalidAuthCallbackOffset": 176}
+    ],
+    "androidStatusInterpretation": "In each method the DEX if-ne compares the response status to ERROR_ACTION before the respective NOT_REGISTERED and INVALID_AUTH callback. A different status does not trigger those state actions.",
+    "androidDiscoveryVersion": "MessangerInput2.getJsonObject reads api_version at code-unit offset 16, loads integer 4 at 18 and calls JSONObject.put(String,int) at 19. Android anonymous discovery now emits numeric 4. The Web string and existing explicit Android credentialed discovery remain unchanged.",
+    "webBundleSha256": "47b302b9166ed8c9138f9d959e9107c53dcb78c9447f8281715f657b68080acb",
+    "webStatusSource": "handleCustomErrors starts at byte 1769195 of main-es2015.6421623571994c9dd619.js. ERROR_ACTION INVALID_AUTH triggers invalidAuth, ERROR_GENERIC INVALID_AUTH triggers accessDenied, and NOT_REGISTERED triggers the Web registration event except for registerDevice/logout. The Lab exposes a typed error and never registers automatically from this mapping.",
+    "protectedEndpointComparison": "NetworkHelperImpl.getUserInfo, getMySessions and registerDevice all call the same default Network.sendV5OrV6 overload at code-unit offset 16. NetworkImpl calls getSendObservable at offset 6, whose offset 87 calls the common send path. No separate registration-specific route was found in this chain.",
+    "webBootstrapOrder": "ngDoBootstrap starts getDcs without awaiting it, then app initialization reads and installs stored auth, starts a service-base request and the socket, and checks local device registration. The ordinary registerDevice and protected reads use the common DC response path. This order does not establish a mandatory socket or separate service-base handshake for registerDevice.",
+    "localMapping": "Unknown top-level INVALID_AUTH statuses and Android NOT_REGISTERED without ERROR_ACTION retain the recognized service detail as service_rejected. The known Web and Android invalid-auth variants retain their existing typed results.",
+    "limitation": "This is request and error-state parity. It does not establish why retained sessions were rejected, change any saved session, enable retries or reinterpret historical probes that did not retain the top-level status. No new live request was made."
+  },
   "privacy": "No account IDs, credentials, discovered URLs, phone numbers, RSA keys or private responses"
 }

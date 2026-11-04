@@ -31,7 +31,7 @@ test('explicit session probe visits only the first three discovered DCs and pres
   try{
    await f.client.discover();const before=JSON.stringify(f.credentials),result=await f.client.probeDiscoveredSessions({credentials:f.credentials});
    assert.deepEqual(result,{discoveredCount:4,attemptedCount:3,stoppedOnRateLimit:false,budgetExhausted:false,results:[
-    {index:0,ok:false,reason:'registration_required',serviceCode:'NOT_REGISTERED'},
+    {index:0,ok:false,reason:mode===profiles.ANDROID?'service_rejected':'registration_required',serviceCode:'NOT_REGISTERED'},
     {index:1,ok:true,activeSessionPresent:true,otherSessionCount:1,currentFlag:true},
     {index:2,ok:false,reason:'not_authorized',serviceCode:'INVALID_AUTH'}]});
    assert.deepEqual(f.seen.slice(1).map(item=>item.url),routes.slice(0,3));assert.deepEqual(f.seen.slice(1).map(item=>item.method),['getMySessions','getMySessions','getMySessions']);assert.ok(f.seen.slice(1).every(item=>Object.keys(item.input).length===0));

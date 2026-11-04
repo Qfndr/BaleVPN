@@ -11,7 +11,7 @@ test('explicit Android V4 DC reload sends raw auth only to fixed HTTPS discovery
   const body=JSON.parse(options.body);seen.push({url,body});assert.equal(options.redirect,'error');
   if(body.method==='getDCs'){
    assert.equal(url,DISCOVERY);assert.equal(options.headers.origin,undefined);assert.deepEqual(Object.keys(body).sort(),body.auth?['api_version','auth','client','method']:['api_version','client','method']);
-   if(seen.length===1){assert.equal(body.auth,undefined);assert.equal(body.api_version,'4');return routes();}
+   if(seen.length===1){assert.equal(body.auth,undefined);assert.equal(body.api_version,4);return routes();}
    assert.equal(body.api_version,4);assert.equal(body.auth,credentials.auth);assert.notEqual(body.auth,wire.transform(credentials.auth));
    for(const privateField of [credentials.privateKey,credentials.publicKey,credentials.loginPhone])assert.ok(!options.body.includes(privateField));
    assert.equal(body.client.platform,'Android');return routes([newRoute]);

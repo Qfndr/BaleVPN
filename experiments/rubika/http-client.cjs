@@ -47,13 +47,18 @@ function input(method,value,profile){
  }else if(method==='logout'&&(!exact(value,[])||Object.keys(value).length))throw new ApiError('invalid_request');
  return value;
 }
-function serviceResult(value,allowEmpty=false){
+function serviceResult(value,profile,allowEmpty=false){
  if(!object(value))throw new ApiError('invalid_response');
  if(value.status!=='OK'){
   const code=CODES.has(value.status_det)?value.status_det:undefined;
-  // Official Web distinguishes a revoked session from an operation denied to
-  // an otherwise usable session, even though both carry INVALID_AUTH.
-  const error=new ApiError(code==='INVALID_AUTH'?(value.status==='ERROR_GENERIC'?'access_denied':'not_authorized'):code==='TOO_REQUESTS'?'rate_limited':code==='NOT_REGISTERED'?'registration_required':'service_rejected',undefined,code);
+  // Both clients gate invalid-auth actions on ERROR_ACTION. Android also
+  // requires that status before acting on NOT_REGISTERED.
+  let reason='service_rejected';
+  if(code==='INVALID_AUTH'&&value.status==='ERROR_ACTION')reason='not_authorized';
+  if(code==='INVALID_AUTH'&&value.status==='ERROR_GENERIC')reason='access_denied';
+  if(code==='TOO_REQUESTS')reason='rate_limited';
+  if(code==='NOT_REGISTERED'&&(profile!==profiles.ANDROID||value.status==='ERROR_ACTION'))reason='registration_required';
+  const error=new ApiError(reason,undefined,code);
   // Only short alphabetic status symbols; never return service data or messages.
   for(const [key,valueKey]of [['diagnosticStatus','status'],['diagnosticDetail','status_det']])if(typeof value[valueKey]==='string'&&/^[A-Z][A-Z_]{0,39}$/.test(value[valueKey]))error[key]=value[valueKey];
   throw error;
@@ -100,7 +105,7 @@ class HttpClient {
   finally{clearTimeout(timer);if(this.#pending===controller)this.#pending=null;}
  }
  #discoveryRoutes(response){
-  const result=serviceResult(response);
+  const result=serviceResult(response,this.#profile);
   if(!Array.isArray(result.default_api_urls)||!result.default_api_urls.length||result.default_api_urls.length>16)throw new ApiError('invalid_dc_response');
   const servers=result.default_api_urls.map(endpoint);let socketServer;
   if(result.default_sockets!==undefined){if(!Array.isArray(result.default_sockets)||!result.default_sockets.length||result.default_sockets.length>16)throw new ApiError('invalid_dc_response');try{socketServer=result.default_sockets.map(socketEndpoint)[0];}catch{throw new ApiError('invalid_dc_response');}}
@@ -110,7 +115,7 @@ class HttpClient {
  async discover({timeout}={}){
   if(this.#probingSessions)throw new ApiError('account_busy');
   if(this.#dcBinding)throw new ApiError('invalid_credentials');
-  const response=await this.#post(DISCOVERY,{api_version:'4',method:'getDCs',client:this.#client()},{timeout,json:true});
+  const response=await this.#post(DISCOVERY,{api_version:this.#profile===profiles.ANDROID?4:'4',method:'getDCs',client:this.#client()},{timeout,json:true});
   this.#applyDiscovery(this.#discoveryRoutes(response));return {apiServerSelected:true};
  }
  // Explicit, read-only Android compatibility probe/reload. No retries,
@@ -162,11 +167,11 @@ class HttpClient {
   else{try{body.auth=wire.transform(credentials.auth);body.sign=wire.signature(data,credentials.privateKey,this.#profile);}catch{throw new ApiError('invalid_credentials');}}
   const response=await this.#post(server,body,{timeout});
   if(!(this.#profile===profiles.ANDROID?typeof response?.data_enc==='string'&&response.data_enc.length>0&&response.data_enc.length<=512*1024:text(response?.data_enc,512*1024))){
-   if(response?.status&&response.status!=='OK')serviceResult(response);
+   if(response?.status&&response.status!=='OK')serviceResult(response,this.#profile);
    throw new ApiError('invalid_encrypted_response');
   }
   let decoded;try{decoded=wire.decrypt(response.data_enc,session,this.#profile);}catch{throw new ApiError('invalid_encrypted_response');}
-  return serviceResult(decoded,['registerDevice','logout','setSetting'].includes(method));
+  return serviceResult(decoded,this.#profile,['registerDevice','logout','setSetting'].includes(method));
  }
  // Explicit bounded read-only comparison. It never selects a new active route,
  // repeats a DC, registers a device, or sends a caller-supplied URL or method.
@@ -201,7 +206,7 @@ class HttpClient {
     JSON.stringify(this.#dcBinding)!==JSON.stringify(dcBinding))throw Error();}catch{throw new ApiError('invalid_credentials');}
   };
   const results=[],seen=new Set(),deadline=performance.now()+15000;let stoppedOnRateLimit=false,budgetExhausted=false;
-  const safe=new Set(['not_authorized','access_denied','registration_required','rate_limited','timeout','network_error','http_error','invalid_response',
+  const safe=new Set(['not_authorized','access_denied','registration_required','service_rejected','rate_limited','timeout','network_error','http_error','invalid_response',
    'invalid_encrypted_response','response_too_large','tls_verification_disabled']);
   this.#probingSessions=true;
   try{
