@@ -11,6 +11,7 @@ for workspace in workspaces:
         if name=='crypto-bigint':
             # 0.7.7 and 0.7.8 were yanked; 0.7.10 is the reviewed replacement.
             assert tuple(map(int,version.split('.'))) >= (0,7,10),(workspace,name,version)
+        assert name!='atty',(workspace,'Unsound atty dependency reintroduced')
         if name=='webrtc-dtls':
             assert 'source' not in package,(workspace,'Unpatched registry DTLS')
         if name=='webrtc-ice':

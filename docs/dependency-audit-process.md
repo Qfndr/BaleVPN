@@ -15,6 +15,11 @@ job. This additional check is necessary because cargo-audit 0.22.2 prints
 individual yank-lookup failures to stderr without adding them to the JSON
 warnings (the same source, lines 322–347).
 
+The observed transient sparse-index response-decoding failure permits at most
+three attempts per graph, with a short delay. Every raw attempt is preserved.
+The final report still passes the same warning/error policy; advisory findings
+and unmaintained warnings alone never trigger a retry or receive an exemption.
+
 This repair does not excuse any actual vulnerability, unmaintained/unsound
 dependency warning, or yanked dependency. The existing classifier still checks
 the raw findings and warnings. Separately documented dispositions cover exact

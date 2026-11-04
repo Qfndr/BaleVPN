@@ -104,6 +104,7 @@ jobs:
           python scripts/test-release-publisher.py
           python scripts/check-crypto-dependencies.py
           cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib
+          cargo check --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --examples
 
       - name: cargo test --workspace
         working-directory: lktunnel-rust
@@ -212,11 +213,23 @@ jobs:
           failed=0
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust vendor/webrtc-dtls; do
             name="${workspace//\//-}"
-            audit_status=0
             # Each lockfile can introduce uncached sparse-index entries. Do not
             # disable fetching after the first (smaller) dependency graph.
-            CARGO_TERM_COLOR=never cargo audit --file "$workspace/Cargo.lock" --json \
-              > "security-evidence/$name.json" 2> "security-evidence/$name-stderr.txt" || audit_status=$?
+            for attempt in 1 2 3; do
+              audit_status=0
+              CARGO_TERM_COLOR=never cargo audit --file "$workspace/Cargo.lock" --json \
+                > "security-evidence/$name-attempt-$attempt.json" \
+                2> "security-evidence/$name-attempt-$attempt-stderr.txt" || audit_status=$?
+              cp "security-evidence/$name-attempt-$attempt.json" "security-evidence/$name.json"
+              cp "security-evidence/$name-attempt-$attempt-stderr.txt" "security-evidence/$name-stderr.txt"
+              # Retry only the observed transient sparse-index response failure.
+              # Every attempt remains evidence; final warnings/errors still fail.
+              if [ "$attempt" -lt 3 ] && grep -Fq "couldn't check if the package is yanked: registry: error decoding response body" "security-evidence/$name-stderr.txt"; then
+                sleep 2
+                continue
+              fi
+              break
+            done
             cat "security-evidence/$name-stderr.txt"
             # cargo-audit 0.22.2 can report incomplete yank checks only on
             # stderr, without including the failure in its JSON report.

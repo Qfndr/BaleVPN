@@ -39,9 +39,9 @@ revocation, stream ownership, legacy negotiation and startup cancellation.
 
 `webrtc-dtls/` retains the published `webrtc-dtls` 0.10.0 source (MIT/Apache-2.0)
 while updating its P-256/P-384 dependency chain to upstream RustCrypto 0.14,
-`sec1` 0.8 and `crypto-bigint` >=0.7.6 (currently locked to 0.7.7).
+`sec1` 0.8 and `crypto-bigint` >=0.7.10 (currently locked to 0.7.10).
 This removes RUSTSEC-2026-0387, including in Android's JNI library.
-The companion `ctutils` dependency is locked to the fixed 0.4.5 release.
+The companion `ctutils` dependency is locked to 0.4.8.
 
 The source adjustments use the upstream `Sec1Point` name and fallible
 OS-backed `Generate::try_generate` API, and import the already-used
@@ -56,3 +56,9 @@ lockfiles and rejects unexpected changes outside the explicit patch/test files.
 Tests exercise P-256/P-384 agreement against ring, malformed SEC1 points,
 retransmission consistency and the upstream DTLS handshake suite.
 Run `cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib`.
+
+The vendored crate's development-only Clap 3 dependency enables `std` and
+`suggestions` explicitly instead of its default terminal-color feature. That
+removes the unsound, unmaintained `atty` dependency from the standalone test and
+example graph. Example CLI parsing remains available; automatic help coloring
+is disabled. Runtime DTLS dependencies and protocol behavior are unchanged.
