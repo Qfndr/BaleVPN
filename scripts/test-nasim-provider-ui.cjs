@@ -103,6 +103,11 @@ async function main() {
     await page.locator('#recoverCleanup').click();
     await page.getByText('سرویس پایان همان تماس را تأیید نکرد.').waitFor();
     assert.equal(fixture.posts.shift().command,'/cleanup');
+    fixture.patchState({cleanupReason:'login_account_mismatch'});
+    await page.getByText('نشست با حساب ثبت‌شده در رکورد پاک‌سازی مطابقت ندارد.').waitFor();
+    await page.locator('#language').click();
+    await page.getByText('The session does not match the account in the cleanup record.').waitFor();
+    await page.locator('#language').click();
     await page.locator('select[name=slot]').selectOption('2');
     await page.locator('input[name=vaultPassword]').fill('fixture-vault-password');
     await page.locator('#recoverCleanup').click();

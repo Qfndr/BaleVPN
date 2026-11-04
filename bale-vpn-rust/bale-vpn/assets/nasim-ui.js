@@ -89,6 +89,7 @@ const terminalPhases = new Set([...badPhases,'ended']);
 const cleanupDetails = new Map([
   ['unlock_failed','cleanupUnlock'],
   ['account_binding_changed','cleanupBinding'],['session_binding_changed','cleanupBinding'],
+  ['login_account_mismatch','cleanupBinding'],
   ['event_stream_not_connected','cleanupStream'],['stream_connect_failed','cleanupStream'],
   ['stream_connect_timeout','cleanupStream'],['stream_ended','cleanupStream'],
   ['cleanup_unconfirmed','cleanupAck']
