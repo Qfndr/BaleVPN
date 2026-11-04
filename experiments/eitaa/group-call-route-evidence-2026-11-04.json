@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-04",
+  "scope": "Offline examination of a distinct group-call signaling candidate. The one-to-one native DH route and current production method allowlists are unchanged.",
+  "androidApkSha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb",
+  "webWorkerSha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+  "androidRouting": {
+    "defaultOverload": "ConnectionsManager.sendRequest(TLObject,RequestDelegate) delegates at offset2 to its QuickAckDelegate/int overload. Both the QuickAckDelegate/int and flags-only overloads load connectionType1 into v8 at offset0 and pass it to the full sendRequest at offset12. Type1 clears bit64 in the pinned sendRequestInternal and enters HelperHttp.",
+    "sourceCallSites": [
+      {"method": "VoIPService.startGroupCall", "operations": [{"name": "phone.createGroupCall", "invokeOffset": 134, "connectionType": 1}, {"name": "phone.joinGroupCall", "invokeOffset": 325, "connectionType": 1}]},
+      {"method": "VoIPService.startConferenceGroupCall", "operations": [{"name": "phone.createConferenceCall", "invokeOffset": 146, "connectionType": 1}, {"name": "phone.getGroupCall", "invokeOffset": 317, "connectionType": 1}]},
+      {"method": "VoIPService.lambda$startConferenceGroupCall$55", "operations": [{"name": "phone.joinGroupCall", "invokeOffset": 126, "connectionType": 1}]},
+      {"method": "VoIPService.lambda$startGroupCheckShortpoll$63", "operations": [{"name": "phone.getGroupCall", "invokeOffset": 72, "connectionType": 1}]}
+    ],
+    "terminationCallSites": [
+      {"dex": "classes.dex", "method": "VoIPService.hangUp", "methodId": 58739, "constructOffsets": [106, 134], "invokeOffsets": [130, 164], "connectionType": 64, "connectionLiteralOffset": 32},
+      {"dex": "classes4.dex", "method": "GroupCallActivity$6.lambda$onItemClick$1", "methodId": 39588, "constructOffset": 94, "invokeOffset": 126, "connectionType": 64, "connectionLiteralOffset": 124},
+      {"dex": "classes6.dex", "method": "Stories.LivePlayer.lambda$init$9", "methodId": 6436, "constructOffset": 401, "invokeOffset": 423, "connectionType": 64, "connectionLiteralOffset": 421},
+      {"dex": "classes6.dex", "method": "Stories.LivePlayer.destroy", "methodId": 6394, "constructOffset": 32, "invokeOffset": 54, "connectionType": 64, "connectionLiteralOffset": 52},
+      {"dex": "classes6.dex", "method": "Stories.LivePlayer.end", "methodId": 6396, "constructOffset": 5, "invokeOffset": 28, "connectionType": 64, "connectionLiteralOffset": 26}
+    ],
+    "terminationScanScope": "Linear scan for new-instance of leaveGroupCall/discardGroupCall and equivalent Group/Conference class names. All five matching methods in the three DEX files that referenced those types use type64 for the matching termination request. Zero instruction decode failures in those files. No proof about reflective or native callers."
+  },
+  "webRouting": {
+    "transport": "The pinned Web worker's chooseServer at byte24029 returns transportHTTP. The observed group methods are actual invokeApi call sites in that worker, not only schema entries.",
+    "getGroupCall": {"methodId": 68699611, "invokeOffset": 524023, "fields": ["call:InputGroupCall", "limit:int"], "result": "phone.GroupCall"},
+    "inputGroupCall": {"constructorId": -659913713, "fields": ["id:long", "access_hash:long"], "source": "getGroupCallInput at byte524916 returns the ID and access hash of an already known call."},
+    "createGroupCall": {"methodId": 1221445336, "invokeOffset": 524674},
+    "joinGroupCall": {"methodId": -1322057861, "invokeOffset": 526342, "androidMethodId": -1883951017, "limitation": "The Android join serializer also includes its own optional public key/block fields. Do not substitute the Web join schema."},
+    "discardGroupCall": {"methodId": 2054648117, "invokeOffset": 525762, "fields": ["call:InputGroupCall"], "matchingAction": "GroupCallsManager.hangUp with an explicit boolean true"},
+    "leaveGroupCall": {"methodId": 1342404601, "invokeOffset": 525844, "fields": ["call:InputGroupCall", "source:int"], "matchingAction": "GroupCallsManager.hangUp with the numeric local source"},
+    "terminationLimit": "This source supports a Web HTTPS construction candidate for matching termination. Neither acceptance nor authoritative end acknowledgement was observed. Calling hangUp without its exact argument can take the join fallback; do not use that fallback as cleanup.",
+    "streamChannelsLimit": "Web _fetchRtmpState invokes getGroupCallStreamChannels at byte527127, but this pinned worker has no corresponding method declaration. Do not infer a usable Web RPC from the call site alone."
+  },
+  "offlineReadOnlyFixture": {
+    "method": "phone.getGroupCall",
+    "requestHex": "db4518040f84aad8e0cdab8967452301d6ffffffffffffff00000000",
+    "requestSha256": "f6678ad91f34b6450e4c9f9220ceeb347aa23d9d10127f1eac1b8a06e6cd9e0e",
+    "scope": "Synthetic call ID/access hash and zero limit. Existing generic TL codec compared against the pinned serializer in a test-only schema. Production CallClient remains unable to invoke this method."
+  },
+  "nextSafeProtocolAction": "With a known consented existing test group call, compare a single read-only phone.getGroupCall on its previously verified Web HTTPS session endpoint. This cannot establish secure create/join/termination by itself. No new group call, join, or termination attempt is justified until exact cleanup acknowledgement is verified for that route.",
+  "liveGroupCallVerified": false,
+  "liveGroupCleanupVerified": false,
+  "newNetworkRequests": false
+}
