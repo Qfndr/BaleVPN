@@ -27,5 +27,23 @@
   "otpRequests": 0,
   "separateNetworksVerified": false,
   "operatorBillingVerified": false,
-  "internationalOutageVerified": false
+  "internationalOutageVerified": false,
+  "carrierMetricsFollowup": {
+    "sourceCommit": "f4ee1492b37946607ca1567bb865fb011fd2058f",
+    "appSha256": "a089b21178afd9552a1bae0bde9744031a5a6a2ac7cc8c7d6840a859aca09ac8",
+    "kitArchiveSha256": "e66acc806daabd816032082a530bd28ca7e2c9e734dda34add457d2d3df20527",
+    "bothRoutesVerified": true,
+    "bothPeersAuthenticated": true,
+    "downloadBytesVerified": 1024,
+    "uploadBytesVerified": 8192,
+    "carrierCounterIncrease": {
+      "client": {"receivedBytes": 5783, "sentBytes": 2554},
+      "server": {"receivedBytes": 11650, "sentBytes": 19728}
+    },
+    "clientQuicRttMs": 121.102337,
+    "clientCumulativeQuicLossPercent": 0,
+    "bothEndpointsConfirmedCleanup": true,
+    "labSignalingRestored": true,
+    "otpRequests": 0
+  }
 }
