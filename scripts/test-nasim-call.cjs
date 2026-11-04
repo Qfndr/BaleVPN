@@ -177,6 +177,24 @@ test('other own-account device acceptance stops this instance without admitting 
   assert.deepEqual(b.state.terminal,{signal:'other_device',phaseBeforeEnd:'incoming',actor:'self'});
  }finally{f.close();}
 });
+test('stream reset after authentication withdraws proxy readiness and prevents stale frames from reopening it',async()=>{
+ const f=fixture();try{
+  const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  assert.equal(a.state.media.proxyReady,true);
+  const sent=f.sent.length;
+  a.handleEvent({provider:'nasim',type:'streamReset'});
+  assert.equal(a.state.phase,'uncertain');
+  assert.equal(a.state.terminal.signal,'stream_reset');
+  assert.equal(a.state.terminalSnapshot.media.proxyReady,true);
+  assert.equal(a.state.media,null);
+  assert.equal(f.natives[0].state.phase,'closed');
+  f.deliver('41',f.config('41'));
+  await waitFor(()=>!a.state.busy);
+  assert.equal(a.state.phase,'uncertain');
+  assert.equal(f.sent.length,sent);
+ }finally{f.close();}
+});
 test('reset during late native preparation closes the late process and cannot resurrect account state',async()=>{
  let release,closed=false;const f=fixture({open:()=>new Promise(r=>{release=r;})});
  try{const a=f.controllers.get('41');const pending=a.prepare({role:'client'});const rejected=assert.rejects(pending,/call_cancelled/);
