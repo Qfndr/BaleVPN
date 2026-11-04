@@ -1,0 +1,155 @@
+name: Provider native helpers (experimental)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/provider-native-helpers.yml'
+      - 'lktunnel-rust/Cargo.*'
+      - 'lktunnel-rust/lktunnel/Cargo.toml'
+      - 'lktunnel-rust/lktunnel/src/**'
+      - 'lktunnel-rust/lktunnel/examples/**'
+      - 'lk-signaling-rust/**'
+      - 'vendor/webrtc-*/**'
+      - 'vendor/livekit-api/**'
+      - 'experiments/providers/relay-media-bridge.cjs'
+      - 'experiments/nasim/native-media-bridge.cjs'
+      - 'experiments/eitaa/native-media-bridge.cjs'
+      - 'experiments/rubika/native-media-bridge.cjs'
+      - 'scripts/relay-native-fixtures.cjs'
+      - 'scripts/test-nasim-native.cjs'
+      - 'scripts/test-eitaa-native.cjs'
+      - 'scripts/test-rubika-native.cjs'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/provider-native-helpers.yml'
+      - 'lktunnel-rust/**'
+      - 'lk-signaling-rust/**'
+      - 'vendor/webrtc-*/**'
+      - 'vendor/livekit-api/**'
+      - 'experiments/**/native-media-bridge.cjs'
+      - 'experiments/providers/relay-media-bridge.cjs'
+      - 'scripts/relay-native-fixtures.cjs'
+      - 'scripts/test-*-native.cjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-native-helpers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-helpers:
+    name: Experimental helpers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure isolated build and test storage
+        run: |
+          printf '%s\n' "TEMP=$RUNNER_TEMP" "TMP=$RUNNER_TEMP" "TMPDIR=$RUNNER_TEMP" "CARGO_HOME=$RUNNER_TEMP/provider-cargo" "CARGO_TARGET_DIR=$RUNNER_TEMP/provider-target" "PROVIDER_ARTIFACT_DIR=$RUNNER_TEMP/provider-helper-artifacts" "PYTHONDONTWRITEBYTECODE=1" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/provider-cargo/registry
+            ${{ runner.temp }}/provider-cargo/git
+            ${{ runner.temp }}/provider-target
+          key: provider-helpers-${{ matrix.os }}-${{ hashFiles('lktunnel-rust/Cargo.lock', 'lktunnel-rust/**/Cargo.toml', 'vendor/webrtc-*/Cargo.toml') }}
+          restore-keys: |
+            provider-helpers-${{ matrix.os }}-
+      - name: Build the three real native helpers
+        run: >-
+          cargo build --manifest-path lktunnel-rust/Cargo.toml -p lktunnel
+          --locked --release --example nasim_relay_bridge
+          --example eitaa_relay_bridge --example rubika_relay_bridge
+      - name: Stage experimental artifacts and bind tests to these executables
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import sys
+
+          directory = Path(os.environ['PROVIDER_ARTIFACT_DIR'])
+          directory.mkdir(parents=True, exist_ok=True)
+          suffix = '.exe' if sys.platform == 'win32' else ''
+          helpers = []
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
+              for provider in ('nasim', 'eitaa', 'rubika'):
+                  name = provider + '_relay_bridge' + suffix
+                  source = Path(os.environ['CARGO_TARGET_DIR']) / 'release' / 'examples' / name
+                  target = directory / name
+                  shutil.copy2(source, target)
+                  helpers.append({'provider': provider, 'file': name, 'bytes': target.stat().st_size,
+                                  'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
+                  environment.write('BALEVPN_' + provider.upper() + '_BRIDGE=' + str(target) + '\n')
+          manifest = {'format': 1, 'scope': 'experimental-lab-only',
+                      'sourceCommit': os.environ['GITHUB_SHA'], 'platform': os.environ['RUNNER_OS'],
+                      'architecture': 'x86_64', 'helpers': helpers,
+                      'testScope': 'native process validation, identity lifecycle and local relay-gather cancellation',
+                      'nativeTestsPassed': False,
+                      'liveProviderCallsVerified': False, 'operatorBillingVerified': False}
+          (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Test actual helpers with all native cases enabled
+        run: |
+          node --test --test-reporter=tap --test-concurrency=1 scripts/test-nasim-native.cjs scripts/test-eitaa-native.cjs scripts/test-rubika-native.cjs | tee "$PROVIDER_ARTIFACT_DIR/native-tests.tap"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+
+          directory = Path(os.environ['PROVIDER_ARTIFACT_DIR'])
+          report_path = directory / 'native-tests.tap'
+          report = report_path.read_text(encoding='utf-8')
+          for field in ('skipped', 'fail', 'cancelled'):
+              if not re.search(r'^# ' + field + r' 0\s*$', report, re.MULTILINE):
+                  raise SystemExit('Actual native helper tests require zero ' + field)
+          total = re.search(r'^# tests (\d+)\s*$', report, re.MULTILINE)
+          passed = re.search(r'^# pass (\d+)\s*$', report, re.MULTILINE)
+          if total is None or passed is None or int(total.group(1)) < 9 or total.group(1) != passed.group(1):
+              raise SystemExit('Actual native helper test report is incomplete')
+          manifest_path = directory / 'manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          manifest['nativeTestsPassed'] = True
+          manifest['nativeTests'] = {'passed': int(total.group(1)), 'skipped': 0,
+                                     'report': report_path.name,
+                                     'reportSha256': hashlib.sha256(report_path.read_bytes()).hexdigest()}
+          manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Upload experimental helper binaries and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-native-helpers-experimental-${{ matrix.os }}
+          path: ${{ runner.temp }}/provider-helper-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
