@@ -1,0 +1,18 @@
+{
+  "checkedOn": "2026-11-04",
+  "sources": [
+    {
+      "url": "https://rubika.ir/install-android",
+      "observation": "The official Android installation page links Rubika_4_1_1.apk.",
+      "directApkLink": "https://cdnu6.iranlms.ir/Rubika_4_1_1.apk",
+      "apkDownloadedDuringRecheck": false
+    },
+    {
+      "url": "https://rubika.ir/",
+      "section": "Tariffs",
+      "observation": "The published tariff section cites 1405/07/15 and 1405/07/18 and states full-price billing for all sections."
+    }
+  ],
+  "billingMeasurement": "Actual tunnel billing has not been measured. The published tariff is not a measurement of this tunnel or a guarantee of a discount.",
+  "ui": "Persian and English provider descriptions and the existing provider-button tooltip distinguish the published full-price tariff from unmeasured tunnel charges."
+}

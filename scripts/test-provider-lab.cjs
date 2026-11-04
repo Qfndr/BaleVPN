@@ -174,7 +174,11 @@ test('loopback HTTP management rejects missing nonce, cross-origin writes, rebin
  assert.equal((await request('/api/vault/unlock',{password:'fixture-passphrase-123'},{Origin:'https://attacker.invalid'})).status,403);
  assert.equal((await request('/api/vault/unlock',{password:'fixture-passphrase-123'},{Origin:'null'})).status,403);
  const rebound=await new Promise((resolve,reject)=>{require('node:http').get(lab.origin+'/api/state',{headers:{Host:'attacker.invalid',Authorization:'Bearer '+key}},res=>{res.resume();resolve(res.statusCode);}).on('error',reject);});assert.equal(rebound,403);
- const page=await fetch(lab.origin+'/');assert.match(page.headers.get('content-security-policy'),/frame-ancestors 'none'/);assert.equal((await page.text()).includes(key),false);
+ const page=await fetch(lab.origin+'/');assert.match(page.headers.get('content-security-policy'),/frame-ancestors 'none'/);const html=await page.text();assert.equal(html.includes(key),false);
+ assert.match(html,/data-provider="rubika" data-help="rubikaBillingHelp"/);
+ const ui=await(await fetch(lab.origin+'/lab-ui.cjs')).text();
+ assert.match(ui,/تعرفهٔ اعلامی روبیکا تمام‌بهاست/);assert.match(ui,/هزینهٔ واقعی تونل هنوز اندازه‌گیری نشده/);
+ assert.match(ui,/Rubika publishes full-price data billing/);assert.match(ui,/Actual tunnel billing has not been measured/);
  const before=await(await request('/api/state')).json();assert.equal(before.vault.unlocked,false);assert.deepEqual(Object.keys(before.capabilities),['igap','eitaa','nasim','rubika']);assert.ok(Object.values(before.capabilities).every(p=>!p.tunnelReady));
  assert.equal((await request('/api/igap/1/start',{country:'IR',phone:'09120000001'})).status,423);assert.equal(calls.length,0);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
