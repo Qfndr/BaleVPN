@@ -37,6 +37,8 @@ use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_role::RTCIceRole;
+use webrtc::ice_transport::ice_transport_state::RTCIceTransportState;
+use webrtc::dtls_transport::dtls_transport_state::RTCDtlsTransportState;
 use webrtc::ice_transport::ice_credential_type::RTCIceCredentialType;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
@@ -561,14 +563,43 @@ fn ice_state_name(state: RTCIceConnectionState) -> &'static str {
         RTCIceConnectionState::Closed=>"closed",_=>"unknown",
     }
 }
+fn transport_state_name(state: RTCIceTransportState) -> &'static str {
+    match state {
+        RTCIceTransportState::New => "new",
+        RTCIceTransportState::Checking => "checking",
+        RTCIceTransportState::Connected => "connected",
+        RTCIceTransportState::Completed => "completed",
+        RTCIceTransportState::Disconnected => "disconnected",
+        RTCIceTransportState::Failed => "failed",
+        RTCIceTransportState::Closed => "closed",
+        _ => "unknown",
+    }
+}
+fn dtls_state_name(state: RTCDtlsTransportState) -> &'static str {
+    match state {
+        RTCDtlsTransportState::New => "new",
+        RTCDtlsTransportState::Connecting => "connecting",
+        RTCDtlsTransportState::Connected => "connected",
+        RTCDtlsTransportState::Closed => "closed",
+        RTCDtlsTransportState::Failed => "failed",
+        _ => "unknown",
+    }
+}
 async fn peer_ice_stats(pc:&RTCPeerConnection)->serde_json::Value {
-    let (report,role)=tokio::join!(
+    let dtls = pc.dtls_transport();
+    let ice = dtls.ice_transport();
+    let (report,role,selected)=tokio::join!(
         tokio::time::timeout(Duration::from_millis(250),pc.get_stats()),
-        tokio::time::timeout(Duration::from_millis(250),async {let transport=pc.sctp().transport();transport.ice_transport().role().await})
+        tokio::time::timeout(Duration::from_millis(250),ice.role()),
+        tokio::time::timeout(Duration::from_millis(250),ice.get_selected_candidate_pair())
     );
+    let transport_state = transport_state_name(ice.state());
+    let dtls_state = dtls_state_name(dtls.state());
+    // A timed-out lookup is unknown, not evidence that no pair was selected.
+    let selected_pair_present = selected.ok().map(|pair| pair.is_some());
     let role=match role {Ok(RTCIceRole::Controlling)=>"controlling",Ok(RTCIceRole::Controlled)=>"controlled",Ok(_)=>"unspecified",Err(_)=>"unavailable"};
     let report=match report {
-        Ok(report)=>report,Err(_)=>return serde_json::json!({"status":"timeout","configuredTransportRole":role}),
+        Ok(report)=>report,Err(_)=>return serde_json::json!({"status":"timeout","configuredTransportRole":role,"selectedPairPresent":selected_pair_present,"transportState":transport_state,"dtlsState":dtls_state}),
     };
     use webrtc::stats::StatsReportType;
     use webrtc::ice::candidate::{CandidatePairState,CandidateType};
@@ -587,7 +618,7 @@ async fn peer_ice_stats(pc:&RTCPeerConnection)->serde_json::Value {
         }
     }
     let kinds=|values:[u32;5]|serde_json::json!({"host":values[0],"serverReflexive":values[1],"peerReflexive":values[2],"relay":values[3],"unknown":values[4]});
-    serde_json::json!({"status":"ok","configuredTransportRole":role,"truncated":report.reports.len()>16384,"localCandidates":local,"remoteCandidates":remote,
+    serde_json::json!({"status":"ok","configuredTransportRole":role,"selectedPairPresent":selected_pair_present,"transportState":transport_state,"dtlsState":dtls_state,"truncated":report.reports.len()>16384,"localCandidates":local,"remoteCandidates":remote,
         "candidatePairs":pairs,"nominatedPairs":nominated,"deletedCandidates":deleted,
         "pairsWaiting":states[0],"pairsInProgress":states[1],"pairsSucceeded":states[2],"pairsFailed":states[3],"pairsUnknown":states[4],
         "localTypes":kinds(local_types),"remoteTypes":kinds(remote_types),"requestCountersSupported":false})
@@ -1063,6 +1094,15 @@ mod remote_ice_tests {
         assert_eq!(ice_state_name(RTCIceConnectionState::default()),"unknown");
         assert_eq!(ice_state_name(RTCIceConnectionState::Checking),"checking");
         assert_eq!(ice_state_name(RTCIceConnectionState::Completed),"completed");
+        assert_eq!(transport_state_name(RTCIceTransportState::Unspecified), "unknown");
+        assert_eq!(dtls_state_name(RTCDtlsTransportState::Unspecified), "unknown");
+        assert_eq!(transport_state_name(RTCIceTransportState::Checking), "checking");
+        assert_eq!(transport_state_name(RTCIceTransportState::Connected), "connected");
+        assert_eq!(transport_state_name(RTCIceTransportState::Disconnected), "disconnected");
+        assert_eq!(dtls_state_name(RTCDtlsTransportState::New), "new");
+        assert_eq!(dtls_state_name(RTCDtlsTransportState::Connecting), "connecting");
+        assert_eq!(dtls_state_name(RTCDtlsTransportState::Connected), "connected");
+        assert_eq!(dtls_state_name(RTCDtlsTransportState::Failed), "failed");
         for (state,name) in [(RTCPeerConnectionState::New,"new"),(RTCPeerConnectionState::Connecting,"connecting"),(RTCPeerConnectionState::Connected,"connected"),(RTCPeerConnectionState::Disconnected,"disconnected"),(RTCPeerConnectionState::Failed,"failed"),(RTCPeerConnectionState::Closed,"closed")] {
             assert_eq!(media_state_name(state),name);
         }

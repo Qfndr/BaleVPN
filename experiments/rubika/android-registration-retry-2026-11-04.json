@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-04",
+  "accountSlot": 1,
+  "workflow": "Existing AuthSession.restore followed by AuthSession.register after the protected read reported registration_required",
+  "requests": {"getUserInfo": 1, "registerDevice": 1},
+  "outcome": {"registered": false, "reason": "not_authorized", "serviceCode": "INVALID_AUTH"},
+  "comparisonWithEarlierAttempt": {
+    "contentType": "Corrected Android application/json; charset=utf-8",
+    "outboundDeviceLabel": "Stable neutral projection of retained legacy metadata",
+    "exactPreviousLabelUnavailable": true,
+    "authKeyPairAndDeviceHash": "Retained without changes",
+    "firebaseToken": "Existing official empty-token fallback"
+  },
+  "persistence": "Intermediate registration flags were staged in memory. The failed attempt left the prior encrypted record intact.",
+  "newLogin": false,
+  "newDeviceIdentity": false,
+  "secondAccountAttempted": false,
+  "peerCallAttempted": false,
+  "limitation": "The service still rejected registration after the corrected content type. This result does not identify the cause of INVALID_AUTH."
+}

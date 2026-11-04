@@ -438,6 +438,9 @@ async fn subscriber_accepts_application_only_offer_without_a_local_data_channel(
     assert!(stats["pairsSucceeded"].as_u64().unwrap()>0);
     assert_eq!(stats["requestCountersSupported"],false);
     assert_eq!(stats["configuredTransportRole"],"controlled");
+    assert_eq!(stats["selectedPairPresent"],true);
+    assert_eq!(stats["transportState"],"connected");
+    assert_eq!(stats["dtlsState"],"connected");
     assert!(!stats.to_string().contains("candidate:"));
     shutdown(&engine,&mut socket).await;
     remote.close().await.unwrap();
