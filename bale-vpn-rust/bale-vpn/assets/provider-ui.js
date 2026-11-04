@@ -23,17 +23,17 @@ Object.assign(copy.en,{
 });
 const errorKeys={call_cleanup_failed:['تماس قبلی کامل بسته نشد؛ اتصال متوقف شد.','The previous call did not close completely. Connection stopped.'],account_busy:['حساب مشغول است؛ کمی صبر کنید.','Account is busy. Please wait.'],provider_not_configured:['شناسهٔ طرف مقابل و جفت‌سازی را کامل کنید.','Complete the peer ID and pairing settings.'],invalid_provider_peer:['شناسهٔ حساب معتبر نیست.','Invalid account ID.'],invalid_provider_port:['پورت باید بین ۱۰۲۴ و ۶۵۵۳۵ باشد.','Port must be between 1024 and 65535.'],invalid_provider_trust:['کد عمومی طرف مقابل معتبر نیست.','Invalid peer public code.'],not_authenticated:['ابتدا وارد حساب شوید یا نشست را بازیابی کنید.','Sign in or restore the saved session first.'],session_exists:['نشست موجود است؛ آن را بازیابی کنید.','A session already exists. Restore it instead.'],session_save_failed:['نشست وارد شده، ولی ذخیره نشده است. ذخیرهٔ دوباره را بزنید.','Signed in, but the session was not saved. Retry saving it.'],invalid_code:['کد ورود درست نیست.','Incorrect verification code.'],code_expired:['کد ورود منقضی شده است.','Verification code expired.'],invalid_password:['رمز دومرحله‌ای درست نیست.','Incorrect two-step password.'],service_rejected:['سرویس درخواست را نپذیرفت.','The service rejected this request.'],timeout:['سرویس در زمان مقرر پاسخ نداد.','The service did not respond in time.'],call_ended:['تماس پایان یافت.','The call ended.'],media_disconnected:['مسیر رسانه قطع شد.','The media connection ended.'],session_restore_failed:['بازیابی نشست موفق نبود.','Could not restore this session.'],invalid_input:['ورودی را بررسی کنید.','Check the supplied input.'],rate_limited:['تعداد درخواست‌ها زیاد است؛ بعداً تلاش کنید.','Too many requests. Please try later.']};
 Object.assign(errorKeys,{
- call_rejected:['طرف مقابل تماس را نپذیرفت؛ اجازهٔ تماس را بررسی کنید. اتصال خودکار متوقف شد.','The peer rejected the call. Check call permissions. Automatic retries stopped.'],
+ call_rejected:['طرف مقابل تماس را نپذیرفت. اجازهٔ تماس را بررسی کنید. اتصال خودکار متوقف شد.','The peer rejected the call. Check call permissions. Automatic retries stopped.'],
  call_timeout:['طرف مقابل در زمان مقرر پاسخ نداد.','The peer did not answer in time.'],
  call_network_error:['ارتباط هنگام برقراری تماس قطع شد.','The connection was interrupted while placing the call.'],
- auth_expired:['نشست منقضی شده است؛ دوباره وارد حساب شوید.','Your session expired. Sign in again.'],
+ auth_expired:['نشست منقضی شده است. دوباره وارد حساب شوید.','Your session expired. Sign in again.'],
  authentication_timeout:['تأیید هویت طرف مقابل در زمان مقرر انجام نشد.','Peer authentication timed out.'],
- protocol_obsolete:['نسخهٔ ارتباط با سرویس پشتیبانی نمی‌شود؛ برنامه را به‌روز کنید.','The service protocol is unsupported. Update the application.'],
- no_saved_session:['نشست ذخیره‌شده‌ای پیدا نشد؛ وارد حساب شوید.','No saved session was found. Sign in first.'],
- not_connected:['ارتباط با سرویس برقرار نیست؛ وضعیت اتصال حساب را بررسی کنید.','The service is disconnected. Check the account connection.'],
+ protocol_obsolete:['نسخهٔ ارتباط با سرویس پشتیبانی نمی‌شود. برنامه را به‌روز کنید.','The service protocol is unsupported. Update the application.'],
+ no_saved_session:['نشست ذخیره‌شده‌ای پیدا نشد. وارد حساب شوید.','No saved session was found. Sign in first.'],
+ not_connected:['ارتباط با سرویس برقرار نیست. وضعیت اتصال حساب را بررسی کنید.','The service is disconnected. Check the account connection.'],
  signaling_disconnected:['ارتباط حساب با سرویس قطع شد.','The account lost its service connection.'],
  signaling_closed:['ارتباط حساب با سرویس بسته شد.','The account service connection closed.'],
- call_failed:['برقراری تماس موفق نبود؛ اجازهٔ تماس حساب مقصد را بررسی کنید.','The call failed. Check the destination account’s call privacy.'],
+ call_failed:['برقراری تماس موفق نبود. اجازهٔ تماس حساب مقصد را بررسی کنید.','The call failed. Check the destination account’s call privacy.'],
  media_failed:['برقراری مسیر رسانه موفق نبود.','Could not establish the media connection.'],
  media_closed:['مسیر رسانه بسته شد.','The media connection closed.'],
  media_events_unavailable:['وضعیت مسیر رسانه در دسترس نیست.','Media connection events are unavailable.'],
