@@ -183,6 +183,10 @@ async function main() {
     await longer.locator('#callDurationField').waitFor();
     assert.match(await longer.locator('#callDurationField').innerText(),/۱۵ دقیقه/);
     await longer.locator('select[name=callLimitSeconds]').selectOption('900');
+    assert.equal(await longer.locator('#detail').textContent(),'برای هر تماس یک گواهی تازه ساخته می‌شود.');
+    await longer.locator('#language').click();
+    assert.equal(await longer.locator('#detail').textContent(),'Each call uses a fresh certificate.');
+    await longer.locator('#language').click();
     await start(longer,'client');
     assert.equal(longerFixture.posts[0].input.callLimitSeconds,900);
     assert.match(await longer.locator('#detail').innerText(),/۱۵ دقیقه/);
