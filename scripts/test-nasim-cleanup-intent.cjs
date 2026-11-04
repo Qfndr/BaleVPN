@@ -62,7 +62,6 @@ test('initial media failure preserves both captured intents after the call conte
 
 test('correlated call response wins queued old config and conflicting configs cannot replace cleanup identity',async()=>{
  const saved=new Map();let writes=0;
- const codec=require('../experiments/nasim/call-codec.cjs');
  const f=callFixture({
   cleanupFactory:account=>new CleanupIntent(account,{
    async saveIntent(value,guard){guard();writes++;saved.set(account.state.userId,structuredClone(value));},
@@ -72,8 +71,9 @@ test('correlated call response wins queued old config and conflicting configs ca
   sendHook:async({sender,peerId,signal})=>{
    if(signal.type!=='callRequest')return;
    f.deliver(sender,f.config(sender,sender,'old-call'));
+   f.deliver(sender,f.config(sender,sender,'current-call'));
    f.deliver(peerId,f.config(peerId,sender,'current-call'));
-   return {acknowledged:true,reply:codec.incoming(f.config(sender,sender,'current-call'),sender)};
+   return {acknowledged:true,reply:null,requestCallUUID:'current-call'};
   },
  });
  try{

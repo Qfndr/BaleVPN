@@ -86,4 +86,15 @@ function incoming(message,self){
  }
  return result;
 }
-module.exports={outgoing,incoming,userId,clientId};
+// callRequest returns callData/callUUID independently of an event type. The
+// official client binds that UUID before processing its later config event.
+function requestCallUUID(response,self,peer){
+ self=userId(self);peer=userId(peer);
+ if(response?.data?.callUUID===undefined)return null;
+ const data=object(response.data),call=object(data.callData);
+ if(call.method!=='audio'||self===peer)invalid();
+ const ids=participants(call.participants,self);
+ if(!ids.includes(peer))invalid();
+ return uuid(data.callUUID);
+}
+module.exports={outgoing,incoming,userId,clientId,requestCallUUID};

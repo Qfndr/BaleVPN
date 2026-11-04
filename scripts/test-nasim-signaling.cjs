@@ -116,6 +116,35 @@ test('terminal acknowledgement requires decrypted success and is tied to the exa
  }
 });
 
+test('callRequest binds canonical HTTP UUID without requiring or inventing a config event',async()=>{
+ for(const type of [undefined,'callLog']){
+  const data={callUUID:'canonical-call',callData:{method:'audio',status:'not_answered',participants:[{userID:41},{userID:42}]},privateMetadata:'private-value'};
+  if(type)data.type=type;
+  const f=fixture({apiResponse:()=>new Response(wire.encryptBytes(Buffer.from(JSON.stringify({status:'success',data})),token))}),connection=await f.open();
+  try{
+   const result=await connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'});
+   assert.equal(result.requestCallUUID,'canonical-call');
+   assert.equal(result.reply?.type??null,type??null);
+   assert.ok(!JSON.stringify(result).includes('private-value'));
+  }finally{connection.close();}
+ }
+});
+
+test('canonical request UUID requires the exact self and requested peer in an audio call',async()=>{
+ for(const change of [
+  {callUUID:'invalid call'},
+  {callData:{method:'video',participants:[{userID:41},{userID:42}]}},
+  {callData:{method:'audio',participants:[{userID:41},{userID:43}]}},
+  {callData:{method:'audio',participants:[{userID:42},{userID:42}]}},
+  {callData:{method:'audio',participants:[{userID:41},{userID:42},{userID:43}]}}
+ ]){
+  const data={callUUID:'canonical-call',callData:{method:'audio',participants:[{userID:41},{userID:42}]},...change};
+  const f=fixture({apiResponse:()=>new Response(wire.encryptBytes(Buffer.from(JSON.stringify({status:'success',data})),token))}),connection=await f.open();
+  try{await assert.rejects(connection.send({type:'callRequest',callData:{method:'audio'}},{peerId:'42'}),e=>e.reason==='invalid_call_response');}
+  finally{connection.close();}
+ }
+});
+
 test('cleanSession resets old call state and continues receiving fresh events without loading chat history or reconnecting',async()=>{
  const f=fixture(),connection=await f.open();
  try{

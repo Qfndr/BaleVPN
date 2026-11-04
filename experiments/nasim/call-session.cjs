@@ -57,7 +57,10 @@ class CallSession {
   const response=await this.#io(()=>this.#rpc.send(signal,{peerId:this.#peer}),guard);
   // The response belongs to this exact HTTP call request. Bind it before
   // queued SSE configs can run, including history delivered during the await.
-  if(type==='callRequest'&&response?.reply?.type==='config'&&uuid(response.reply.callUUID))this.#requestedCall=response.reply.callUUID;
+  if(type==='callRequest'){
+   if(uuid(response?.requestCallUUID))this.#requestedCall=response.requestCallUUID;
+   else if(response?.reply?.type==='config'&&uuid(response.reply.callUUID))this.#requestedCall=response.reply.callUUID;
+  }
   if(response?.reply)this.handleEvent(response.reply);
  }
  #arm(active=true){

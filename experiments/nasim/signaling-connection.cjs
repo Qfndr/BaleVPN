@@ -131,13 +131,18 @@ class SignalingConnection{
    let result;try{plain=wire.decryptBytes(bytes,token);result=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(plain));}
    catch{throw new ApiError('invalid_call_response');}finally{plain?.fill(0);plain=null;}
    if(!result||typeof result!=='object'||Array.isArray(result)||result.status==='error'||result.error)throw new ApiError('call_rejected');
+   let requestCallUUID=null;
+   if(signal.type==='callRequest'){
+    try{requestCallUUID=codec.requestCallUUID(result,this.#session.userId,peerId);}
+    catch{throw new ApiError('invalid_call_response');}
+   }
    let reply=null;
    // Some acknowledgments carry a full local call event; no raw service result
    // (including chat/user metadata) is returned when that shape is absent.
    if(result.data?.type&&result.data?.callUUID){
     try{reply=codec.incoming({...result,type:'msgGroupCall'},this.#session.userId);}catch{throw new ApiError('invalid_call_response');}
    }
-   return {acknowledged:true,reply,...signal.type==='bye'&&result.status==='success'?{
+   return {acknowledged:true,reply,...requestCallUUID?{requestCallUUID}:{},...signal.type==='bye'&&result.status==='success'?{
     terminalAcknowledgement:{type:'bye',callUUID:signal.callUUID,peerId:String(peerId)}}:{}};
   }catch(error){if(error instanceof ApiError){if(error.reason==='not_authorized')this.#fail('not_authorized');throw error;}
    throw new ApiError(this.#abort.signal.aborted?'closed':controller.signal.aborted?'timeout':'call_transport_failed');}

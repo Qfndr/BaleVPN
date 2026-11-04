@@ -16,18 +16,26 @@
   "sourceFinding": {
     "previousBehavior": "A different config UUID could replace a caller's current UUID while its phase remained outgoing. Cleanup capture then rejected that second identity as cleanup_pending.",
     "queueOrdering": "SSE config events received during an outstanding callRequest await can be queued before that request's HTTP config reply.",
-    "fix": "Bind the UUID from the correlated callRequest config reply before queued SSE events run. Ignore a conflicting config before mutating call state or cleanup persistence. Once a call is selected, both roles keep its UUID immutable.",
+    "fix": "Bind the canonical callRequest HTTP data.callUUID before queued SSE events run, after validating audio method and the exact self/requested-peer participant pair. This field is independent of event type. Ignore conflicting config before mutating call state or cleanup persistence. Once selected, both roles keep the call UUID immutable.",
     "publicDiagnostic": "requestedCallBound is a boolean; the bound UUID remains private.",
     "wireProtocolChanged": false,
     "peerAndDeviceBindingPreserved": true
   },
   "validation": {
-    "command": "node --test scripts/test-nasim-call.cjs scripts/test-nasim-call-pair.cjs scripts/test-nasim-cleanup-intent.cjs",
-    "passed": 37,
+    "command": "node --test scripts/test-nasim-signaling.cjs scripts/test-nasim-call.cjs scripts/test-nasim-call-pair.cjs scripts/test-nasim-cleanup-intent.cjs",
+    "passed": 51,
     "failed": 0,
     "skipped": 0,
     "regression": "A synthetic stale SSE config precedes the current HTTP reply. Both current cleanup identities survive duplicate and conflicting configs, and the original pair completes media negotiation.",
-    "newLiveCallsAfterFix": 0
+    "newLiveCallsAfterCanonicalDecoderFix": 0
+  },
+  "canonicalResponseEvidence": {
+    "officialSource": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+    "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149",
+    "utf8ByteOffsets": {"msgGroupCall": 373431, "updateCallLog": 376533, "callRequest": 396225, "sendTopicCommand": 431803},
+    "behavior": "msgGroupCall returns the HTTP response data. callRequest passes its callData and callUUID to updateCallLog, which sets the active UUID independently of the response event type.",
+    "postConfigOnlyFixTrial": "A later single live trial kept active identities immutable but reported requestedCallBound false. Caller and callee selected different UUIDs. Both exact cleanup intents were acknowledged and removed. This established that config-event-only response binding was insufficient.",
+    "decoderTests": "Typeless canonical data and callLog data bind the same private request UUID. Video, wrong-peer, duplicate-peer, extra-participant and malformed-UUID responses are rejected. No synthetic config event is emitted."
   },
   "limits": [
     "The live sequence did not retain the raw two config UUIDs or their timestamps, so their origin as stale history is not proven.",
