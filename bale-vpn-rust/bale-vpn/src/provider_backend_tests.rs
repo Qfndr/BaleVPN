@@ -666,3 +666,19 @@ async fn a_new_attempt_cannot_reuse_the_previous_network_failure_for_a_security_
     .is_none());
     service.shutdown().await;
 }
+
+
+#[test]
+fn media_stream_closure_before_authentication_requires_a_known_network_reason() {
+    let mut recovery = crate::reconnect::Recovery::default();
+    let closed = Err(Failure("media_closed"));
+    assert!(client_retry_delay(&mut recovery, "42", false, &closed, None).is_none());
+    let unknown = json!({"reason":{"code":"unknown"}});
+    assert!(client_retry_delay(&mut recovery, "42", false, &closed, Some(&unknown)).is_none());
+    assert_eq!(
+        client_retry_delay(&mut recovery, "42", true, &closed, None),
+        Some(Duration::from_secs(5))
+    );
+    let network = json!({"reason":{"code":"subscriber_failed"}});
+    assert!(client_retry_delay(&mut recovery, "42", false, &closed, Some(&network)).is_some());
+}

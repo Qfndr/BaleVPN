@@ -710,8 +710,9 @@ fn client_retry_delay(
         Err(Failure(
             "call_timeout" | "call_network_error" | "signaling_disconnected" | "signaling_closed",
         )) => Some("network timeout"),
-        Err(Failure("call_ended" | "media_closed")) => None,
-        Err(Failure("media_failed")) => {
+        Err(Failure("call_ended")) => None,
+        Err(Failure("media_closed")) if established => None,
+        Err(Failure("media_failed" | "media_closed")) => {
             let reason = terminal?.get("reason")?;
             match reason.get("code")?.as_str()? {
                 "room_empty"
