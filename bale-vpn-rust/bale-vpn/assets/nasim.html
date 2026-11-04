@@ -109,6 +109,7 @@
         </div>
         <label><span data-text="peer">شناسهٔ حساب طرف مقابل</span><input class="technical" name="peerUserId" type="text" inputmode="numeric" pattern="[1-9][0-9]{0,15}" maxlength="16" required></label>
         <label id="portField"><span data-text="port">پورت SOCKS5 کلاینت</span><input class="technical" name="socksPort" type="number" min="1024" max="65535" value="1098" required></label>
+        <label id="callDurationField" hidden><span data-text="callDuration">حداکثر مدت تماس</span><select name="callLimitSeconds"><option value="90" data-text="duration90">۹۰ ثانیه</option><option value="300" data-text="duration300">۵ دقیقه</option><option value="900" data-text="duration900">۱۵ دقیقه</option></select><small class="muted" data-text="durationHint">در هر دو سمت مدت یکسان را انتخاب کنید.</small></label>
         <label id="passwordField"><span data-text="password">رمز مخزن نشست</span><input name="vaultPassword" type="password" minlength="12" maxlength="1024" required></label>
         <button type="submit" id="start" class="primary" data-text="start">آماده‌سازی نشست</button>
       </form>

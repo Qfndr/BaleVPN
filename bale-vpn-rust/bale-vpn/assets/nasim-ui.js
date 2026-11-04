@@ -14,6 +14,8 @@ const labels = {
     incoming:'تماس ورودی', outgoing:'در حال تماس', dialing:'در حال تماس', negotiating:'در حال برقراری مسیر',
     connected:'متصل و احرازشده', uncertain:'وضعیت تماس نامشخص', ended:'تماس پایان یافت',
     stopped:'متوقف شد', closed:'متوقف شد', failed:'اتصال برقرار نشد',
+    callDuration:'حداکثر مدت تماس',duration90:'۹۰ ثانیه',duration300:'۵ دقیقه',duration900:'۱۵ دقیقه',
+    durationHint:'در هر دو سمت مدت یکسان را انتخاب کنید.',longerKitRequired:'برای مدت بیشتر، کیت سازگار نسیم را بررسی کنید.',
     limits:'هر اجرا یک تماس تا ۹۰ ثانیه دارد و گواهی تازه‌ای می‌سازد.',
     route:'مسیر رلهٔ کلاینت و احراز هویت دوطرفه تأیید شد.',
     carrierRx:'دریافت حامل', carrierTx:'ارسال حامل', carrierRtt:'زمان رفت‌وبرگشت',
@@ -44,6 +46,8 @@ const labels = {
     incoming:'Incoming call', outgoing:'Calling', dialing:'Calling', negotiating:'Establishing route',
     connected:'Connected and authenticated', uncertain:'Call state uncertain', ended:'Call ended',
     stopped:'Stopped', closed:'Stopped', failed:'Connection failed',
+    callDuration:'Maximum call duration',duration90:'90 seconds',duration300:'5 minutes',duration900:'15 minutes',
+    durationHint:'Choose the same duration at both endpoints.',longerKitRequired:'Check that your Nasim kit supports longer calls.',
     limits:'Each run supports one call for up to 90 seconds and creates a fresh certificate.',
     route:'Client relay route and mutual authentication verified.',
     carrierRx:'Carrier received', carrierTx:'Carrier sent', carrierRtt:'Round-trip time',
@@ -75,6 +79,7 @@ let prefs = {language:'fa',theme:'system'};
 let lang = 'fa', csrf = '', configured = false, busy = false, pollTask = null;
 let state = {phase:'idle'};
 let notice = null;
+let durationChoices = [];
 let sample = null, rates = null;
 
 const counter = value => Number.isSafeInteger(value) && value >= 0;
@@ -178,9 +183,14 @@ function render() {
   $('connection').hidden = !configured;
   $('portField').hidden = role !== 'client';
   $('passwordField').hidden = active;
+  $('callDurationField').hidden = durationChoices.length === 0;
   $('start').hidden = active;
   for (const control of $('startForm').elements) control.disabled = active || busy;
   $('startForm').elements.socksPort.disabled ||= role !== 'client';
+  const duration = $('startForm').elements.callLimitSeconds;
+  if (active) duration.value = String(state.callLimitSeconds ?? 90);
+  duration.disabled ||= durationChoices.length === 0;
+  for (const option of duration.options) option.disabled = option.value !== '90' && !durationChoices.includes(Number(option.value));
   $('pairing').hidden = !certificate;
   $('pairHint').hidden = !!certificate;
   $('ownCertificate').value = certificate;
@@ -192,7 +202,9 @@ function render() {
   const reasons = labels[lang].termination;
   const termination = terminalPhases.has(state.phase) && typeof state.termination === 'string' &&
     Object.hasOwn(reasons,state.termination) ? reasons[state.termination] : null;
-  $('detail').textContent = cleanupUnconfirmed ? tr('cleanup') : termination ?? tr(authenticated ? 'route' : 'limits');
+  const durationLabel = [300,900].includes(state.callLimitSeconds) ? tr('duration' + state.callLimitSeconds) : null;
+  $('detail').textContent = cleanupUnconfirmed ? tr('cleanup') : termination ??
+    (authenticated ? tr('route') : durationLabel ? tr('callDuration') + ' · ' + durationLabel : tr('limits'));
   const proxyReady = authenticated && state.proxyReady === true && role === 'client' &&
     Number.isInteger(state.proxyPort) && state.proxyPort >= 1024 && state.proxyPort <= 65535;
   $('proxy').hidden = !proxyReady;
@@ -214,6 +226,7 @@ async function api(path,body) {
     options.body = JSON.stringify(body);
   }
   const response = await fetch(base+path,options);
+  if (path === '/start' && body?.callLimitSeconds && response.status === 412) throw new Error('longerKitRequired');
   if (!response.ok) throw new Error('request_failed');
   const value = await response.json();
   if (!value || typeof value !== 'object' || value.ok === false) throw new Error('request_failed');
@@ -229,9 +242,9 @@ async function action(path,body) {
     await pollTask;
     setState(await api(path,body));
     if (badPhases.has(state.phase)) setNotice('requestFailed',true);
-  } catch {
+  } catch (error) {
     sample = rates = null;
-    setNotice('requestFailed',true);
+    setNotice(error.message === 'longerKitRequired' ? 'longerKitRequired' : 'requestFailed',true);
     try { setState(await api('/state')); } catch {}
   } finally {
     busy = false;
@@ -269,6 +282,8 @@ $('startForm').onsubmit = event => {
   const role = fields.role.value;
   const body = {role,slot:Number(fields.slot.value),peerUserId:fields.peerUserId.value,vaultPassword:fields.vaultPassword.value};
   if (role === 'client') body.socksPort = Number(fields.socksPort.value);
+  const seconds = Number(fields.callLimitSeconds.value);
+  if (durationChoices.includes(seconds)) body.callLimitSeconds = seconds;
   fields.vaultPassword.value = '';
   void action('/start',body);
 };
@@ -296,6 +311,7 @@ appearance();
     configured = info.available === true && typeof info.csrfToken === 'string' && info.csrfToken.length > 0;
     if (configured) {
       csrf = info.csrfToken;
+      durationChoices = Array.isArray(info.callDurationChoices) ? [300,900].filter(seconds => info.callDurationChoices.includes(seconds)) : [];
       setState(await api('/state'));
       setInterval(poll,1200);
     }

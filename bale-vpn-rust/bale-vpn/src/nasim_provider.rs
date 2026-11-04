@@ -228,6 +228,7 @@ struct Start {
     peer_user_id: String,
     socks_port: Option<u16>,
     vault_password: String,
+    call_limit_seconds: Option<u16>,
 }
 impl Drop for Start {
     fn drop(&mut self) {
@@ -246,6 +247,8 @@ struct StartMessage<'a> {
     socks_port: u16,
     vault_directory: &'a Path,
     vault_password: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    call_limit_seconds: Option<u16>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -316,6 +319,7 @@ struct Snapshot {
     role: Option<Role>,
     proxy_port: Option<u16>,
     public_certificate: Option<String>,
+    call_limit_seconds: Option<u16>,
     route_proof: Option<&'static str>,
     peer_authenticated: bool,
     proxy_ready: bool,
@@ -333,6 +337,7 @@ impl Default for Snapshot {
             role: None,
             proxy_port: None,
             public_certificate: None,
+            call_limit_seconds: None,
             route_proof: None,
             peer_authenticated: false,
             proxy_ready: false,
@@ -369,10 +374,10 @@ impl Worker {
         command
     }
 
-    async fn check_node(kit: &Kit) -> Result<(), ()> {
+    async fn node_output(kit: &Kit, args: &[&std::ffi::OsStr]) -> Result<Vec<u8>, ()> {
         timeout(Duration::from_secs(3), async {
             let mut child = Self::node_command(kit)
-                .arg("--version")
+                .args(args)
                 .stdin(Stdio::null())
                 .spawn()
                 .map_err(|_| ())?;
@@ -381,26 +386,49 @@ impl Worker {
                 .stdout
                 .take()
                 .ok_or(())?
-                .take(64)
+                .take(128)
                 .read_to_end(&mut output)
                 .await
                 .map_err(|_| ())?;
-            if !child.wait().await.map_err(|_| ())?.success() {
+            if output.len() == 128 || !child.wait().await.map_err(|_| ())?.success() {
                 return Err(());
             }
-            let version = std::str::from_utf8(&output).map_err(|_| ())?.trim();
-            let major = version
-                .strip_prefix('v')
-                .and_then(|v| v.split_once('.'))
-                .and_then(|(major, _)| major.parse::<u16>().ok())
-                .ok_or(())?;
-            if major < 22 {
-                return Err(());
-            }
-            Ok(())
+            Ok(output)
         })
         .await
         .map_err(|_| ())?
+    }
+
+    async fn check_node(kit: &Kit) -> Result<(), ()> {
+        let output = Self::node_output(kit, &[std::ffi::OsStr::new("--version")]).await?;
+        let version = std::str::from_utf8(&output).map_err(|_| ())?.trim();
+        let major = version
+            .strip_prefix('v')
+            .and_then(|v| v.split_once('.'))
+            .and_then(|(major, _)| major.parse::<u16>().ok())
+            .ok_or(())?;
+        if major < 22 {
+            return Err(());
+        }
+        Ok(())
+    }
+
+    async fn check_call_duration(kit: &Kit, seconds: u16) -> Result<(), ()> {
+        let endpoint = kit.directory.join(ENDPOINT);
+        let output = Self::node_output(
+            kit,
+            &[endpoint.as_os_str(), std::ffi::OsStr::new("--capabilities")],
+        )
+        .await?;
+        let value: Value = serde_json::from_slice(&output).map_err(|_| ())?;
+        if !value["callDurations"].as_array().is_some_and(|values| {
+            values
+                .iter()
+                .any(|value| value.as_u64() == Some(u64::from(seconds)))
+        }) {
+            return Err(());
+        }
+        Ok(())
     }
 
     fn launch(kit: &Kit, hash: &str, vault_lock: std::fs::File) -> Result<Self, ()> {
@@ -694,7 +722,9 @@ impl Service {
         } else {
             start.socks_port.unwrap_or(1098)
         };
-        if !matches!(start.slot, 1 | 2)
+        let seconds = start.call_limit_seconds.unwrap_or(90);
+        if !matches!(seconds, 90 | 300 | 900)
+            || !matches!(start.slot, 1 | 2)
             || start.vault_password.is_empty()
             || start.vault_password.encode_utf16().count() > 1024
             || start.peer_user_id.starts_with('0')
@@ -718,6 +748,13 @@ impl Service {
         Worker::check_node(&self.kit)
             .await
             .map_err(|_| StatusCode::PRECONDITION_FAILED)?;
+        if seconds != 90
+            && Worker::check_call_duration(&self.kit, seconds)
+                .await
+                .is_err()
+        {
+            return Err(StatusCode::PRECONDITION_FAILED);
+        }
         if self.closing.load(Ordering::Acquire) {
             return Err(StatusCode::SERVICE_UNAVAILABLE);
         }
@@ -729,6 +766,7 @@ impl Service {
             socks_port: port,
             vault_directory: &self.kit.vault,
             vault_password: &start.vault_password,
+            call_limit_seconds: (seconds != 90).then_some(seconds),
         };
         let encoded =
             Zeroizing::new(serde_json::to_vec(&message).map_err(|_| StatusCode::BAD_REQUEST)?);
@@ -742,7 +780,10 @@ impl Service {
             } else {
                 "server"
             };
-            if event["event"] == "prepared" && event["role"] == role {
+            if event["event"] == "prepared"
+                && event["role"] == role
+                && (seconds == 90 || event["callLimitSeconds"].as_u64() == Some(u64::from(seconds)))
+            {
                 if let Some(cert) = event["publicCertificate"]
                     .as_str()
                     .filter(|value| certificate(value))
@@ -752,6 +793,7 @@ impl Service {
                         role: Some(start.role),
                         proxy_port: (start.role == Role::Client).then_some(port),
                         public_certificate: Some(cert.to_owned()),
+                        call_limit_seconds: Some(seconds),
                         ..Snapshot::default()
                     };
                     return Ok(Json(runtime.snapshot.clone()));
@@ -801,7 +843,7 @@ async fn csrf(State(service): State<Arc<Service>>, request: Request, next: Next)
 }
 async fn info(State(s): State<Arc<Service>>) -> Json<Value> {
     Json(
-        json!({"available":true,"csrfToken":s.csrf,"singleCall":true,"callLimitSeconds":90,"freshPairing":true}),
+        json!({"available":true,"csrfToken":s.csrf,"singleCall":true,"callLimitSeconds":90,"callDurationChoices":[90,300,900],"freshPairing":true}),
     )
 }
 async fn state(State(s): State<Arc<Service>>) -> Reply {
@@ -943,6 +985,27 @@ mod tests {
         event["phase"] = json!("ready");
         event["termination"] = json!("busy");
         assert!(runtime.update(&event).unwrap().termination.is_none());
+    }
+
+    #[test]
+    fn legacy_worker_start_omits_optional_call_duration() {
+        let mut message = StartMessage {
+            command: "start",
+            role: Role::Client,
+            slot: 1,
+            peer_user_id: "42",
+            socks_port: 1098,
+            vault_directory: Path::new("fixture-vault"),
+            vault_password: "fixture-password",
+            call_limit_seconds: None,
+        };
+        let legacy = serde_json::to_value(&message).unwrap();
+        assert!(legacy.get("callLimitSeconds").is_none());
+        message.call_limit_seconds = Some(900);
+        assert_eq!(
+            serde_json::to_value(message).unwrap()["callLimitSeconds"],
+            900
+        );
     }
 
     #[test]

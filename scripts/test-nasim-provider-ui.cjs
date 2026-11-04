@@ -18,7 +18,7 @@ const files = new Map([
   ['/fonts/InterVariable.woff2',['fonts/InterVariable.woff2','font/woff2']]
 ]);
 
-async function installFixture(page,available) {
+async function installFixture(page,available,{durationChoices,olderKit=false}={}) {
   let state = {phase:'idle'};
   const posts = [], external = [], errors = [];
   page.on('pageerror',error => errors.push(error.message));
@@ -33,7 +33,7 @@ async function installFixture(page,available) {
     if (file) return route.fulfill({contentType:file[1],body:await fs.readFile(path.join(assets,file[0]))});
     const command = url.pathname.slice(prefix.length);
     const respond = value => route.fulfill({json:value});
-    if (command === '/info') return respond({available,csrfToken:token});
+    if (command === '/info') return respond({available,csrfToken:token,callDurationChoices:durationChoices});
     if (command === '/state') {
       if (state.metrics) state.metrics.receivedBytes += 512;
       return respond(state);
@@ -44,7 +44,8 @@ async function installFixture(page,available) {
     posts.push({command,input});
     switch (command) {
       case '/start':
-        state = {phase:'prepared',role:input.role,publicCertificate:ownCertificate,proxyPort:input.socksPort};
+        if (olderKit && input.callLimitSeconds) return route.fulfill({status:412,json:{ok:false}});
+        state = {phase:'prepared',role:input.role,publicCertificate:ownCertificate,proxyPort:input.socksPort,callLimitSeconds:input.callLimitSeconds};
         break;
       case '/trust':
         state = {...state,phase:state.role === 'server' ? 'incoming' : 'ready'};
@@ -92,6 +93,7 @@ async function main() {
     await page.locator('#workspace').waitFor();
     assert.equal(await page.locator('html').getAttribute('dir'),'rtl');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
+    assert.equal(await page.locator('#callDurationField').isHidden(),true);
     await start(page,'client');
     await page.locator('#dial').click();
     await page.locator('#proxy').waitFor();
@@ -153,6 +155,37 @@ async function main() {
     assert.deepEqual(fixture.external,[]);
     assert.deepEqual(fixture.errors,[]);
     await page.close();
+
+    const longer = await browser.newPage({viewport:{width:360,height:800}});
+    const longerFixture = await installFixture(longer,true,{durationChoices:[90,300,900]});
+    await longer.goto(base+prefix+'/ui');
+    await longer.locator('#callDurationField').waitFor();
+    assert.match(await longer.locator('#callDurationField').innerText(),/۱۵ دقیقه/);
+    await longer.locator('select[name=callLimitSeconds]').selectOption('900');
+    await start(longer,'client');
+    assert.equal(longerFixture.posts[0].input.callLimitSeconds,900);
+    assert.match(await longer.locator('#detail').innerText(),/۱۵ دقیقه/);
+    await longer.locator('#language').click();
+    assert.match(await longer.locator('#detail').innerText(),/15 minutes/);
+    assert.deepEqual(longerFixture.errors,[]);
+    await longer.close();
+
+    const legacyKit = await browser.newPage();
+    const legacyFixture = await installFixture(legacyKit,true,{durationChoices:[90,300,900],olderKit:true});
+    await legacyKit.goto(base+prefix+'/ui');
+    await legacyKit.locator('#callDurationField').waitFor();
+    await legacyKit.locator('select[name=callLimitSeconds]').selectOption('300');
+    await legacyKit.locator('input[name=peerUserId]').fill('42');
+    await legacyKit.locator('input[name=vaultPassword]').fill('fixture-vault-password');
+    await legacyKit.locator('#start').click();
+    await legacyKit.waitForFunction(() => document.getElementById('notice').textContent.includes('کیت سازگار'));
+    assert.equal(await legacyKit.locator('#dial').isHidden(),true);
+    assert.deepEqual(legacyFixture.posts.map(post=>post.command),['/start']);
+    await legacyKit.locator('select[name=callLimitSeconds]').selectOption('90');
+    await start(legacyKit,'client');
+    assert.equal(Object.hasOwn(legacyFixture.posts[1].input,'callLimitSeconds'),false);
+    assert.deepEqual(legacyFixture.errors,[]);
+    await legacyKit.close();
 
     const disabled = await browser.newPage();
     const disabledFixture = await installFixture(disabled,false);

@@ -5,6 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const fail=reason=>Object.assign(new Error(reason),{safeReason:reason});
 const allowed=new Set(['invalid_input','input_timeout','invalid_invocation','helper_hash_mismatch',
  'vault_unavailable','cleanup_pending','session_binding_changed','clock_unverified','invalid_command','call_already_attempted']);
+const defaultCallSeconds=90,callDurations=[90,300,900],prepBudgetMs=600000;
 const proof='client-relay/server-public';
 const exact=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>keys.includes(key));
 const emit=value=>process.stdout.write(JSON.stringify(value)+'\n');
@@ -29,6 +30,7 @@ async function* inputLines(input){
 function boundedReader(input,budgetMs){
  const lines=inputLines(input),deadline=Date.now()+budgetMs;
  return async(limit=deadline)=>{
+  if(Date.now()>=Math.min(deadline,limit))throw fail('input_timeout');
   let timer;try{
    const result=await Promise.race([lines.next(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('input_timeout')),Math.max(0,Math.min(deadline,limit)-Date.now()));})]);
    return result.done?null:result.value;
@@ -36,13 +38,15 @@ function boundedReader(input,budgetMs){
  };
 }
 function validateStart(value){
- if(!exact(value,['command','role','vaultDirectory','vaultPassword','slot','peerUserId','socksPort'])||value.command!=='start'||
+ if(!exact(value,['command','role','vaultDirectory','vaultPassword','slot','peerUserId','socksPort','callLimitSeconds'])||value.command!=='start'||
   !['client','server'].includes(value.role)||![1,2].includes(value.slot)||typeof value.vaultDirectory!=='string'||!path.isAbsolute(value.vaultDirectory)||
   typeof value.vaultPassword!=='string'||!value.vaultPassword||value.vaultPassword.length>1024||typeof value.peerUserId!=='string'||
   !/^[1-9]\d{0,15}$/.test(value.peerUserId)||BigInt(value.peerUserId)>BigInt(Number.MAX_SAFE_INTEGER))throw fail('invalid_input');
  const port=value.role==='server'?0:value.socksPort??1098;
  if(!Number.isInteger(port)||port<0||port>65535||value.role==='client'&&port<1024)throw fail('invalid_input');
- return {...value,socksPort:port};
+ const callLimitSeconds=value.callLimitSeconds===undefined?defaultCallSeconds:value.callLimitSeconds;
+ if(!callDurations.includes(callLimitSeconds))throw fail('invalid_input');
+ return {...value,socksPort:port,callLimitSeconds};
 }
 const counter=value=>Number.isSafeInteger(value)&&value>=0;
 function safeMetrics(call,role){
@@ -71,8 +75,8 @@ function safeState(controller,role){
   cleanupPending:call.cleanup?.pending===true,metrics:safeMetrics(call,role),termination:safeTermination(call)};
 }
 
-async function runEndpoint(read,write,dependencies){
- const prepDeadline=Date.now()+600000;
+async function runEndpoint(read,write,dependencies,now=Date.now){
+ const prepDeadline=now()+prepBudgetMs;
  let callDeadline=Infinity;
  const raw=await read(prepDeadline),start=validateStart(raw);raw.vaultPassword='';
  let session,controller,vault,cleanup,ended=false,attempted=false;
@@ -90,9 +94,13 @@ async function runEndpoint(read,write,dependencies){
   if(session.state.events?.serverClockVerified!==true)throw fail('clock_unverified');
   controller.setAllowedPeers([start.peerUserId]);
   const prepared=await controller.prepare({role:start.role,socksPort:start.socksPort,throughput:false});
-  write({event:'prepared',role:start.role,publicCertificate:prepared.publicCertificate});
+  write({event:'prepared',role:start.role,publicCertificate:prepared.publicCertificate,callLimitSeconds:start.callLimitSeconds});
   for(;;){
-   const command=await read(attempted?callDeadline:prepDeadline);if(command===null)break;
+   const deadline=attempted?callDeadline:prepDeadline;
+   let command;
+   try{command=await read(deadline);}
+   catch(error){if(attempted&&error.safeReason==='input_timeout')break;throw error;}
+   if(command===null||attempted&&now()>=deadline)break;
    if(!exact(command,['command','publicCertificate']))throw fail('invalid_command');
    switch(command.command){
     case 'trust':
@@ -100,11 +108,11 @@ async function runEndpoint(read,write,dependencies){
      controller.trustCertificate(command.publicCertificate);break;
     case 'dial':
      if(start.role!=='client'||command.publicCertificate!==undefined)throw fail('invalid_command');
-     if(attempted)throw fail('call_already_attempted');attempted=true;callDeadline=Date.now()+90000;
+     if(attempted)throw fail('call_already_attempted');attempted=true;callDeadline=now()+start.callLimitSeconds*1000;
      await controller.dial(start.peerUserId);break;
     case 'accept':
      if(start.role!=='server'||command.publicCertificate!==undefined)throw fail('invalid_command');
-     if(attempted)throw fail('call_already_attempted');attempted=true;callDeadline=Date.now()+90000;
+     if(attempted)throw fail('call_already_attempted');attempted=true;callDeadline=now()+start.callLimitSeconds*1000;
      await controller.accept();break;
     case 'state':if(command.publicCertificate!==undefined)throw fail('invalid_command');break;
     case 'end':if(command.publicCertificate!==undefined)throw fail('invalid_command');ended=true;break;
@@ -152,11 +160,12 @@ function runtimeDependencies(){
 }
 
 async function main(){
+ if(process.argv.length===3&&process.argv[2]==='--capabilities'){emit({callDurations});return;}
  if(process.argv.includes('--self-test'))return selfTest();
  if(process.argv.length!==3||process.argv[2]!=='--run-once')throw fail('invalid_invocation');
  const dependencies=runtimeDependencies();
  const stop=()=>process.stdin.destroy();process.once('SIGINT',stop);process.once('SIGTERM',stop);
- try{await runEndpoint(boundedReader(process.stdin,690000),emit,dependencies);}
+ try{await runEndpoint(boundedReader(process.stdin,prepBudgetMs+Math.max(...callDurations)*1000),emit,dependencies);}
  finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);process.stdin.destroy();}
 }
 
@@ -178,6 +187,22 @@ async function selfTest(){
  assert.equal(outputs.at(-1).cleanupPending,false);
  const blocked=[{...start,vaultPassword:'fixture-pass'},{command:'dial'},{command:'dial'}];
  await assert.rejects(runEndpoint(async()=>blocked.shift()??null,()=>{},deps),e=>e.safeReason==='call_already_attempted');
+ for(const [option,seconds] of [[undefined,90],[300,300],[900,900]]){
+  const input=[{...start,vaultPassword:'fixture-pass',...option===undefined?{}:{callLimitSeconds:option}},
+   {command:'dial'},{command:'state'}],deadlines=[],records=[];
+  let now=1000;const before=ops.length;
+  await runEndpoint(async limit=>{
+   deadlines.push(limit);
+   if(input.length)return input.shift();
+   now=limit;
+   throw fail('input_timeout');
+  },record=>records.push(record),deps,()=>now);
+  assert.deepEqual(deadlines,[601000,601000,1000+seconds*1000,1000+seconds*1000]);
+  assert.equal(records[0].callLimitSeconds,seconds);
+  assert.deepEqual(ops.slice(before),['dial','end','reset','session-close','vault-lock']);
+  assert.deepEqual(records.at(-1),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false});
+ }
+ for(const invalid of [null,0,299,901,'300'])assert.throws(()=>validateStart({...start,vaultPassword:'fixture-pass',callLimitSeconds:invalid}));
  const connected={phase:'connected',media:{mediaConnected:true,routeProof:proof,peerAuthenticated:true,proxyReady:true,
   receivedBytes:1024,sentBytes:512,quic:{rttMs:25,sentPackets:10,lostPackets:1,private:'fixture-secret'}}};
  const totals={receivedBytes:1024,sentBytes:512};
