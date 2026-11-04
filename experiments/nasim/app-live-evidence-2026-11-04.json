@@ -39,7 +39,16 @@
     "bothEndpointsConfirmedCleanup": false,
     "pendingIntentsRetained": 2,
     "ownedAppsExited": true,
-    "labSignalingRestored": true
+    "labSignalingRestored": true,
+    "cleanupRecoveryFollowup": {
+      "endpointSourceCommit": "c05e76e",
+      "cleanupWorkerAttempts": 2,
+      "confirmedReceipts": 0,
+      "pendingIntentsRetained": 2,
+      "mediaStarted": false,
+      "otpRequests": 0,
+      "labSignalingRestored": true
+    }
   },
   "longCallFollowup": {
     "appAndEndpointSourceCommit": "cc301df1eea3f62556ecf025e7b96b1ad733c373",
