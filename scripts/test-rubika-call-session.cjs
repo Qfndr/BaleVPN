@@ -51,9 +51,17 @@ test('outgoing call validates peer and service reply and never becomes an intern
  assert.deepEqual(f.calls[1].input,{call_type:'Voice',user_guid:peer,...protocol});await assert.rejects(f.session.dial(peer),/call_not_listening/);f.session.close();
 });
 test('per-field timestamps preserve new values through out-of-order edits, and a stale state cannot regress acceptance',async()=>{
- const f=fixture();await outgoingAccepted(f);
- f.events.push(edit(f.seconds()+10,{duration:5}),edit(f.seconds()+5,{duration:2,state:'Waiting'}),edit(f.seconds()+2,{key:'fixture-private-key-update'}));
- await f.session.pollOnce();assert.equal(f.session.state.serviceState,'Accepted');assert.equal(f.session.state.phase,'accepted');assert.equal(f.session.state.serviceDuration,5);assert.equal(f.session.state.ignoredEvents,1);
+ const f=fixture({options:{protocol:{...protocol,library_versions:['6.0.0']}},hook:method=>{
+  if(method==='requestCall')return {call_type:'WebRtc',call_update:update(f.seconds(),
+   {call:{call_id:call,call_type:'Voice',state:'Waiting',duration:3}})};
+ }});await outgoingAccepted(f);
+ f.events.push(edit(f.seconds()+10,{protocol_layer:92,duration:5}),
+  edit(f.seconds()+5,{protocol_layer:91,state:'Waiting'}),
+  edit(f.seconds()+2,{key:'k'.repeat(256),library_versions:['6.0.0'],connections:[
+   {type:'WebRTC',ip:'192.0.2.1',port:3478,turn_username:'fixture-user',turn_password:'fixture-password'}
+  ]}));
+ await f.session.pollOnce();assert.equal(f.session.state.serviceState,'Accepted');assert.equal(f.session.state.phase,'accepted');
+ assert.equal(f.session.state.serviceDuration,3);assert.equal(f.session.state.legacyMediaAvailable,true);assert.equal(f.session.state.ignoredEvents,1);
  await f.session.hangup();assert.equal(f.session.state.phase,'listening');f.session.close();
 });
 test('state progression and a terminal discard still work when several service updates share one Unix second',async()=>{
@@ -68,9 +76,10 @@ test('only named updated_parameters are applied; an ambiguous Edit halts the ses
  f.events.push({action:'Edit',call_id:call,timestamp:f.seconds()+2,call:{state:'Accepted'}});
  await assert.rejects(f.session.pollOnce(),/missing_update_parameters/);assert.equal(f.session.state.phase,'failed');assert.equal(f.clients[0].closed,true);f.session.close();
 });
-test('an unknown no-op delta cannot advance the deletion watermark and leave a finished call stuck',async()=>{
+test('fields the official client ignores cannot advance the deletion watermark and leave a finished call stuck',async()=>{
  const f=fixture();await f.session.start();await f.session.dial(peer);
- f.events.push(edit(f.seconds()+10,{},{updated_parameters:['future_metadata_field']}),{action:'Delete',call_id:call,timestamp:f.seconds()+1});
+ f.events.push(edit(f.seconds()+10,{duration:4},{updated_parameters:['duration','future_metadata_field']}),
+  {action:'Delete',call_id:call,timestamp:f.seconds()+1});
  await f.session.pollOnce();assert.equal(f.session.state.phase,'listening');assert.equal(f.session.state.callId,null);f.session.close();
 });
 test('remote deletion wipes pending opaque signals and a retired call cannot ring or deliver into another call',async()=>{

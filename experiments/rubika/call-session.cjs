@@ -14,6 +14,8 @@ const SAFE=new Set(['not_authenticated','invalid_account_binding','account_bindi
  'call_recovery_available','invalid_call_recovery','call_recovery_expired']);
 const LOCAL=new Set(['call_not_started','call_already_started','call_not_listening','call_not_ringing','call_not_accepted','call_peer_not_allowed']);
 const rank={Requested:0,Waiting:1,Accepted:2,Discarded:3};
+// VoiceCallModels.PhoneCall.updateWithCallUpdate only applies these Edit fields.
+const EDIT_FIELDS=new Set(['state','key','connections','protocol_layer','receive_time','call_type','library_versions']);
 const MEDIA_FIELDS=new Set(['key','connections','protocol_layer','library_versions','other_participants']);
 class CallSession{
  #account;#create;#allowed;#profile;#now;#client;#binding;#self;#epoch=0;#busy=false;#closed=false;#ready=false;#timer;
@@ -93,7 +95,7 @@ class CallSession{
   if(update.action==='Delete'){
    if(update.timestamp<this.#latest){this.#ignored++;return;}this.#finish('remote_call_ended');return;
   }
-  const fields=update.action==='Edit'?update.updated_parameters:Object.keys(update.call);
+  const fields=update.action==='Edit'?update.updated_parameters?.filter(name=>EDIT_FIELDS.has(name)):Object.keys(update.call);
   // Refuse an ambiguous delta rather than overwrite retained state with every
   // default field emitted by a serializer. Null/absent values never invent data.
   if(!Array.isArray(fields))fail('missing_update_parameters');
