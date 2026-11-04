@@ -196,6 +196,12 @@ test('Rubika accounts seal private keys independently and restore without creati
  await request('/api/rubika/1/stop',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.rubika[0].hasSession,true);assert.equal(state.providerAccounts.rubika[0].signedIn,false);
  assert.ok(state.accounts.every(a=>a.signedIn));assert.ok(state.providerAccounts.nasim.every(a=>a.signedIn));
  await request('/api/vault/lock',{});await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ const savedFile=path.join(dir,'rubika','1.json'),savedBefore=await fs.readFile(savedFile);
+ state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.rubika[0].hasSession,false);assert.equal(state.providerAccounts.rubika[0].stored,true);
+ const replacement=await request('/api/rubika/1/start',{country:'IR',phone:'09120000002',protocolProfile:'android-4.1.1-compat'});
+ assert.equal(replacement.status,400);assert.equal((await replacement.json()).reason,'already_signed_in');
+ assert.equal(calls.filter(c=>c.action==='rubika-start').length,2);
+ assert.deepEqual(await fs.readFile(savedFile),savedBefore);
  assert.equal((await request('/api/rubika/1/resume',{})).status,200);assert.equal(calls.filter(c=>c.action==='rubika-start').length,2);assert.equal(calls.filter(c=>c.action==='rubika-verify').length,2);assert.equal(calls.at(-1).action,'rubika-restore');
  await request('/api/rubika/2/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.rubika[1].stored,false);assert.ok(state.accounts.every(a=>a.stored));assert.ok(state.providerAccounts.nasim.every(a=>a.stored));
  assert.equal((await request('/api/rubika/1/events/connect',{})).status,404);assert.equal((await request('/api/rubika/1/call/dial',{})).status,404);

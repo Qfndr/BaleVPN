@@ -95,7 +95,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    let body;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!body||typeof body!=='object'||Array.isArray(body))throw new Error();}catch{throw error('invalid_json');}
    const privacyAllow=url.pathname.match(/^\/api\/(igap|nasim|rubika|eitaa)\/([12])\/allow-calls$/);if(privacyAllow){if(Object.keys(body).length)throw error('invalid_request');return json({ok:true,callPrivacy:await callPrivacy(privacyAllow[1],Number(privacyAllow[2]),true)});}
    const lifecycle=url.pathname.match(/^\/api\/(igap|nasim|rubika|eitaa)\/([12])\/(start|verify|password|profile|resume|stop|logout|forget|refresh|register)$/);
-   if(lifecycle?.[3]==='start'){
+   if(lifecycle?.[3]==='start'&&lifecycle[1]!=='rubika'){
     if(!vault.unlocked)throw error('vault_locked',423);
     // A locked/restarted panel can have an unloaded but retained session. A new
     // login must never silently replace it; resume or explicit local forget first.
@@ -157,7 +157,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     const tracked=rubika[2]!=='stop';if(tracked&&rubikaOperations.has(slot))throw error('account_busy',409);if(tracked)rubikaOperations.add(slot);
     try{
     switch(rubika[2]){
-     case 'start':{if(Object.hasOwn(body,'protocolProfile')&&!['web','android-4.1.1-compat'].includes(body.protocolProfile))throw error('invalid_client_profile');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone,Object.hasOwn(body,'protocolProfile')?{protocolProfile:body.protocolProfile}:{});break;}
+     case 'start':{if(await vault.has('rubika',slot))throw error('already_signed_in');if(!vault.unlocked||locking)throw error('vault_locked',423);if(Object.hasOwn(body,'protocolProfile')&&!['web','android-4.1.1-compat'].includes(body.protocolProfile))throw error('invalid_client_profile');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone,Object.hasOwn(body,'protocolProfile')?{protocolProfile:body.protocolProfile}:{});break;}
      case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
      case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
      case 'resume':rubikaCalls.invalidate();if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('rubika',slot);if(!record)throw error('no_saved_session');result=await session.restore(record);}break;
