@@ -576,6 +576,7 @@ impl Runtime {
                 Some("busy") => Some("busy"),
                 Some("other_device") => Some("other_device"),
                 Some("media_failure") => Some("media_failure"),
+                Some("stream_reset") => Some("stream_reset"),
                 Some("call_connection_changed") => Some("call_connection_changed"),
                 Some("cleanup_save_failed") => Some("cleanup_save_failed"),
                 Some("call_timeout") => Some("call_timeout"),
@@ -926,6 +927,11 @@ mod tests {
         let state = runtime.update(&event).unwrap();
         assert_eq!(state.phase, "uncertain");
         assert_eq!(state.termination, Some("call_timeout"));
+        event["termination"] = json!("stream_reset");
+        assert_eq!(
+            runtime.update(&event).unwrap().termination,
+            Some("stream_reset")
+        );
         event["termination"] = json!("private provider response");
         assert!(runtime.update(&event).unwrap().termination.is_none());
         event["phase"] = json!("ready");
