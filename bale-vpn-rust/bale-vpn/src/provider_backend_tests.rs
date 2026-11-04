@@ -385,3 +385,14 @@ fn queued_previous_call_end_does_not_end_current_transport_or_listening() {
         ));
     }
 }
+
+#[test]
+fn diagnostic_relay_environment_accepts_only_explicit_boolean_values() {
+    assert!(!parse_diagnostic_relay_only(None).unwrap());
+    assert!(!parse_diagnostic_relay_only(Some("0".into())).unwrap());
+    assert!(parse_diagnostic_relay_only(Some("1".into())).unwrap());
+    for invalid in ["", "true", "false", " 1", "1 ", "relay"] {
+        assert_eq!(parse_diagnostic_relay_only(Some(invalid.into())).unwrap_err().0,
+            "invalid_diagnostic_relay_only");
+    }
+}

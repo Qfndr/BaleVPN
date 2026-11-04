@@ -1487,8 +1487,10 @@ async fn run_connect_task(
     // Phase 1: join the SFU, bring up both PeerConnections, publish the
     // carrier track(s). `Engine::connect` does the LiveKit two-PC
     // handshake on webrtc-rs and returns the publish-side senders.
-    let wait_for_track_published = weak.upgrade().map(|inner| inner.options.wait_for_track_published).unwrap_or(false);
-    let (engine, senders, event_rx) = match Engine::connect(id, &url, &token, on_packet, wait_for_track_published).await {
+    let (wait_for_track_published, diagnostic_relay_only) = weak.upgrade()
+        .map(|inner| (inner.options.wait_for_track_published, inner.options.diagnostic_relay_only))
+        .unwrap_or_default();
+    let (engine, senders, event_rx) = match Engine::connect(id, &url, &token, on_packet, wait_for_track_published, diagnostic_relay_only).await {
         Ok(x) => x,
         Err(e) => {
             log::warn!("LkTunnel[{id}]: Engine::connect failed: {e}");

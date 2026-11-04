@@ -71,6 +71,14 @@ impl IntoResponse for Failure {
             .into_response()
     }
 }
+fn parse_diagnostic_relay_only(value: Option<std::ffi::OsString>) -> Result<bool> {
+    match value.as_deref() {
+        None => Ok(false),
+        Some(value) if value == "0" => Ok(false),
+        Some(value) if value == "1" => Ok(true),
+        _ => Err(Failure("invalid_diagnostic_relay_only")),
+    }
+}
 fn failure(_: impl std::fmt::Display) -> Failure {
     Failure("provider_storage_failed")
 }
@@ -237,6 +245,9 @@ impl Backend {
     }
     async fn start(self: &Arc<Self>) -> Result<()> {
         self.saved()?;
+        let diagnostic_relay_only = parse_diagnostic_relay_only(std::env::var_os(
+            "BALEVPN_IGAP_DIAGNOSTIC_RELAY_ONLY",
+        ))?;
         let mut current = self.job.lock().await;
         if current.as_ref().is_some_and(|job| !job.task.is_finished()) {
             return Err(Failure("account_busy"));
@@ -289,7 +300,7 @@ impl Backend {
                     *this.phase.lock() = "stopped";
                     break;
                 }
-                let result = this.connection(config.clone(), &mut rx).await;
+                let result = this.connection(config.clone(), &mut rx, diagnostic_relay_only).await;
                 let last_tunnel = this.tunnel.lock().clone();
                 if let Some(tunnel) = last_tunnel {
                     tunnel.capture_media_stats().await;
@@ -396,7 +407,12 @@ impl Backend {
             }
         }
     }
-    async fn connection(&self, config: Config, stop: &mut oneshot::Receiver<()>) -> Result<()> {
+    async fn connection(
+        &self,
+        config: Config,
+        stop: &mut oneshot::Receiver<()>,
+        diagnostic_relay_only: bool,
+    ) -> Result<()> {
         let peer_id = config
             .peer_id
             .as_ref()
@@ -451,6 +467,7 @@ impl Backend {
             )
             .map_err(|_| Failure("invalid_provider_trust"))?;
         options.wait_for_track_published = true;
+        options.diagnostic_relay_only = diagnostic_relay_only;
         let tunnel = LkTunnel::connect_with_options(
             session.url,
             session.token,

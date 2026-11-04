@@ -12,6 +12,9 @@ pub struct TunnelOptions {
     /// Opt-in SFU publication ordering used by the native iGap laboratory.
     /// Default transports keep their existing startup behavior.
     pub wait_for_track_published: bool,
+    /// Diagnostic opt-in to use only the SFU-provided TURN candidates.
+    /// This restricts ICE routing without changing peer authentication.
+    pub diagnostic_relay_only: bool,
 }
 
 pub struct Identity {
@@ -104,6 +107,19 @@ impl Identity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn default_and_paired_options_do_not_enable_diagnostic_relay() {
+        assert!(!TunnelOptions::default().diagnostic_relay_only);
+        let local = Identity::generate().unwrap();
+        let peer = Identity::generate().unwrap();
+        for server in [false, true] {
+            let options = local.options(&[peer.certificate.clone()], server, false).unwrap();
+            assert!(!options.diagnostic_relay_only);
+            assert!(options.authenticated);
+            assert_eq!(options.server.is_some(), server);
+            assert_eq!(options.client.is_some(), !server);
+        }
+    }
     #[tokio::test]
     async fn every_paired_client_authenticates_with_a_shared_server_config() {
         let server = Identity::generate().unwrap();
