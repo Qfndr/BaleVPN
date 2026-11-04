@@ -2,9 +2,28 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {ApkCallProbe,apkEnvelope,socketEnvelope,SOCKET,ENDPOINT}=require('../experiments/eitaa/apk-call-probe.cjs'),wire=require('../experiments/eitaa/wire.cjs'),codec=require('../experiments/eitaa/call-wire.cjs');
 const fixture=require('./fixtures/eitaa-apk-envelope.json');
+const nativeVectors=require('../experiments/eitaa/native-empty-secret-evidence-2026-11-04.json').completeBufferFramingFollowup.syntheticCompleteBufferVectors;
 const {CallClient}=require('../experiments/eitaa/call-client.cjs');
 const payload=Buffer.from(fixture.requestHex,'hex');
 function reply(overrides={}){return codec.object({_:'messages.dhConfig',g:3,p:Buffer.alloc(256,0x91),version:1,random:Buffer.alloc(256,0x19),...overrides});}
+
+test('native keepalive fixture has asymmetric complete buffers and cannot be a HTTPS call response',()=>{
+ const requestId=0x0123456789abcde0n,pingId=0x0102030405060708n;
+ const ping=new wire.Writer().int(0xf3427b8c|0).long(pingId).int(35).finish();
+ const body=new wire.Writer().int(0x7abe77ee).string('').string('').int(2048).bytes(ping).int(136).finish();
+ const request=Buffer.concat([new wire.Writer().long(0n).long(0x1122334455667788n).long(requestId).int(0).int(body.length).finish(),body]);
+ assert.equal(request.length,nativeVectors.requestBytes);assert.equal(request.toString('hex'),nativeVectors.requestHex);
+ const pong=Buffer.from(nativeVectors.responseHex,'hex');assert.equal(pong.length,nativeVectors.responseBytes);
+ const read=bytes=>{
+  const reader=new wire.Reader(bytes);
+  assert.equal(reader.long(),requestId+1n);assert.equal(reader.int(),1);assert.equal(reader.int(),wire.IDS.pong);
+  assert.equal(reader.long(),requestId);assert.equal(reader.long(),pingId);reader.end();
+ };
+ read(pong);
+ assert.throws(()=>read(pong.subarray(0,-4)),{reason:'truncated_frame'});
+ assert.throws(()=>read(Buffer.concat([pong,Buffer.alloc(4)])),{reason:'trailing_data'});
+ assert.throws(()=>codec.response(pong,'messages.getDhConfig'));
+});
 
 test('normal Android call client and APK probe match the independently packed UUID-profile DH frame',async()=>{
  const expected=Buffer.from(fixture.androidFaHex,'hex');
