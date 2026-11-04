@@ -57,6 +57,15 @@ async fn output_ice(media: &RelayMedia) -> Result<(), &'static str> {
         "responsesSent":counts.responses_sent,"responsesReceived":counts.responses_received
     }}))
 }
+async fn output_terminal_diagnostics(media: &RelayMedia) -> Result<(), &'static str> {
+    if let Some(observation) = media.nasim_route_observation() {
+        output(json!({"event":"routeProofDiagnostic","diagnostic":{
+            "reason":observation.reason,"localKind":observation.local_kind,
+            "remoteKind":observation.remote_kind,"currentGeneration":observation.current_generation
+        }}))?;
+    }
+    output_ice(media).await
+}
 #[cfg(test)]
 mod ice_diagnostic_deadline_tests {
     use super::*;
@@ -374,13 +383,13 @@ async fn run(
                     _=>return Err("invalid_control_command"),
                 }
             },
-            _=&mut deadline,if !connected=>{output_ice(&media).await?;return Err("connect_timeout");},
+            _=&mut deadline,if !connected=>{output_terminal_diagnostics(&media).await?;return Err("connect_timeout");},
             event=events.recv()=>{
                 let event=event.ok_or("transport_closed")?;
                 match event.kind {
                     EventKind::Connected=>{
                         if connected{return Err("transport_failed");}connected=true;
-                        if config.nasim_policy.is_some() && media.selected_route().await!=RelayRoute::ClientRelayServerPublic {return Err("relay_route_failed");}
+                        if config.nasim_policy.is_some() && media.selected_route().await!=RelayRoute::ClientRelayServerPublic {output_terminal_diagnostics(&media).await?;return Err("relay_route_failed");}
                         if config.role==TunnelRole::Server {tunnel.start_server().map_err(|_|"server_setup_failed")?;}
                         else {address=Some(tunnel.enable_socks5_server(config.port).await.map_err(|_|"proxy_bind_failed")?.to_string());}
                         let mut status=json!({"event":"connected","provider":PROVIDER,"mediaConnected":true,"relayPair":config.nasim_policy.is_none(),
@@ -389,8 +398,8 @@ async fn run(
                         if config.nasim_policy.is_some(){status["routeProof"]=json!("client-relay/server-public");}
                         output(status)?;
                     },
-                    EventKind::Disconnected|EventKind::PeerLeft=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected"));},
-                    EventKind::Error=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_failed"));},_=>{},
+                    EventKind::Disconnected|EventKind::PeerLeft=>{output_terminal_diagnostics(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected"));},
+                    EventKind::Error=>{output_terminal_diagnostics(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_failed"));},_=>{},
                 }
             },
             _=interval.tick(),if connected=>{

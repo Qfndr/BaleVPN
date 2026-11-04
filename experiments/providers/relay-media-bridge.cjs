@@ -61,7 +61,9 @@ class NativeMediaBridge {
   });
  }
  #failed(reason){
-  if(['failed','closed'].includes(this.#phase))return;this.#phase='failed';this.#reason=reason;this.#latest=this.#latest.ice?{ice:this.#latest.ice}:{};
+  if(['failed','closed'].includes(this.#phase))return;this.#phase='failed';this.#reason=reason;
+  const {ice,routeProofDiagnostic}=this.#latest;
+  this.#latest={...ice?{ice}:{},...routeProofDiagnostic?{routeProofDiagnostic}:{}};
   clearTimeout(this.#timer);clearTimeout(this.#killTimer);this.#prepare?.reject(fail(reason));this.#prepare=null;
   if(this.#pending){clearTimeout(this.#pending.timer);this.#pending.reject(fail(reason));this.#pending=null;}
   this.#buffer.fill(0);this.#buffer=Buffer.alloc(0);this.#child?.stdin.destroy();this.#child?.kill();
@@ -81,6 +83,11 @@ class NativeMediaBridge {
   }catch{this.#failed('invalid_native_output');}
  }
  #event(v){
+  if(v?.event==='routeProofDiagnostic'){
+   if(!asym||!['configured','connecting','connected'].includes(this.#phase)||!keys(v,['event','diagnostic']))throw Error();
+   const diagnostic=asym.routeDiagnostic(v.diagnostic);if(!diagnostic)throw Error();
+   this.#latest.routeProofDiagnostic=diagnostic;return;
+  }
   if(v?.event==='iceDiagnostics'){
    if(!['configured','connecting','connected'].includes(this.#phase)||!keys(v,['event','ice']))throw Error();
    this.#latest.ice=iceDiagnostics(v.ice);return;
@@ -169,6 +176,7 @@ class NativeMediaBridge {
  }
  get state(){return {provider,phase:this.#phase,role:this.#role||null,context:this.#context?{...this.#context}:null,...this.#latest,
   ...(this.#latest.ice?{ice:{...this.#latest.ice}}:{}),
+  ...(this.#latest.routeProofDiagnostic?{routeProofDiagnostic:{...this.#latest.routeProofDiagnostic}}:{}),
   quic:this.#latest.quic?{...this.#latest.quic}:null,reason:this.#reason,stderrPresent:this.#stderr,
   providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
 }

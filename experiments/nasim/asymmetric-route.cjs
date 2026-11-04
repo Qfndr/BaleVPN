@@ -2,6 +2,16 @@
 const net=require('node:net');
 const MODE='nasim-client-relay-server-public';
 const PROOF='client-relay/server-public';
+const DIAGNOSTIC_REASONS=new Set(['noSelectedPair','noNomination','multipleNominations','nominationNotSucceeded',
+ 'missingCandidateStats','statsLimit','addressFamilyMismatch','localCandidateRejected','remoteCandidateRejected','verified']);
+const DIAGNOSTIC_KINDS=new Set([null,'host','srflx','prflx','relay','unknown']);
+function routeDiagnostic(value){
+ if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==4||
+  !Object.keys(value).every(key=>['reason','localKind','remoteKind','currentGeneration'].includes(key))||
+  !DIAGNOSTIC_REASONS.has(value.reason)||!DIAGNOSTIC_KINDS.has(value.localKind)||!DIAGNOSTIC_KINDS.has(value.remoteKind)||
+  typeof value.currentGeneration!=='boolean')return null;
+ return {reason:value.reason,localKind:value.localKind,remoteKind:value.remoteKind,currentGeneration:value.currentGeneration};
+}
 function ip(value){
  if(value.includes('%'))return null;
  const family=net.isIP(value);if(!family)return null;
@@ -22,4 +32,4 @@ function allows(value,role,local=false){
    if(!ip(p[4]))return false;
    return (role==='server')===local?Number(p[5])>=1024&&['host','srflx'].includes(p[7]):p[7]==='relay';
 }
-module.exports={allows,MODE,PROOF};
+module.exports={allows,MODE,PROOF,routeDiagnostic};

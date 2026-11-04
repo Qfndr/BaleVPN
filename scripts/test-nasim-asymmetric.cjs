@@ -70,3 +70,34 @@ test('Nasim call readiness requires an explicitly opted-in bridge for asymmetric
   assert.equal(a.state.phase,'connected');assert.equal(b.state.phase,'connected');
  }finally{f.close();}
 });
+
+const routeProofDiagnostic={reason:'remoteCandidateRejected',localKind:'relay',remoteKind:'prflx',currentGeneration:true};
+test('typed route diagnostics are limited to asymmetric IPC and retained after failure',async()=>{
+ const {NativeMediaBridge}=createBridge('nasim',{nasimAsymmetric:true});const f=childFixture(NativeMediaBridge),b=await f.open();
+ await configure(f,b);f.emit({event:'routeProofDiagnostic',diagnostic:routeProofDiagnostic});
+ assert.deepEqual(b.state.routeProofDiagnostic,routeProofDiagnostic);
+ const copy=b.state.routeProofDiagnostic;copy.remoteKind='host';assert.equal(b.state.routeProofDiagnostic.remoteKind,'prflx');
+ f.emit({event:'error',reason:'relay_route_failed'});
+ assert.deepEqual(b.state.routeProofDiagnostic,routeProofDiagnostic);
+ for(const bad of [{...routeProofDiagnostic,address:'fixture-private-address'},
+  {...routeProofDiagnostic,reason:'fixture-private-reason'},{...routeProofDiagnostic,localKind:'fixture-private-kind'},
+  {...routeProofDiagnostic,currentGeneration:1}]){
+  const invalid=childFixture(NativeMediaBridge),bridge=await invalid.open();await configure(invalid,bridge);
+  invalid.emit({event:'routeProofDiagnostic',diagnostic:bad});
+  assert.equal(bridge.state.reason,'invalid_native_output');assert.equal(bridge.state.routeProofDiagnostic,undefined);
+ }
+ const strict=childFixture(createBridge('nasim').NativeMediaBridge),bridge=await strict.open();await configure(strict,bridge);
+ strict.emit({event:'routeProofDiagnostic',diagnostic:routeProofDiagnostic});
+ assert.equal(bridge.state.reason,'invalid_native_output');
+});
+
+test('terminal call snapshots retain validated proof reason and isolate returned copies',async()=>{
+ const f=callFixture();try{
+  const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  f.natives[0].latest={phase:'failed',reason:'relay_route_failed',routeProofDiagnostic};
+  await waitFor(()=>a.state.phase==='uncertain');
+  const snapshot=a.state.terminalSnapshot.media.routeProofDiagnostic;
+  assert.deepEqual(snapshot,routeProofDiagnostic);snapshot.remoteKind='host';
+  assert.equal(a.state.terminalSnapshot.media.routeProofDiagnostic.remoteKind,'prflx');
+ }finally{f.close();}
+});
