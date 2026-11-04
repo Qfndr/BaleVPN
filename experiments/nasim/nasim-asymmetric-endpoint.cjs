@@ -88,15 +88,17 @@ async function runCleanup(raw,dependencies){
  if(!exact(raw,['command','vaultDirectory','vaultPassword','slot'])||![1,2].includes(raw.slot)||
     typeof raw.vaultDirectory!=='string'||!path.isAbsolute(raw.vaultDirectory)||
     typeof password!=='string'||!password||password.length>1024)throw fail('invalid_input');
- let vault,session,timer,expired=false,completed=false,acknowledged=false,reason='cleanup_failed';
+ let vault,session,timer,expired=false,completed=false,acknowledged=false,reason='cleanup_failed',phase='vault';
  try{
   vault=dependencies.vault(raw.vaultDirectory);
   try{await vault.unlock(password);}finally{password='';}
+  phase='read';
   if(!await vault.hasCleanupIntent('nasim',raw.slot)){
    completed=true;
   }else{
    const record=await vault.load('nasim',raw.slot);
    if(!record||record.provider!=='nasim')throw fail('session_binding_changed');
+   phase='restore';
    session=dependencies.session();
    // Reserve time for the receipt and vault lock before the parent IPC timeout.
    timer=setTimeout(()=>{expired=true;try{session.close();}catch{}},15000);
@@ -104,9 +106,12 @@ async function runCleanup(raw,dependencies){
    if(expired||session.state.userId!==record.userId||session.state.clientId!==record.clientId)throw fail('session_binding_changed');
    const cleanup=dependencies.cleanup(session,vault,raw.slot);
    if(!await cleanup.restore()||expired)throw fail('cleanup_pending');
+   phase='stream';
    const stream=await session.connectSignals();
    if(expired||stream?.eventsConnected!==true)throw fail('event_stream_not_connected');
+   phase='send';
    const result=await cleanup.cleanup();
+   phase='receipt';
    acknowledged=result.serviceAcknowledged===true;
    completed=acknowledged&&!await vault.hasCleanupIntent('nasim',raw.slot);
    if(!completed)reason=acknowledged?'cleanup_pending':'cleanup_unconfirmed';
@@ -119,7 +124,7 @@ async function runCleanup(raw,dependencies){
   try{session?.close();}finally{vault?.lock();}
  }
  return {event:'closed',endCompleted:completed,cleanupAcknowledged:acknowledged,cleanupPending:!completed,
-  ...completed?{}:{reason:expired?'timeout':reason}};
+  ...completed?{}:{reason:expired?'timeout':reason,phase}};
 }
 
 async function runEndpoint(read,write,dependencies,now=Date.now){
@@ -284,14 +289,14 @@ async function selfTest(){
  await seed.capture({peerId:'42',callUUID:'fixture-private-call'});
  const original=saved;
  cleanupRecord.token='fixture-different-token';
- assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'account_binding_changed'});
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'account_binding_changed',phase:'restore'});
  assert.deepEqual(saved,original);assert.equal(connections,0);assert.equal(sent.length,0);
  cleanupRecord.token='fixture-private-auth-token';
  restoreFault=Object.assign(Error('fixture-private-error'),{reason:'fixture-private-code'});
- assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'cleanup_failed'});
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'cleanup_failed',phase:'restore'});
  assert.deepEqual(saved,original);assert.equal(connections,0);assert.equal(sent.length,0);
  restoreFault=null;confirmed=false;
- assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'cleanup_unconfirmed'});
+ assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:false,cleanupAcknowledged:false,cleanupPending:true,reason:'cleanup_unconfirmed',phase:'send'});
  assert.deepEqual(saved,original);
  confirmed=true;
  assert.deepEqual(await cleanupRun(),{event:'closed',endCompleted:true,cleanupAcknowledged:true,cleanupPending:false});
