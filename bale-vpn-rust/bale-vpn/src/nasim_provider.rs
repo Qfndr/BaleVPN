@@ -511,7 +511,13 @@ impl Worker {
         .map_err(|_| ())?
     }
 
-    async fn stop(mut self) -> bool {
+    async fn stop(self) -> bool {
+        self.drain_close()
+            .await
+            .is_some_and(|(event, success)| success && clean_closed(&event))
+    }
+
+    async fn drain_close(mut self) -> Option<(Value, bool)> {
         self.input.take();
         let result = timeout(STOP_TIMEOUT, async {
             // A timed-out exchange may still produce one result before EOF
@@ -520,16 +526,19 @@ impl Worker {
                 let event = self.receive().await?;
                 if event["event"] == "closed" {
                     let status = self.child.wait().await.map_err(|_| ())?;
-                    return Ok::<bool, ()>(status.success() && clean_closed(&event));
+                    return Ok::<_, ()>((event, status.success()));
                 }
             }
             Err(())
         })
         .await;
-        if !matches!(result, Ok(Ok(_))) {
-            self.kill_and_reap();
+        match result {
+            Ok(Ok(receipt)) => Some(receipt),
+            _ => {
+                self.kill_and_reap();
+                None
+            }
         }
-        matches!(result, Ok(Ok(true)))
     }
 
     fn kill_and_reap(mut self) {
@@ -558,6 +567,14 @@ impl Worker {
 
 fn clean_closed(event: &Value) -> bool {
     event["event"] == "closed" && event["endCompleted"] == true && event["cleanupPending"] == false
+}
+
+fn close_outcome(event: &Value, successful_exit: bool) -> (bool, bool) {
+    let clean = successful_exit && clean_closed(event);
+    (
+        clean,
+        clean && event["termination"] == "call_duration_elapsed",
+    )
 }
 
 fn cleanup_receipt(event: &Value, successful_exit: bool) -> Snapshot {
@@ -631,21 +648,29 @@ impl Runtime {
     }
 
     async fn failed(&mut self, event: Option<&Value>) -> Snapshot {
-        let clean = if let Some(event) = event.filter(|event| event["event"] == "closed") {
-            // The worker already emitted the cleanup result. Reap it without
-            // trying to read a second result as a new response.
-            if let Some(worker) = self.worker.take() {
-                worker.wait_for_exit().await && clean_closed(event)
+        let (clean, duration_elapsed) = if let Some(worker) = self.worker.take() {
+            if let Some(event) = event.filter(|event| event["event"] == "closed") {
+                close_outcome(event, worker.wait_for_exit().await)
             } else {
-                false
+                worker
+                    .drain_close()
+                    .await
+                    .map_or((false, false), |(event, success)| {
+                        close_outcome(&event, success)
+                    })
             }
         } else {
-            self.stop().await
+            (
+                !event.is_some_and(|event| event["event"] == "closed")
+                    && !self.snapshot.cleanup_pending,
+                false,
+            )
         };
         self.snapshot = Snapshot {
-            phase: "failed",
+            phase: if duration_elapsed { "ended" } else { "failed" },
             cleanup_pending: !clean,
-            error: Some("endpoint_failed"),
+            termination: duration_elapsed.then_some("call_duration_elapsed"),
+            error: (!duration_elapsed).then_some("endpoint_failed"),
             ..Snapshot::default()
         };
         self.snapshot.clone()
@@ -1211,6 +1236,19 @@ mod tests {
         event["metrics"]["sentBytes"] = json!(512);
         event["routeProof"] = json!("unverified");
         assert!(runtime.update(&event).unwrap().metrics.is_none());
+    }
+
+    #[test]
+    fn only_clean_successful_duration_expiry_is_expected() {
+        let mut event = json!({"event":"closed","endCompleted":true,"cleanupPending":false,
+            "termination":"call_duration_elapsed"});
+        assert_eq!(close_outcome(&event, true), (true, true));
+        assert_eq!(close_outcome(&event, false), (false, false));
+        event["cleanupPending"] = json!(true);
+        assert_eq!(close_outcome(&event, true), (false, false));
+        event["cleanupPending"] = json!(false);
+        event["termination"] = json!("unexpected");
+        assert_eq!(close_outcome(&event, true), (true, false));
     }
 
     #[test]

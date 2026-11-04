@@ -129,7 +129,7 @@ async function runCleanup(raw,dependencies){
 
 async function runEndpoint(read,write,dependencies,now=Date.now){
  const prepDeadline=now()+prepBudgetMs;
- let callDeadline=Infinity;
+ let callDeadline=Infinity,durationElapsed=false;
  const raw=await read(prepDeadline);
  if(raw?.command==='cleanup'){write(await runCleanup(raw,dependencies));return;}
  const start=validateStart(raw);raw.vaultPassword='';
@@ -153,8 +153,16 @@ async function runEndpoint(read,write,dependencies,now=Date.now){
    const deadline=attempted?callDeadline:prepDeadline;
    let command;
    try{command=await read(deadline);}
-   catch(error){if(attempted&&error.safeReason==='input_timeout')break;throw error;}
-   if(command===null||attempted&&now()>=deadline)break;
+   catch(error){
+    if(!attempted||error.safeReason!=='input_timeout')throw error;
+    if(now()>=deadline)durationElapsed=['dialing','outgoing','incoming','negotiating','connected'].includes(controller.state.phase);
+    break;
+   }
+   if(command===null)break;
+   if(attempted&&now()>=deadline){
+    durationElapsed=['dialing','outgoing','incoming','negotiating','connected'].includes(controller.state.phase);
+    break;
+   }
    if(!exact(command,['command','publicCertificate']))throw fail('invalid_command');
    switch(command.command){
     case 'trust':
@@ -186,7 +194,7 @@ async function runEndpoint(read,write,dependencies,now=Date.now){
   }
   if(vault)try{pending=await vault.hasCleanupIntent('nasim',start.slot);}catch{}
   try{controller?.reset();}catch{}try{session?.close();}catch{}try{vault?.lock();}catch{}
-  write({event:'closed',endCompleted,cleanupAcknowledged,cleanupPending:pending});
+  write({event:'closed',endCompleted,cleanupAcknowledged,cleanupPending:pending,...durationElapsed?{termination:'call_duration_elapsed'}:{}});
   if(pending||controller&&!endCompleted)process.exitCode=1;
  }
 }
@@ -244,7 +252,7 @@ async function selfTest(){
  for(const [option,seconds] of [[undefined,90],[300,300],[900,900]]){
   const input=[{...start,vaultPassword:'fixture-pass',...option===undefined?{}:{callLimitSeconds:option}},
    {command:'dial'},{command:'state'}],deadlines=[],records=[];
-  let now=1000;const before=ops.length;
+  let now=1000;const before=ops.length;controller.state.phase='connected';
   await runEndpoint(async limit=>{
    deadlines.push(limit);
    if(input.length)return input.shift();
@@ -254,7 +262,19 @@ async function selfTest(){
   assert.deepEqual(deadlines,[601000,601000,1000+seconds*1000,1000+seconds*1000]);
   assert.equal(records[0].callLimitSeconds,seconds);
   assert.deepEqual(ops.slice(before),['dial','end','reset','session-close','vault-lock']);
-  assert.deepEqual(records.at(-1),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false});
+  assert.deepEqual(records.at(-1),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false,termination:'call_duration_elapsed'});
+ }
+ for(const [phase,closedInput] of [['ended',false],['connected',true]]){
+  controller.state.phase=phase;
+  const input=[{...start,vaultPassword:'fixture-pass'},{command:'dial'}],records=[];
+  let now=1000;
+  await runEndpoint(async limit=>{
+   if(input.length)return input.shift();
+   now=limit;
+   if(closedInput)return null;
+   throw fail('input_timeout');
+  },record=>records.push(record),deps,()=>now);
+  assert.equal(Object.hasOwn(records.at(-1),'termination'),false);
  }
  for(const invalid of [null,0,299,901,'300'])assert.throws(()=>validateStart({...start,vaultPassword:'fixture-pass',callLimitSeconds:invalid}));
  const cleanupModule=path.join(__dirname,'cleanup-intent.cjs');

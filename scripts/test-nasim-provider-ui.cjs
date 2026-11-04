@@ -158,6 +158,11 @@ async function main() {
     assert.equal((await page.locator('body').innerText()).includes('fixture provider private text'),false);
     fixture.patchState({phase:'uncertain',cleanupPending:true,termination:'event_stream_not_connected'});
     await page.waitForFunction(() => document.getElementById('detail').textContent.includes('پاک‌سازی تماس قبلی'));
+    fixture.patchState({phase:'ended',cleanupPending:false,termination:'call_duration_elapsed'});
+    await page.waitForFunction(() => document.getElementById('detail').textContent === 'مدت تعیین‌شدهٔ تماس تمام شد.');
+    await page.locator('#language').click();
+    assert.equal(await page.locator('#detail').textContent(),'The configured call duration elapsed.');
+    await page.locator('#language').click();
     await page.locator('#stop').click();
     await page.locator('#pairing').waitFor({state:'hidden'});
     await page.locator('#language').click();

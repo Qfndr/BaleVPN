@@ -32,7 +32,7 @@ const labels = {
       other_device:'تماس در دستگاه دیگری پاسخ داده شد.',media_failure:'مسیر رسانه از دسترس خارج شد.',
       stream_reset:'جریان رویداد تماس بازنشانی شد.',event_stream_not_connected:'ارتباط با جریان رویداد نسیم قطع شد.',
       call_connection_changed:'ارتباط نشست در حین تماس تغییر کرد.',cleanup_save_failed:'ثبت اطلاعات پاک‌سازی تماس انجام نشد.',
-      call_timeout:'مهلت برقراری تماس پایان یافت.',transport_closed:'مسیر انتقال تماس بسته شد.'
+      call_duration_elapsed:'مدت تعیین‌شدهٔ تماس تمام شد.',call_timeout:'مهلت برقراری تماس پایان یافت.',transport_closed:'مسیر انتقال تماس بسته شد.'
     },
     copied:'گواهی کپی شد.', selectCopy:'گواهی انتخاب شد. آن را کپی کنید.',
     invalidCertificate:'گواهی عمومی طرف مقابل را بررسی کنید.',
@@ -70,7 +70,7 @@ const labels = {
       other_device:'The call was answered on another device.',media_failure:'The media path became unavailable.',
       stream_reset:'The call event stream was reset.',event_stream_not_connected:'The connection to the Nasim event stream was lost.',
       call_connection_changed:'The session connection changed during the call.',cleanup_save_failed:'Call cleanup information could not be saved.',
-      call_timeout:'The call setup timed out.',transport_closed:'The call transport closed.'
+      call_duration_elapsed:'The configured call duration elapsed.',call_timeout:'The call setup timed out.',transport_closed:'The call transport closed.'
     },
     copied:'Certificate copied.', selectCopy:'Certificate selected. Copy it now.',
     invalidCertificate:'Check the peer’s public certificate.',
