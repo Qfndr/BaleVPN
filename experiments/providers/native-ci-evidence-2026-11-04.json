@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "85608c1bcac5dc9004d1b2de010bb67dde19bfe2",
+  "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41763441388",
+  "scope": "Built native helpers and existing native process/security suites, including local relay-gather cancellation",
+  "providers": [
+    "nasim",
+    "eitaa",
+    "rubika"
+  ],
+  "platforms": [
+    {
+      "name": "Windows x64",
+      "jobId": 126356189774,
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "name": "Linux x64",
+      "jobId": 126356189966,
+      "tests": 45,
+      "passed": 45,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ],
+  "actualExecutableCasesPerPlatform": 9,
+  "liveProviderCallsVerified": false,
+  "operatorBillingVerified": false,
+  "artifactManifestIncludesSourceAndChecksums": true,
+  "localBinaryHashVerification": false
+}

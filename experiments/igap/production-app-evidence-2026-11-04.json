@@ -270,5 +270,78 @@
       "newOtpRequested": false
     },
     "interpretation": "A nominated pair count is not proof of a fully connected subscriber transport. The upstream nomination fix and stale-local-event fix did not make this real trial succeed."
+  },
+  "selectedTransportTrial": {
+    "sourceCommit": "9a084e055d1f25a3fcce5c9dc40eefaea425a038",
+    "binarySha256": "eb69c27321d0dd0b738b54a2cafa4c9fc8f005d5a1c6abb17ddf549b790f7c21",
+    "firstCycle": {
+      "mutualAuthentication": true,
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "bothPayloadHashesMatched": true,
+      "stableAfterTransferSeconds": 20,
+      "serverReturnedToListening": true
+    },
+    "secondCycle": {
+      "success": false,
+      "failureElapsedMs": 13268,
+      "clientSubscriberIceConnectedObserved": true,
+      "lastIceConnectedObservationMs": 7639,
+      "firstIceDisconnectedObservationMs": 8040,
+      "clientSubscriberTerminal": {
+        "selectedPairPresent": true,
+        "transportState": "disconnected",
+        "dtlsState": "connecting",
+        "nominatedPairs": 1,
+        "pairsSucceeded": 2
+      },
+      "clientPublisherTerminal": {
+        "transportState": "connected",
+        "dtlsState": "connected"
+      },
+      "clientSubscriberOffers": 1,
+      "clientSubscriberAudioSections": 0,
+      "serverPublisherState": "connected",
+      "serverSubscriberState": "connected",
+      "serverSubscriberOffers": 2,
+      "serverSubscriberAudioSections": 1,
+      "serviceLeaveReason": 14,
+      "serviceLeaveAction": 1,
+      "mutualAuthentication": false,
+      "payloadTransferVerified": false
+    },
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "newOtpRequested": false,
+    "newRegistrationRequested": false,
+    "interpretation": "The second subscriber did select an ICE pair and briefly reached connected. DTLS was still connecting when the path disconnected. No continuous connection success is claimed."
+  },
+  "filteredHandshakeTraceTrial": {
+    "sourceCommit": "9a084e055d1f25a3fcce5c9dc40eefaea425a038",
+    "binarySha256": "eb69c27321d0dd0b738b54a2cafa4c9fc8f005d5a1c6abb17ddf549b790f7c21",
+    "traceScope": "Only fixed handshaker flight/state messages admitted by an anchored filter; generic errors and packet output excluded",
+    "firstCycle": {
+      "bothPayloadHashesMatched": true,
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "stableAfterTransferSeconds": 20,
+      "serverReturnedToListening": true
+    },
+    "secondCycle": {
+      "success": false,
+      "clientPublisherDtlsFinished": true,
+      "clientSubscriberLastFlight": "Flight 1",
+      "clientSubscriberRetransmittedFlight1": true,
+      "clientSubscriberReachedFlight3": false,
+      "serverEnteredSecondMediaSession": false,
+      "serverEndedWithCallEnded": true,
+      "serverRtcSnapshotForSecondSession": null,
+      "clientPeerCountAtFailure": 0
+    },
+    "newOtpRequested": false,
+    "newRegistrationRequested": false,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "interpretation": "This run requires investigating server call termination before media admission. Repeated ClientHello alone does not establish a DTLS cryptographic incompatibility."
   }
 }
