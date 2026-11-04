@@ -1,5 +1,6 @@
 //! Explicit diagnostic only. Accepts two verified current Nasim TURN configs on
-//! stdin and sends random nonces exclusively between its own two allocations.
+//! stdin and exchanges exact random nonces, optionally inside STUN Binding
+//! requests, exclusively between its own two allocations.
 use serde_json::{json, Value};
 use std::{
     io::Read,
@@ -13,26 +14,43 @@ use webrtc::{
     util::Conn,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PayloadKind {
+    Nonce,
+    StunBinding,
+}
+
 struct Config {
     endpoint: String,
     username: String,
     password: String,
 }
 
-fn configs(input: &[u8]) -> Result<Vec<Config>, ()> {
+fn configs(input: &[u8]) -> Result<(Vec<Config>, PayloadKind), ()> {
     if input.len() > 16384 {
         return Err(());
     }
     let value: Value = serde_json::from_slice(input).map_err(|_| ())?;
     let root = value.as_object().ok_or(())?;
-    if root.len() != 2 || root.get("provider").and_then(Value::as_str) != Some("nasim") {
+    if !(2..=3).contains(&root.len())
+        || root
+            .keys()
+            .any(|key| !matches!(key.as_str(), "provider" | "accounts" | "payloadKind"))
+        || root.get("provider").and_then(Value::as_str) != Some("nasim")
+    {
         return Err(());
     }
+    let payload_kind = match root.get("payloadKind") {
+        None => PayloadKind::Nonce,
+        Some(Value::String(value)) if value == "nonce" => PayloadKind::Nonce,
+        Some(Value::String(value)) if value == "stunBinding" => PayloadKind::StunBinding,
+        _ => return Err(()),
+    };
     let accounts = root.get("accounts").and_then(Value::as_array).ok_or(())?;
     if accounts.len() != 2 {
         return Err(());
     }
-    accounts
+    let configs = accounts
         .iter()
         .map(|account| {
             let object = account.as_object().ok_or(())?;
@@ -70,7 +88,8 @@ fn configs(input: &[u8]) -> Result<Vec<Config>, ()> {
                 password: text("credential")?.to_owned(),
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, ()>>()?;
+    Ok((configs, payload_kind))
 }
 
 fn public_address(address: IpAddr) -> bool {
@@ -124,8 +143,28 @@ impl Owners {
     }
 }
 
+fn probe_payload(kind: PayloadKind) -> Result<[u8; 32], ()> {
+    let mut nonce = [0_u8; 32];
+    rustls::crypto::ring::default_provider()
+        .secure_random
+        .fill(&mut nonce)
+        .map_err(|_| ())?;
+    if kind == PayloadKind::Nonce {
+        return Ok(nonce);
+    }
+    // RFC 8489 section 5 and RFC 5780 section 7.6. The fixed 20-byte
+    // header plus one 4-byte attribute header and 8-byte padding is 32 bytes.
+    let mut message = webrtc::stun::message::Message::new();
+    message.typ = webrtc::stun::message::BINDING_REQUEST;
+    message.transaction_id.0.copy_from_slice(&nonce[..12]);
+    message.add(webrtc::stun::attributes::ATTR_PADDING, &nonce[12..20]);
+    message.write_header();
+    message.raw.as_slice().try_into().map_err(|_| ())
+}
+
 async fn exchange(
     configs: Vec<Config>,
+    payload_kind: PayloadKind,
     owners: &mut Owners,
     stage: &mut &'static str,
 ) -> Result<(), ()> {
@@ -196,11 +235,8 @@ async fn exchange(
         *stage = "address_family";
         return Err(());
     }
-    let mut nonce_a = [0_u8; 32];
-    let mut nonce_b = [0_u8; 32];
-    let crypto = rustls::crypto::ring::default_provider();
-    crypto.secure_random.fill(&mut nonce_a).map_err(|_| ())?;
-    crypto.secure_random.fill(&mut nonce_b).map_err(|_| ())?;
+    let nonce_a = probe_payload(payload_kind)?;
+    let nonce_b = probe_payload(payload_kind)?;
     *stage = "permission_and_send";
     // Both permissions must exist before expecting delivery. One fixed second
     // send handles the initial permission race; there is no retry loop.
@@ -231,10 +267,14 @@ async fn exchange(
     Ok(())
 }
 
-async fn run(configs: Vec<Config>, budget: Duration) -> Value {
+async fn run(configs: Vec<Config>, payload_kind: PayloadKind, budget: Duration) -> Value {
     let mut owners = Owners::default();
     let mut stage = "setup";
-    let result = tokio::time::timeout(budget, exchange(configs, &mut owners, &mut stage)).await;
+    let result = tokio::time::timeout(
+        budget,
+        exchange(configs, payload_kind, &mut owners, &mut stage),
+    )
+    .await;
     let (ok, reason) = match result {
         Ok(Ok(())) => (true, "complete"),
         Ok(Err(())) => (false, "failed"),
@@ -268,7 +308,7 @@ fn main() {
         None => {
             json!({"event":"turnProbe","ok":false,"stage":"input","reason":"invalid_input","allocated":0,"bidirectionalVerified":false,"localCleanupComplete":true})
         }
-        Some(configs) => {
+        Some((configs, payload_kind)) => {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build();
@@ -276,6 +316,7 @@ fn main() {
                 Ok(runtime) => {
                     let output = runtime.block_on(run(
                         configs,
+                        payload_kind,
                         Duration::from_secs(14).saturating_sub(started.elapsed()),
                     ));
                     runtime.shutdown_timeout(Duration::from_millis(100));
@@ -347,7 +388,12 @@ mod tests {
     #[tokio::test]
     async fn two_owned_allocations_exchange_exact_nonces() {
         let (server, endpoint) = server().await;
-        let result = run(pair(&endpoint, "fixture-password"), Duration::from_secs(5)).await;
+        let result = run(
+            pair(&endpoint, "fixture-password"),
+            PayloadKind::Nonce,
+            Duration::from_secs(5),
+        )
+        .await;
         server.close().await.unwrap();
         assert_eq!(result["ok"], true, "safe diagnostic result: {result}");
         assert_eq!(result["allocated"], 2);
@@ -359,6 +405,7 @@ mod tests {
         let (server, endpoint) = server().await;
         let result = run(
             pair(&endpoint, "private-wrong-password"),
+            PayloadKind::Nonce,
             Duration::from_millis(300),
         )
         .await;
@@ -373,7 +420,21 @@ mod tests {
     #[test]
     fn strict_input_has_no_separate_destination_or_extra_keys() {
         let valid = json!({"provider":"nasim","accounts":[{"url":"turn:127.0.0.1:3478","username":"a","credential":"b"},{"url":"turn:127.0.0.1:3478","username":"c","credential":"d"}]});
-        assert!(configs(&serde_json::to_vec(&valid).unwrap()).is_ok());
+        assert_eq!(
+            configs(&serde_json::to_vec(&valid).unwrap()).unwrap().1,
+            PayloadKind::Nonce
+        );
+        for invalid in [json!("unknown"), json!(true), json!(null)] {
+            let mut value = valid.clone();
+            value["payloadKind"] = invalid;
+            assert!(configs(&serde_json::to_vec(&value).unwrap()).is_err());
+        }
+        let mut stun = valid.clone();
+        stun["payloadKind"] = json!("stunBinding");
+        assert_eq!(
+            configs(&serde_json::to_vec(&stun).unwrap()).unwrap().1,
+            PayloadKind::StunBinding
+        );
         let mut extra = valid.clone();
         extra["target"] = json!("arbitrary");
         assert!(configs(&serde_json::to_vec(&extra).unwrap()).is_err());
@@ -382,6 +443,36 @@ mod tests {
         assert!(configs(&serde_json::to_vec(&tcp).unwrap()).is_err());
         assert!(configs(&vec![b' '; 16385]).is_err());
     }
+    #[test]
+    fn stun_payload_decodes_as_a_32_byte_binding_request_with_padding() {
+        let bytes = probe_payload(PayloadKind::StunBinding).unwrap();
+        let mut decoded = webrtc::stun::message::Message::new();
+        decoded.unmarshal_binary(&bytes).unwrap();
+        assert_eq!(decoded.typ, webrtc::stun::message::BINDING_REQUEST);
+        assert_eq!(decoded.length, 12);
+        assert_eq!(decoded.transaction_id.0, bytes[8..20]);
+        let padding = decoded.get(webrtc::stun::attributes::ATTR_PADDING).unwrap();
+        assert_eq!(padding.len(), 8);
+        assert_eq!(padding, bytes[24..32]);
+        assert_eq!(bytes[4..8], 0x2112a442_u32.to_be_bytes());
+    }
+
+    #[tokio::test]
+    async fn two_owned_allocations_exchange_exact_stun_binding_requests() {
+        let (server, endpoint) = server().await;
+        let result = run(
+            pair(&endpoint, "fixture-password"),
+            PayloadKind::StunBinding,
+            Duration::from_secs(5),
+        )
+        .await;
+        server.close().await.unwrap();
+        assert_eq!(result["ok"], true, "safe diagnostic result: {result}");
+        assert_eq!(result["allocated"], 2);
+        assert_eq!(result["bidirectionalVerified"], true);
+        assert_eq!(result["localCleanupComplete"], true);
+    }
+
     #[test]
     fn production_guard_rejects_private_reserved_and_mapped_addresses() {
         for address in [

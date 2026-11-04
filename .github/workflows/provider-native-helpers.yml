@@ -198,12 +198,12 @@ jobs:
           path = directory / 'rust-turn-probe.txt'
           report_text = path.read_text(encoding='utf-8')
           summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', report_text, re.MULTILINE)
-          if summaries != [('4', '0', '0', '0')]:
+          if summaries != [('6', '0', '0', '0')]:
               raise SystemExit('TURN diagnostic fixture tests are incomplete')
-          for test in ('two_owned_allocations_exchange_exact_nonces', 'rejected_credentials_are_redacted_and_bounded', 'strict_input_has_no_separate_destination_or_extra_keys', 'production_guard_rejects_private_reserved_and_mapped_addresses'):
+          for test in ('two_owned_allocations_exchange_exact_nonces', 'rejected_credentials_are_redacted_and_bounded', 'strict_input_has_no_separate_destination_or_extra_keys', 'production_guard_rejects_private_reserved_and_mapped_addresses', 'stun_payload_decodes_as_a_32_byte_binding_request_with_padding', 'two_owned_allocations_exchange_exact_stun_binding_requests'):
               if not re.search(r'^test tests::' + test + r' \.\.\. ok\s*$', report_text, re.MULTILINE):
                   raise SystemExit('TURN diagnostic regression did not execute')
-          manifest['diagnosticTests'] = {'turnProbe': {'passed': 4, 'failed': 0, 'ignored': 0,
+          manifest['diagnosticTests'] = {'turnProbe': {'passed': 6, 'failed': 0, 'ignored': 0,
                                         'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}}
           manifest['nativeTests'] = {'passed': int(total.group(1)), 'skipped': 0,
                                      'report': report_path.name,
