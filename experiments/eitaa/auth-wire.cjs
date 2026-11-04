@@ -23,6 +23,12 @@ function validAuthorizationAppendix(value){
 }
 function decodeResponse(selected,data,method){
  try{return selected.response(data,method);}catch(error){
+  // The service also returns the APK's exact five-field token update to the
+  // legacy Web refresh method. Parse that constructor strictly rather than
+  // discarding its message ID and socket-token suffix as arbitrary bytes.
+  if(selected===codec&&method==='eitaaRefreshToken'&&error instanceof WireError&&error.reason==='trailing_data'&&error.trailingDiagnostic?.constructorId===2775325233){
+   return androidCodec.response(data,method);
+  }
   // Observed live authorization format: flag 10, a complete strict prefix,
   // then one canonical opaque TL string. Official clients ignore the appendix;
   // its meaning is unknown and it is never used as authentication material.

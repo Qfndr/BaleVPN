@@ -7,11 +7,12 @@ const user={_:'user',id:123456789012345n,self:true,first_name:'کاربر',phone
 const sent={_:'auth.sentCode',phone_code_hash:'fixture-service-code-hash',type:{_:'auth.sentCodeTypeSms',length:6},timeout:60};
 function fixture({hook,save,createRequestId}={}){
  const calls=[],saved=[],clients=[],events=[];
- const session=new AuthSession({createRequestId,saveSession:async r=>{events.push('save');if(save)await save(r);saved.push(structuredClone(r));},createClient:options=>{
-  const client={options:structuredClone(options),closed:false,token:options.token,setToken(value){this.token=value;},close(){this.closed=true;},async request(method,input){calls.push({method,input:structuredClone(input),token:this.token,imei:options.imei});events.push(method);if(hook){const result=await hook(method,input,this);if(result!==undefined)return result;}
+ const session=new AuthSession({createRequestId,saveRefreshRecovery:async()=>{},clearRefreshRecovery:async()=>{},saveSession:async r=>{events.push('save');if(save)await save(r);saved.push(structuredClone(r));},createClient:options=>{
+  const snapshot={...options};delete snapshot.onRefreshResponse;
+  const client={options:structuredClone(snapshot),closed:false,token:options.token,setToken(value){this.token=value;},close(){this.closed=true;},async request(method,input){calls.push({method,input:structuredClone(input),token:this.token,imei:options.imei});events.push(method);if(hook){const result=await hook(method,input,this);if(result!==undefined)return result;}
    if(method==='auth.sendCode')return sent;if(method==='auth.signIn'||method==='auth.checkPassword2')return {_:'auth.authorization',token,user};if(method==='users.getUsers')return [user];
    if(method==='account.getPassword')return {_:'account.password2',current_salt:Buffer.alloc(24,0xa5),hint:'fixture hint'};
-   if(method==='eitaaRefreshToken')return {_:'eitaa_updates_token',token:'fixture-refreshed-token',date:123,expire:456};if(method==='auth.logOut')return true;throw Error('Unexpected method');
+   if(method==='eitaaRefreshToken'){const response={_:'eitaa_updates_token',token:'fixture-refreshed-token',date:123,expire:456};await options.onRefreshResponse(require('../experiments/eitaa/auth-wire.cjs').object(response));return response;}if(method==='auth.logOut')return true;throw Error('Unexpected method');
   }};clients.push(client);return client;
  }});return {session,calls,saved,clients,events};
 }

@@ -65,6 +65,35 @@ test('two Eitaa HTTP accounts distinguish bare acknowledgement, handle password 
  await request('/api/eitaa/1/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.eitaa[0].stored,false);assert.equal(state.providerAccounts.eitaa[1].signedIn,true);
 }));
 
+test('Eitaa HTTP resume recovers a sealed refresh response before any new token rotation',()=>fixture(async({request,calls,dir})=>{
+ const password='fixture-refresh-http-passphrase';
+ await request('/api/vault/unlock',{password});
+ await request('/api/eitaa/1/start',{country:'IR',phone:'09120000001'});
+ await request('/api/eitaa/1/verify',{code:'123456'});
+ const {SessionVault}=require('../experiments/providers/session-vault.cjs');
+ const {create}=require('../experiments/eitaa/refresh-recovery.cjs');
+ const codec=require('../experiments/eitaa/auth-wire.cjs');
+ const vault=new SessionVault(dir);
+ await vault.unlock(password);
+ try{
+  const record=await vault.load('eitaa',1);
+  const frame=codec.object({_:'eitaa_updates_token',token:'fixture-recovered-refresh-token',date:100,expire:200});
+  await vault.saveRefreshRecovery('eitaa',1,create(frame,record));
+ }finally{vault.lock();}
+ await request('/api/vault/lock',{});
+ await request('/api/vault/unlock',{password});
+ const before=calls.length;
+ assert.equal((await(await request('/api/eitaa/1/refresh',{})).json()).reason,'refresh_recovery_required');
+ assert.equal(calls.length,before);
+ const response=await request('/api/eitaa/1/resume',{});
+ assert.equal(response.status,200);
+ const state=await(await request('/api/state')).json();
+ assert.equal(state.providerAccounts.eitaa[0].signedIn,true);
+ assert.equal(state.providerAccounts.eitaa[0].refreshRecoveryStored,false);
+ assert.deepEqual(calls.slice(before).map(call=>call.action),['eitaa-users.getUsers']);
+ assert.ok(!JSON.stringify(state).includes('fixture-recovered-refresh-token'));
+}));
+
 test('call privacy routes require vault, account and same-origin access and auto-check both call accounts',async()=>{
  const operations=[];await fixture(async({request})=>{
   assert.equal((await request('/api/igap/1/call-privacy')).status,423);await request('/api/vault/unlock',{password:'fixture-passphrase-123'});assert.equal((await request('/api/igap/1/call-privacy')).status,400);

@@ -44,21 +44,29 @@ function passwordHash(password,salt){
  try{return crypto.createHash('sha256').update(salt).update(bytes).update(salt).digest();}finally{bytes.fill(0);}
 }
 class AccountClient{
- #transport;#imei;#token;#language;#profile;#captureAuthRecovery;#captureSocketRecovery;#mode;#codec;
- constructor({imei,token:sessionToken='',language='fa',provider='eitaa',profile=deviceProfile(),captureAuthRecovery=false,captureSocketRecovery=false,...options}={}){
+ #transport;#imei;#token;#language;#profile;#captureAuthRecovery;#captureSocketRecovery;#onRefreshResponse;#mode;#codec;
+ constructor({imei,token:sessionToken='',language='fa',provider='eitaa',profile=deviceProfile(),captureAuthRecovery=false,captureSocketRecovery=false,onRefreshResponse=null,...options}={}){
   let mode;try{mode=profiles.fromProfile(profile);}catch{throw new ApiError('invalid_credentials');}
   if(provider!=='eitaa'||!profiles.validImei(imei,mode)||!token(sessionToken)||!['fa','en'].includes(language)||!validProfile(profile))throw new ApiError('invalid_credentials');
   if(typeof captureAuthRecovery!=='boolean')throw new ApiError('invalid_credentials');this.#captureAuthRecovery=captureAuthRecovery;
   if(typeof captureSocketRecovery!=='boolean')throw new ApiError('invalid_credentials');this.#captureSocketRecovery=captureSocketRecovery;
+  if(onRefreshResponse!==null&&typeof onRefreshResponse!=='function')throw new ApiError('invalid_credentials');this.#onRefreshResponse=onRefreshResponse;
   this.#mode=mode;this.#codec=codec.forProfile(mode);this.#transport=new Transport({...options,protocolProfile:mode});this.#imei=imei;this.#token=sessionToken;this.#language=language;this.#profile={deviceModel:profile.deviceModel,systemVersion:profile.systemVersion,...Object.hasOwn(profile,'protocolProfile')?{protocolProfile:profile.protocolProfile}:{}};
  }
  setToken(value){this.#transport.assertOpen();if(!text(value,4096))throw new ApiError('invalid_credentials');this.#token=value;}
  async request(name,input={},options={}){
-  this.#transport.assertOpen();const value=requestInput(name,input,this.#language,this.#profile,this.#imei);if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
+  this.#transport.assertOpen();const value=requestInput(name,input,this.#language,this.#profile,this.#imei);if(name==='eitaaRefreshToken'&&!this.#onRefreshResponse)throw new ApiError('recovery_storage_required');if(AUTH.has(name)&&!this.#token)throw new ApiError('not_authorized');if(name==='auth.sendCode'&&this.#token)throw new ApiError('already_signed_in');
   const selected=name==='account.getPrivacy'||name==='account.setPrivacy'?privacyCodec:this.#codec;
   const packed=selected.method(name,value),body=this.#mode===profiles.ANDROID?apkEnvelope(packed,{record:{provider:'eitaa',imei:this.#imei,token:this.#token,profile:this.#profile},language:this.#language}):wire.envelope(packed,{imei:this.#imei,token:this.#token});
   const frame=await this.#transport.post(body,options),socketFrame=this.#captureSocketRecovery&&name==='eitaaGetSocketToken'?Buffer.from(frame):null;let result;
-  try{result=selected.response(frame,name);}catch(error){
+  try{
+   if(name==='eitaaRefreshToken'){
+    const captured=Buffer.from(frame);
+    try{await this.#onRefreshResponse(captured);}finally{captured.fill(0);}
+    this.#transport.assertOpen();
+   }
+   result=selected.response(frame,name);
+  }catch(error){
    if(this.#captureAuthRecovery&&['auth.signIn','auth.checkPassword2'].includes(name)&&error instanceof wire.WireError&&['unknown_flags','trailing_data'].includes(error.reason))Object.defineProperty(error,AUTH_RECOVERY_FRAME,{value:Buffer.from(frame),enumerable:false});
    if(socketFrame)Object.defineProperty(error,SOCKET_RECOVERY_FRAME,{value:socketFrame,enumerable:false});
    throw error;

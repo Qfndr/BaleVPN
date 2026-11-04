@@ -6,6 +6,7 @@ const {validateCallRecovery,CallRecoveryError,MAX_CALL_RECOVERY_BYTES:CALL_RECOV
 const CALL_RECOVERY='rubika-request-call-recovery-v1';
 const {validateIntent}=require('../nasim/cleanup-intent.cjs');
 const NASIM_CLEANUP='nasim-cleanup-intent-v1';
+const refreshRecovery=require('../eitaa/refresh-recovery.cjs');
 const FIELDS_CLEANUP=['format','provider','accountBinding','selfId','selfClientId','peerId','callUUID','capturedAt'];
 class VaultError extends Error{constructor(reason){super('Session vault '+reason);this.reason=reason;}}
 function location(provider,slot){if(!PROVIDERS.has(provider)||!Number.isInteger(slot)||slot<1||slot>2)throw new VaultError('invalid_account');return provider+'/'+slot;}
@@ -50,6 +51,47 @@ class SessionVault{
  async loadRecovery(provider,slot){const id=location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');try{const record=await readJson(path.join(this.#directory,'recovery',provider,slot+'.json'));if(record.format!==FORMAT||record.provider!==provider||record.slot!==slot)throw new VaultError('provider_mismatch');const plain=unseal(this.#key,record,FORMAT+'/recovery/'+id);try{const data=JSON.parse(plain.toString('utf8'));if(data.provider!==provider||data.format!=='eitaa-auth-recovery-v1')throw new VaultError('provider_mismatch');return data;}finally{plain.fill(0);}}catch(e){if(e.code==='ENOENT')return null;if(e instanceof VaultError)throw e;throw new VaultError('read_failed');}}
  async hasRecovery(provider,slot){location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');try{const stat=await fs.stat(path.join(this.#directory,'recovery',provider,slot+'.json'));return stat.isFile();}catch(e){if(e.code==='ENOENT')return false;throw new VaultError('read_failed');}}
  async removeRecovery(provider,slot){location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');await fs.unlink(path.join(this.#directory,'recovery',provider,slot+'.json')).catch(e=>{if(e.code!=='ENOENT')throw new VaultError('write_failed');});}
+ async saveRefreshRecovery(provider,slot,value){
+  const id=location(provider,slot);if(provider!=='eitaa'||!refreshRecovery.valid(value))throw new VaultError('invalid_refresh_recovery');
+  if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  const bytes=Buffer.from(JSON.stringify(value));let envelope;
+  try{envelope={format:FORMAT,purpose:refreshRecovery.FORMAT,provider,slot,...seal(this.#key,bytes,FORMAT+'/refresh-recovery/'+id)};}finally{bytes.fill(0);}
+  return this.#callRecoveryWork('refresh/'+id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   const file=path.join(this.#directory,'refresh-recovery',provider,slot+'.json');
+   try{const current=await readJson(file);if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+    if(current.format!==FORMAT||current.purpose!==refreshRecovery.FORMAT||current.provider!==provider||current.slot!==slot)throw new VaultError('provider_mismatch');
+    const plain=unseal(this.#key,current,FORMAT+'/refresh-recovery/'+id);
+    try{const stored=JSON.parse(plain.toString('utf8'));if(refreshRecovery.same(stored,value))return;if(!refreshRecovery.canAdvance(stored,value))throw new VaultError('refresh_recovery_available');}finally{plain.fill(0);}
+   }catch(error){if(error.code!=='ENOENT')throw error;}
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   await atomic(file,envelope);
+  });
+ }
+ async loadRefreshRecovery(provider,slot){
+  const id=location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork('refresh/'+id,async()=>{
+   try{const value=await readJson(path.join(this.#directory,'refresh-recovery',provider,slot+'.json'));
+    if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+    if(value.format!==FORMAT||value.purpose!==refreshRecovery.FORMAT||value.provider!==provider||value.slot!==slot)throw new VaultError('provider_mismatch');
+    const plain=unseal(this.#key,value,FORMAT+'/refresh-recovery/'+id);
+    try{const result=JSON.parse(plain.toString('utf8'));if(!refreshRecovery.valid(result))throw new VaultError('invalid_refresh_recovery');return result;}finally{plain.fill(0);}
+   }catch(error){if(error.code==='ENOENT')return null;if(error instanceof VaultError)throw error;throw new VaultError('read_failed');}
+  });
+ }
+ async hasRefreshRecovery(provider,slot){const id=location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');return this.#callRecoveryWork('refresh/'+id,async()=>{
+  try{return (await fs.stat(path.join(this.#directory,'refresh-recovery',provider,slot+'.json'))).isFile();}catch(error){if(error.code==='ENOENT')return false;throw new VaultError('read_failed');}
+ });}
+ async removeRefreshRecovery(provider,slot,expected){
+  const id=location(provider,slot);if(provider!=='eitaa'||!refreshRecovery.valid(expected))throw new VaultError('invalid_refresh_recovery');if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork('refresh/'+id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');const file=path.join(this.#directory,'refresh-recovery',provider,slot+'.json');
+   try{const value=await readJson(file);if(value.format!==FORMAT||value.purpose!==refreshRecovery.FORMAT||value.provider!==provider||value.slot!==slot)throw new VaultError('provider_mismatch');
+    const plain=unseal(this.#key,value,FORMAT+'/refresh-recovery/'+id);try{if(!refreshRecovery.same(JSON.parse(plain.toString('utf8')),expected))throw new VaultError('account_binding_changed');}finally{plain.fill(0);}
+    if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');await fs.unlink(file);
+   }catch(error){if(error.code!=='ENOENT')throw error;}
+  });
+ }
  async #callRecoveryWork(id,work){const prior=this.#callRecoveryWrites.get(id)||Promise.resolve(),current=prior.catch(()=>{}).then(work);this.#callRecoveryWrites.set(id,current);try{return await current;}finally{if(this.#callRecoveryWrites.get(id)===current)this.#callRecoveryWrites.delete(id);}}
  async saveCallRecovery(provider,slot,input){
   const id=callRecoveryLocation(provider,slot);if(!this.#key)throw new VaultError('locked');

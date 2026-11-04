@@ -6,6 +6,7 @@ const {AccountClient,passwordHash,deviceProfile,validProfile,AUTH_RECOVERY_FRAME
 const codec=require('./auth-wire.cjs');
 const profiles=require('./client-profile.cjs');
 const socketCredential=require('./socket-credential.cjs');
+const refreshRecovery=require('./refresh-recovery.cjs');
 const {ApiError}=require('./http-client.cjs'),{countries}=require('../providers/phone.cjs');
 const clean=(v,n=128)=>typeof v==='string'?v.replace(/[\x00-\x1f\x7f]/g,' ').slice(0,n):'';
 const text=(v,max)=>typeof v==='string'&&!!v&&Buffer.byteLength(v)<=max&&!/[\0\r\n]/.test(v);
@@ -18,12 +19,14 @@ function requestIds({clock=Date.now,random=()=>crypto.randomInt(65536)}={}){
   let id=(BigInt(Math.floor(now/1000))<<32n)|BigInt(((now%1000)<<21|r<<3|4)>>>0);if(id<=last)id=last+4n;last=id;return String(id);};
 }
 class AuthSession{
- #create;#save;#saveRecovery;#saveSocketRecovery;#language;#ids;#client;#record;#pending;#salt;#profile;#imei;#phone='';#hint='';#count=0;#delivery=null;#hashSource=null;
+ #create;#save;#saveRecovery;#saveSocketRecovery;#saveRefreshRecovery;#clearRefreshRecovery;#refreshRecovery=null;#language;#ids;#client;#record;#pending;#salt;#profile;#imei;#phone='';#hint='';#count=0;#delivery=null;#hashSource=null;
  #stage='idle';#busy=false;#epoch=0;#retryAt=0;#error=null;#signed=false;#writes=Promise.resolve();#callPrivacy=null;#recoveryAvailable=false;
- constructor({createClient=options=>new AccountClient(options),saveSession=async()=>{},saveRecovery=null,saveSocketRecovery=null,language='fa',createRequestId=requestIds()}={}){
+ constructor({createClient=options=>new AccountClient(options),saveSession=async()=>{},saveRecovery=null,saveSocketRecovery=null,saveRefreshRecovery=null,clearRefreshRecovery=null,language='fa',createRequestId=requestIds()}={}){
   if(!['fa','en'].includes(language)||typeof createClient!=='function'||typeof saveSession!=='function'||typeof createRequestId!=='function')throw new ApiError('invalid_request');
   if(saveRecovery!==null&&typeof saveRecovery!=='function')throw new ApiError('invalid_request');this.#saveRecovery=saveRecovery;
   if(saveSocketRecovery!==null&&typeof saveSocketRecovery!=='function')throw new ApiError('invalid_request');this.#saveSocketRecovery=saveSocketRecovery;
+  if(saveRefreshRecovery!==null&&typeof saveRefreshRecovery!=='function'||clearRefreshRecovery!==null&&typeof clearRefreshRecovery!=='function')throw new ApiError('invalid_request');
+  this.#saveRefreshRecovery=saveRefreshRecovery;this.#clearRefreshRecovery=clearRefreshRecovery;
   this.#create=createClient;this.#save=saveSession;this.#language=language;this.#ids=createRequestId;
  }
  async #run(action){
@@ -46,7 +49,54 @@ class AuthSession{
    if(safe.reason==='session_refresh_required'){this.#signed=false;this.#stage='refresh_required';}
   }throw safe;}finally{if(epoch===this.#epoch)this.#busy=false;}
  }
- #transport(){if(!this.#client)this.#client=this.#create({provider:'eitaa',imei:this.#imei,token:this.#record?.token||'',profile:this.#profile,language:this.#language,captureAuthRecovery:!!this.#saveRecovery,captureSocketRecovery:!!this.#saveSocketRecovery});return this.#client;}
+ #transport(){
+  if(!this.#client){
+   const epoch=this.#epoch;
+   const guard=()=>{if(epoch!==this.#epoch)throw new ApiError('closed');};
+   this.#client=this.#create({provider:'eitaa',imei:this.#imei,token:this.#record?.token||'',profile:this.#profile,language:this.#language,
+    captureAuthRecovery:!!this.#saveRecovery,captureSocketRecovery:!!this.#saveSocketRecovery,
+    onRefreshResponse:this.#saveRefreshRecovery?frame=>this.#archiveRefreshFrame(frame,guard):null});
+  }
+  return this.#client;
+ }
+ async #archiveRefreshFrame(frame,guard){
+  guard();
+  if(!this.#record||!this.#saveRefreshRecovery||!this.#clearRefreshRecovery)throw new ApiError('recovery_storage_required');
+  this.#refreshRecovery=refreshRecovery.create(frame,this.#record,this.#refreshRecovery);
+  this.#signed=false;this.#stage='refresh_recovery_required';
+  await this.#persistRefreshRecovery(guard);
+ }
+ async #persistRefreshRecovery(guard){
+  guard();const recovery=this.#refreshRecovery;
+  const task=this.#writes.then(async()=>{guard();try{await this.#saveRefreshRecovery(recovery);}catch{guard();throw new ApiError('recovery_save_failed');}guard();});
+  this.#writes=task.catch(()=>{});await task;
+ }
+ async #recoverRefresh(guard){
+  const recovery=this.#refreshRecovery;
+  if(!this.#saveRefreshRecovery||!this.#clearRefreshRecovery)throw new ApiError('recovery_storage_required');
+  if(!refreshRecovery.valid(recovery,this.#record))throw new ApiError('invalid_refresh_recovery');
+  if(recovery.phase!=='response')throw new ApiError('refresh_result_unavailable');
+  await this.#persistRefreshRecovery(guard);
+  const frame=Buffer.from(recovery.frame,'base64');
+  try{
+   let response=codec.forProfile(profiles.fromProfile(this.#record.profile)).response(frame,'eitaaRefreshToken');
+   if(response?._==='rpc_result')response=response.result;
+   return await this.#applyRefresh(response,guard);
+  }finally{frame.fill(0);}
+ }
+ async #applyRefresh(response,guard){
+  guard();const recovery=this.#refreshRecovery;
+  if(!recovery||response?._!=='eitaa_updates_token'||!text(response.token,4096))throw new ApiError('invalid_auth_response');
+  if(refreshRecovery.tokenHash(this.#record.token)!==recovery.sourceTokenSha256&&this.#record.token!==response.token)throw new ApiError('invalid_refresh_recovery');
+  this.#record.token=response.token;this.#record.deviceMetadataSent=true;
+  const freshSocketCredential=socketCredential.fromResponse(response,this.#record);
+  if(freshSocketCredential)this.#record.nativeSocketCredential=freshSocketCredential;
+  else if(this.#record.nativeSocketCredential&&!socketCredential.valid(this.#record.nativeSocketCredential,this.#record))delete this.#record.nativeSocketCredential;
+  this.#signed=false;this.#stage='refresh_recovery_required';this.#transport().setToken(response.token);
+  await this.#persist(guard);
+  try{await this.#clearRefreshRecovery(recovery);}catch{guard();throw new ApiError('recovery_save_failed');}
+  guard();this.#refreshRecovery=null;this.#stage='restoring';return this.#confirm(guard);
+ }
  async #archiveSocketFrame(frame,guard){
   guard();if(!this.#saveSocketRecovery||!(frame instanceof Buffer)||frame.length<1||frame.length>wire.MAX)throw new ApiError('invalid_auth_response');
   this.#signed=false;this.#stage='socket_recovery_required';const recovery={provider:'eitaa',format:'eitaa-socket-credential-recovery-v1',method:'eitaaGetSocketToken',createdAt:Date.now(),userId:this.#record.userId,imei:this.#imei,profile:{...this.#profile},httpTokenSha256:crypto.createHash('sha256').update(this.#record.token).digest('hex'),frame:frame.toString('base64')};
@@ -158,17 +208,35 @@ class AuthSession{
    }finally{frame.fill(0);}
   });
  }
- async restore(record){
-  return this.#run(async guard=>{
-   if(this.#record)throw new ApiError('already_signed_in');if(record?.provider!=='eitaa'||record.format!==1||!text(record.token,4096)||!validProfile(record.profile)||!profiles.validImei(record.imei,profiles.fromProfile(record.profile))||
+ #restoreRecord(record){
+  if(this.#record)throw new ApiError('already_signed_in');if(record?.provider!=='eitaa'||record.format!==1||!text(record.token,4096)||!validProfile(record.profile)||!profiles.validImei(record.imei,profiles.fromProfile(record.profile))||
     typeof record.userId!=='string'||!/^\d{1,19}$/.test(record.userId)||!userId(BigInt(record.userId))||typeof record.loginPhone!=='string'||!/^\+[1-9]\d{6,14}$/.test(record.loginPhone)||!validProfile(record.profile)||typeof record.deviceMetadataSent!=='boolean'||Object.hasOwn(record,'authorizationAppendix')&&!codec.validAuthorizationAppendix(record.authorizationAppendix)||Object.hasOwn(record,'nativeSocketCredential')&&!socketCredential.valid(record.nativeSocketCredential,record))throw new ApiError('invalid_saved_session');
    this.#client?.close();this.#client=null;this.#clearPending();this.#record={provider:'eitaa',format:1,token:record.token,imei:record.imei,userId:record.userId,loginPhone:record.loginPhone,profile:{deviceModel:record.profile.deviceModel,systemVersion:record.profile.systemVersion,...Object.hasOwn(record.profile,'protocolProfile')?{protocolProfile:record.profile.protocolProfile}:{}},deviceMetadataSent:record.deviceMetadataSent,name:clean(record.name)};
    if(Object.hasOwn(record,'authorizationAppendix'))this.#record.authorizationAppendix={...record.authorizationAppendix};
    if(Object.hasOwn(record,'nativeSocketCredential'))this.#record.nativeSocketCredential={...record.nativeSocketCredential};
-   this.#imei=record.imei;this.#profile={...this.#record.profile};this.#phone=record.loginPhone;this.#signed=false;this.#stage='restoring';return this.#confirm(guard);
+   this.#imei=record.imei;this.#profile={...this.#record.profile};this.#phone=record.loginPhone;this.#signed=false;this.#stage='restoring';
+ }
+ async restore(record){return this.#run(async guard=>{this.#restoreRecord(record);return this.#confirm(guard);});}
+ async restoreWithRefreshRecovery(record,recovery){
+  return this.#run(async guard=>{
+   if(!refreshRecovery.valid(recovery,record))throw new ApiError('invalid_refresh_recovery');
+   this.#restoreRecord(record);
+   this.#refreshRecovery=structuredClone(recovery);this.#stage='refresh_recovery_required';
+   return this.#recoverRefresh(guard);
   });
  }
- async resume(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');this.#signed=false;this.#stage='restoring';await this.#persist(guard);return this.#confirm(guard);});}
+ async recoverRefresh(recovery){
+  return this.#run(async guard=>{
+   if(!this.#record||!refreshRecovery.valid(recovery,this.#record))throw new ApiError('invalid_refresh_recovery');
+   this.#refreshRecovery=structuredClone(recovery);this.#signed=false;this.#stage='refresh_recovery_required';
+   return this.#recoverRefresh(guard);
+  });
+ }
+ async resume(){return this.#run(async guard=>{
+  if(!this.#record)throw new ApiError('no_saved_session');
+  if(this.#refreshRecovery)return this.#recoverRefresh(guard);
+  this.#signed=false;this.#stage='restoring';await this.#persist(guard);return this.#confirm(guard);
+ });}
  // Explicit private research operation, not automatic and not an HTTP/UI route.
  // The service may rotate the HTTP token too, so seal both before self read.
  async obtainSocketCredential(){return this.#run(async guard=>{
@@ -181,15 +249,25 @@ class AuthSession{
   }finally{if(frame instanceof Buffer)frame.fill(0);}
  });}
  async refresh(){return this.#run(async guard=>{
-  if(!this.#record)throw new ApiError('no_saved_session');const response=await this.#request('eitaaRefreshToken',{},guard);if(response?._!=='eitaa_updates_token'||!text(response.token,4096))throw new ApiError('invalid_auth_response');
-  this.#record.token=response.token;this.#record.deviceMetadataSent=true;this.#signed=false;this.#stage='restoring';this.#transport().setToken(response.token);await this.#persist(guard);return this.#confirm(guard);
+  if(!this.#record)throw new ApiError('no_saved_session');
+  if(this.#refreshRecovery)throw new ApiError('refresh_recovery_required');
+  if(profiles.fromRecord(this.#record)===profiles.ANDROID)throw new ApiError('profile_refresh_unavailable');
+  if(!this.#saveRefreshRecovery||!this.#clearRefreshRecovery)throw new ApiError('recovery_storage_required');
+  this.#refreshRecovery=refreshRecovery.createIntent(this.#record);
+  this.#signed=false;this.#stage='refresh_recovery_required';
+  try{await this.#persistRefreshRecovery(guard);}catch(error){
+   if(error.reason!=='closed')this.#refreshRecovery=null;
+   throw error;
+  }
+  const response=await this.#request('eitaaRefreshToken',{},guard);
+  return this.#applyRefresh(response,guard);
  });}
  async logout(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');if(await this.#request('auth.logOut',{},guard)!==true)throw new ApiError('logout_not_confirmed');this.#clear();return {loggedOut:true};});}
  exportSession(){if(!this.#record)throw new ApiError('session_not_ready');return {...this.#record,profile:{...this.#record.profile},...this.#record.authorizationAppendix?{authorizationAppendix:{...this.#record.authorizationAppendix}}:{},...this.#record.nativeSocketCredential?{nativeSocketCredential:{...this.#record.nativeSocketCredential}}:{}};}
- #clear(){this.#client?.close();this.#client=null;this.#clearPending();this.#record=null;this.#imei=null;this.#profile=null;this.#phone='';this.#stage='idle';this.#signed=false;this.#error=null;this.#delivery=null;this.#hashSource=null;this.#count=0;this.#callPrivacy=null;this.#recoveryAvailable=false;}
- stop(){this.#epoch++;this.#busy=false;this.#client?.close();this.#client=null;this.#clearPending();this.#signed=false;this.#stage=this.#record?'stopped':this.#recoveryAvailable?'recovery_required':'idle';this.#error=null;this.#callPrivacy=null;}
+ #clear(){this.#client?.close();this.#client=null;this.#clearPending();this.#record=null;this.#imei=null;this.#profile=null;this.#phone='';this.#stage='idle';this.#signed=false;this.#error=null;this.#delivery=null;this.#hashSource=null;this.#count=0;this.#callPrivacy=null;this.#recoveryAvailable=false;this.#refreshRecovery=null;}
+ stop(){this.#epoch++;this.#busy=false;this.#client?.close();this.#client=null;this.#clearPending();this.#signed=false;this.#stage=this.#refreshRecovery?'refresh_recovery_required':this.#record?'stopped':this.#recoveryAvailable?'recovery_required':'idle';this.#error=null;this.#callPrivacy=null;}
  close(){this.#epoch++;this.#busy=false;this.#clear();}
- get state(){return {provider:'eitaa',stage:this.#stage,busy:this.#busy,connected:this.#signed,signedIn:this.#signed,hasSession:!!this.#record,hasRecovery:this.#recoveryAvailable,userId:this.#record?.userId||null,
+ get state(){return {provider:'eitaa',stage:this.#stage,busy:this.#busy,connected:this.#signed,signedIn:this.#signed,hasSession:!!this.#record,hasRecovery:this.#recoveryAvailable||!!this.#refreshRecovery,hasRefreshRecovery:!!this.#refreshRecovery,userId:this.#record?.userId||null,
   maskedPhone:this.#phone?'•••• '+this.#phone.slice(-4):'',retryAfter:Math.max(0,Math.ceil((this.#retryAt-Date.now())/1000)),hint:this.#hint,error:this.#error,codeDigits:this.#count,delivery:this.#delivery,codeHashSource:this.#hashSource,
   selfConfirmed:this.#signed,callPrivacy:this.#signed&&this.#callPrivacy?{...this.#callPrivacy}:null,deviceModel:this.#profile?.deviceModel||null,systemVersion:this.#profile?.systemVersion||null,protocolProfile:profiles.fromProfile(this.#profile),deviceMetadataSent:this.#record?.deviceMetadataSent||false,providerVerified:false,callReady:false};}
 }

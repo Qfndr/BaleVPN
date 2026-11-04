@@ -269,3 +269,23 @@ do not prove they protect this specific branch. We will not treat it as a secure
 tunnel or send retained credentials through it to test that assumption. See the
 [scoped evidence](native-empty-secret-evidence-2026-11-04.json); full bounded
 disassembly references remain in the local E-drive research directory.
+
+### Recoverable session refresh (2026-11-04)
+
+The Web refresh decoder accepts the APK's exact five-field `TL_updates_token`
+response in addition to its original three-field response. The observed failure
+had constructor 2775325233, a 48-byte decoded prefix and a 68-byte suffix. The
+additional fields are the source-defined message ID and socket credential.
+
+Before requesting a refresh, the laboratory seals an account-bound operation
+intent under `refresh-recovery/eitaa/<slot>`. It seals the complete response
+before decoding, saves the resulting session before self confirmation, and
+retains recovery data after interrupted or failed writes. Resume consumes the
+saved response without another refresh request. An intent with no response
+remains uncertain and blocks a second rotation. Login recovery and socket-token
+acquisition retain their separate storage purposes.
+
+The original live response that exposed this parser failure was cleared by the
+old code. Its bytes cannot be reconstructed by this change. See
+[refresh recovery evidence](refresh-recovery-evidence-2026-11-04.json) for the
+offline tests and the remaining live-validation boundary.

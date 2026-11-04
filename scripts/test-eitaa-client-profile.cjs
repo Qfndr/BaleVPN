@@ -39,9 +39,9 @@ test('legacy Web sessions and default app parameters remain unchanged while prof
  const f=fixture();await assert.rejects(f.session.start(phone,{protocolProfile:'unknown'}),/invalid_client_profile/);assert.equal(f.seen.length,0);await f.session.start(phone);await f.session.verify('123456');const record=f.session.exportSession();assert.equal(f.seen[0].apiId,2496);assert.equal(Object.hasOwn(record.profile,'protocolProfile'),false);assert.ok(f.seen.every(x=>x.constructor===2059302893));f.session.close();
  const bad={...record,profile:{...record.profile,protocolProfile:profiles.ANDROID}},restored=new AuthSession({createClient:()=>{throw Error('Must not open');}});await assert.rejects(restored.restore(bad),/invalid_saved_session/);assert.throws(()=>new AccountClient({imei:record.imei,token,profile:deviceProfile(profiles.ANDROID)}),/invalid_credentials/);restored.close();
 });
-test('reviewed native token-update fields are isolated from the legacy decoder and are not inferred from an authorization appendix',()=>{
+test('Web refresh accepts the exact reviewed native token-update suffix and still rejects truncation',()=>{
  const android=authCodec.forProfile(profiles.ANDROID),value={_:'eitaa_updates_token',token,expire:123,date:100,msg_id:41n,socket_token:'fixture-private-socket-token'},frame=android.object(value);
- assert.deepEqual(android.response(frame,'eitaaRefreshToken'),value);assert.throws(()=>authCodec.response(frame,'eitaaRefreshToken'),/trailing_data/);assert.throws(()=>android.response(frame.subarray(0,-4),'eitaaRefreshToken'));
+ assert.deepEqual(android.response(frame,'eitaaRefreshToken'),value);assert.deepEqual(authCodec.response(frame,'eitaaRefreshToken'),value);assert.throws(()=>authCodec.response(Buffer.concat([frame,Buffer.alloc(4)]),'eitaaRefreshToken'));assert.throws(()=>android.response(frame.subarray(0,-4),'eitaaRefreshToken'));
 });
 test('changing profile and device identity cancels a prepared call owner before any further network request',async()=>{
  const record={provider:'eitaa',token,imei:profiles.createImei(profiles.ANDROID),userId:'41',profile:deviceProfile(profiles.ANDROID)},account={state:{provider:'eitaa',signedIn:true,selfConfirmed:true,userId:'41'},exportSession:()=>structuredClone(record)};let requests=0,closed=false;

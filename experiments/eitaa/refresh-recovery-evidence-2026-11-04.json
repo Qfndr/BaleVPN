@@ -1,0 +1,59 @@
+{
+  "date": "2026-11-04",
+  "source": "Pinned official Eitaa Android 7.1.8 TL_updates_token reader",
+  "sourceApkSha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb",
+  "observedFailure": {
+    "method": "eitaaRefreshToken",
+    "protocolProfile": "web",
+    "reason": "trailing_data",
+    "constructorId": 2775325233,
+    "consumed": 48,
+    "remaining": 68,
+    "total": 116,
+    "oldRawResponseAvailable": false
+  },
+  "parserFix": "Only the Web refresh method and exact known constructor may use the strict APK five-field response reader. Canonical TL, result-type and complete-frame checks remain enabled.",
+  "durableOrder": [
+    "seal account/token-bound operation intent",
+    "issue one refresh request",
+    "seal full response before decoding",
+    "decode known response",
+    "save resulting session",
+    "remove only the matching recovery record",
+    "confirm the same account identity"
+  ],
+  "uncertainOutcome": "A persisted intent without response blocks another token rotation after restart.",
+  "recoveryStorage": {
+    "namespace": "refresh-recovery/eitaa/<slot>.json",
+    "authenticatedData": "provider-lab-v1/refresh-recovery/eitaa/<slot>",
+    "format": "eitaa-refresh-recovery-v1",
+    "operationBinding": [
+      "accountBinding",
+      "sourceTokenSha256",
+      "requestId",
+      "createdAt"
+    ],
+    "allowedTransition": "requested -> response for the same operation"
+  },
+  "tests": {
+    "focusedRecoveryCases": 11,
+    "combinedEitaaAndLabCases": 204,
+    "failed": 0,
+    "skipped": 0,
+    "includes": [
+      "pre-request persistence failure",
+      "post-write persistence failure",
+      "reply persisted before decode",
+      "malformed response retained",
+      "close before HTTP reply",
+      "close during response persistence",
+      "restart without another rotation",
+      "account and slot substitution",
+      "matching cleanup",
+      "fresh valid native socket credential retention",
+      "normal laboratory resume route"
+    ]
+  },
+  "liveFixedRefreshVerified": false,
+  "newOtpRequested": false
+}
