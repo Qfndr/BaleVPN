@@ -145,6 +145,21 @@ const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');co
  if(process.env.BALEVPN_SCREENSHOTS)await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,'provider-lab-rubika-restored-fixture-fa.png'),fullPage:true});
  await page.locator('#providers [data-provider=eitaa]').click();for(const card of [eitaaOne,eitaaTwo]){await card.locator('[data-action=resume]').click();await page.waitForFunction(slot=>document.querySelector('.account[data-provider="eitaa"][data-slot="'+slot+'"]').dataset.signed==='true',await card.getAttribute('data-slot'));}
  assert.equal(calls.filter(c=>c.action==='eitaa-auth.sendCode').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-auth.signIn').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-users.getUsers').length,4);
+ await page.locator('#providers [data-provider=rubika]').click();
+ await rubikaOne.locator('[data-action=forget]').click();
+ await rubikaOne.locator('[data-login]').waitFor();
+ await rubikaOne.locator('[data-phone]').fill('15120000000');
+ await rubikaOne.locator('[data-login] button[type=submit]').click();
+ await rubikaOne.locator('[data-code]').waitFor();
+ await rubikaOne.locator('[data-code]').fill('123456');
+ assert.equal(await rubikaOne.locator('[data-rubika-profile]').isDisabled(),true);
+ const rubikaStarts=calls.filter(call=>call.action==='rubika-start').length;
+ await rubikaOne.locator('[data-action=stop]').click();
+ await rubikaOne.locator('[data-code]').waitFor({state:'hidden'});
+ assert.equal(await rubikaOne.locator('[data-code]').inputValue(),'');
+ await rubikaOne.locator('[data-rubika-profile]').selectOption('web');
+ assert.equal(calls.filter(call=>call.action==='rubika-start').length,rubikaStarts);
+ assert.equal(await rubikaTwo.getAttribute('data-signed'),'true');
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);console.log(JSON.stringify({blockedSystemSecurityInjectionRequests:blockedSecurityInjection,applicationExternalRequests:external.length}));console.log('PASS local vault, independent iGap/Nasim/Rubika/Eitaa OTP forms and Eitaa unconfirmed-code/password/retained-device flows and namespaces, Rubika password challenge and retained-key restore, four provider tabs, explicit iGap/Nasim/Eitaa two-account call lifecycle, private native-media preparation/dial/approval/stop controls, encrypted restore without OTP, cleared secrets, FA/EN/theme persistence, real local HTTP and responsive 320–1440px; provider and native-media fixtures, no service login or call');
  }finally{await browser?.close();await lab?.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-browser-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -46,6 +46,17 @@ test('a lost code request cannot be repeated immediately, and unsafe phone shape
  await assert.rejects(f.session.start({...phone,nationalNumber:'09120000001'}),/invalid_phone/);assert.equal(f.calls.length,0);
  await assert.rejects(f.session.start(phone),/timeout/);await assert.rejects(f.session.start(phone),/cooldown/);assert.equal(f.calls.filter(c=>c.method==='sendCode').length,1);f.session.close();
 });
+test('stopping a pending code clears the login challenge but retains its cooldown',async()=>{
+ const f=fixture();await f.session.start(phone);
+ try{
+  f.session.stop();
+  assert.equal(f.session.state.stage,'idle');assert.equal(f.session.state.hasSession,false);
+  assert.ok(f.session.state.retryAfter>0);
+  await assert.rejects(f.session.verify('123456'),{reason:'no_pending_code'});
+  await assert.rejects(f.session.start(phone,{protocolProfile:'android-4.1.1-compat'}),{reason:'cooldown'});
+  assert.equal(f.calls.filter(call=>call.method==='sendCode').length,1);
+ }finally{f.session.close();}
+});
 test('restoring an encrypted record reuses auth, RSA key and device hash without OTP or registration',async()=>{
  const f=fixture();await login(f);const record=f.session.exportSession();f.session.close();
  const restored=fixture({createIdentity:()=>{throw Error('New identity must not be created');}});await restored.session.restore(record);
