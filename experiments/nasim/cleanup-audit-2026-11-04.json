@@ -27,7 +27,19 @@
     "byeRequiresPreservedContext": "At character389029, sendBye retains the participant and UUID and sends msgGroupCall bye to that exact peer. Current laboratory state discarded that UUID.",
     "historyIsNotActiveCallProof": "At character390000, updateCallLogStatus edits history metadata. A finished history record is not an authoritative active-call query.",
     "activeCallIsLocalUiState": "Messenger-DUDPkifM.js character4887 subscribes to ve.active; it is not a server query.",
-    "scopeLimit": "This bounded cache review did not find a usable authoritative read-only endpoint or server TTL. It does not prove no such endpoint exists."
+    "scopeLimit": "This bounded cache review did not find a usable authoritative read-only endpoint or server TTL. It does not prove no such endpoint exists.",
+    "sseReconnectReview": {
+      "workerSha256": "0ced14127586594e01d8785ebd0f942981f4be9e4d5f6efcf8b5ae03cadc4860",
+      "workerEstablishHandling": "handleStreamChunk ignores the establish event and forwards message events. It advances lastEventTime from message IDs, without a current-call snapshot or no-active-call acknowledgement.",
+      "mainEventHandlingCharacterOffset": 594500,
+      "mainCleanSessionHandling": "cleanSession sets a local resync flag; handleCleanSession loads chat groups. The first subsequent message clears that flag before generic incoming-event dispatch.",
+      "groupCursorCharacterOffset": 600765,
+      "groupCursorMeaning": "tryReconnectSSE takes the first loaded group lastMessage.messageID as the event cursor. This marks message resynchronization, not confirmation of call termination.",
+      "callManagerCharacterOffset": 394000,
+      "callManagerRestore": "The call manager initializes active to undefined and finishedCallUUIDs/earlyTerminal to in-memory maps. No server-active-call restoration appears in this initialization.",
+      "result": "A successful SSE reconnect, establish event, clean-session group reload or empty local active value cannot establish that the lost-UUID server call ended. A matching terminal call event with recoverable UUID would supply different evidence, but none is recovered by this source review.",
+      "networkRequests": 0
+    }
   },
   "futureInstrumentation": "Before any future call, retain one encrypted cleanup intent bound to account, device, peer, call UUID and call epoch; preserve it across media failure and distinguish local cleanup from a confirmed terminal action. No such cleanup was attempted in this audit.",
   "privacy": "No account IDs, call IDs, tokens, panel keys, network addresses, credentials or raw state included."
