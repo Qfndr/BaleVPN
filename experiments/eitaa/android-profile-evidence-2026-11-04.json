@@ -1,0 +1,55 @@
+{
+  "date": "2026-11-04",
+  "scope": "Explicit experimental Android-compatible HTTPS profile for NEW Eitaa login; offline verification only",
+  "primaryArtifact": {
+    "package": "ir.eitaa.messenger",
+    "versionName": "7.1.8",
+    "manifestVersionCode": 26379,
+    "sha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb"
+  },
+  "identity": {
+    "source": "BuildVars fields in pinned classes.dex",
+    "apiId": 1782360,
+    "apiHash": "0d870902a3e09e7cdc57e5d7bd68da6b",
+    "buildVersionCode": 2637,
+    "imeiSource": "UserConfig.loadConfig instruction offsets 335..347: UUID.randomUUID().toString() when no retained value",
+    "implementation": "Persistent cryptographic UUIDv4; truthful desktop device label and actual OS; no fabricated handset/hardware identifiers"
+  },
+  "https": {
+    "source": "LoginActivity.PhoneView sendCode -> sendRequest default connection type 1 -> sendRequestInternal -> HelperHttp",
+    "endpoint": "https://armita.eitaa.com/eitaa/index.php",
+    "contentType": "text/stream",
+    "constructorId": 2059302894,
+    "fields": ["token", "imei", "flags", "packed_data", "layer", "buildVersionCode", "lang"],
+    "layer": 138,
+    "buildVersionCode": 2637,
+    "flags": {"wifi": 2, "mobileData": 4, "paused": 8, "background": 16, "english": 128, "arabic": 64, "otherLanguage": 32},
+    "security": "Verified TLS, fixed official HTTPS endpoint, no browser Origin/referrer, bounded reply, cancellation; no redirects or automatic OTP/retry"
+  },
+  "authentication": {
+    "schema": "Pinned Android auth.sendCode, auth.signIn and codeSettings IDs and field order match retained Web auth schema; native APP_ID/hash differs",
+    "recovery": "Undecodable accepted-login replies remain sealed and mode-bound; original UUID/profile reused without another OTP",
+    "appendix": "Only the existing strictly accepted 56-byte canonical opaque authorization appendix is privately retained with exact constructor/flags metadata. Meaning unknown; never used as socket token or credential, never exposed in public state. Existing records without it are unchanged.",
+    "nativeTokenUpdate": "Only the native decoder accepts TL_updates_token msg_id:long and socket_token:string after token/expire/date. Separate from unknown authorization appendix; no native socket transport enabled."
+  },
+  "isolation": "Web remains default. Explicit profile choice only before new login in an empty slot. Existing records retain profile and UUID. Account, call, privacy, resolver and pair guards bind to that profile.",
+  "limitations": [
+    "No live login or native-profile call has been verified at this implementation step",
+    "Android explicit refresh is rejected before I/O until its exact metadata method is implemented",
+    "Modern SRP password flow remains unsupported",
+    "Current canonical +E164 phone encoding has not been proven byte-for-byte against the Android phone-entry formatter",
+    "VoIP connection type 64 uses JNI native transport rather than HelperHttp; successful Android HTTPS login would not by itself establish call support",
+    "The older APK HTTPS DH probe used manifest versionCode 26379, not corrected BuildVars 2637; it is not evidence that this corrected frame fails",
+    "No raw native TCP credentials, invented DH constants or disabled prime validation"
+  ],
+  "primaryResearchFiles": [
+    "android-auth-profile-references-2026-11-04.json",
+    "android-imei-writes-2026-11-04.json",
+    "android-envelope-references-2026-11-04.json",
+    "android-connections-references-2026-11-04.json",
+    "android-authorization-token-references-2026-11-04.json"
+  ],
+  "researchRoot": "E:/CodexBuilds/BaleVPN/messenger-research/eitaa",
+  "subsequentLiveStatusReportedByParent": "Two explicit Android-profile accounts logged in, self-confirmed, distinct and sealed; unknown appendices retained privately. Single corrected APK2637 HTTPS getDhConfig returned404 INVALID_CONSTRUCTOR. No call was issued by this agent; profile change alone does not fix native voice-call routing.",
+  "tests": ["scripts/test-eitaa-client-profile.cjs", "scripts/test-eitaa-apk-call-probe.cjs", "scripts/test-eitaa-recovery.cjs", "scripts/test-provider-lab-browser.cjs"]
+}

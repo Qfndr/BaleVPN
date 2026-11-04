@@ -2,12 +2,13 @@
 // shared access hashes, OTP or silent selection of a different account.
 'use strict';
 const {AccountClient}=require('./account-client.cjs'),{CallClient}=require('./call-client.cjs'),{CallError}=require('./call-session.cjs');
+const profiles=require('./client-profile.cjs');
 const fail=reason=>{throw new CallError(reason);};
 function binding(account){
  const state=account.state;if(state?.provider!=='eitaa'||!state.signedIn||!state.selfConfirmed)fail('both_accounts_required');
- const record=account.exportSession();if(record?.provider!=='eitaa'||record.userId!==state.userId||typeof record.userId!=='string'||!/^[1-9]\d{0,18}$/.test(record.userId)||BigInt(record.userId)>=1n<<63n||typeof record.token!=='string'||!record.token||typeof record.imei!=='string'||!/^[a-z0-9]{15}__web$/.test(record.imei))fail('invalid_account_binding');return record;
+ const record=account.exportSession();let mode;try{mode=profiles.fromRecord(record);}catch{fail('invalid_account_binding');}if(record?.provider!=='eitaa'||record.userId!==state.userId||typeof record.userId!=='string'||!/^[1-9]\d{0,18}$/.test(record.userId)||BigInt(record.userId)>=1n<<63n||typeof record.token!=='string'||!record.token||!profiles.validImei(record.imei,mode))fail('invalid_account_binding');return {...record,...record.profile?{profile:{...record.profile}}:{}};
 }
-const same=(a,b)=>a.token===b.token&&a.imei===b.imei&&a.userId===b.userId;
+const same=(a,b)=>a.token===b.token&&a.imei===b.imei&&a.userId===b.userId&&profiles.fromRecord(a)===profiles.fromRecord(b);
 function user(value,id){return value?._==='user'&&value.id===BigInt(id)&&!value.deleted&&!value.min&&!value.bot&&typeof value.access_hash==='bigint'&&value.access_hash!==0n;}
 function username(value){return typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_]{2,31}$/.test(value)?value:null;}
 class TargetResolver{

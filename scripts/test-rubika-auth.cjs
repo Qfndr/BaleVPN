@@ -24,7 +24,7 @@ test('login saves native auth before device registration, confirms self and expo
  assert.deepEqual(f.calls.map(c=>c.method),['getDCs','sendCode','signIn','registerDevice','getUserInfo']);
  assert.ok(f.events.indexOf('save')<f.events.indexOf('registerDevice'));assert.equal(f.saved[0].registration,'required');assert.equal(f.saved.at(-1).registration,'confirmed');
  const record=f.session.exportSession();assert.equal(record.auth,auth);assert.equal(record.profile.deviceHash.length,32);
- const register=f.calls.find(c=>c.method==='registerDevice');assert.equal(register.input.device_hash,record.profile.deviceHash);assert.equal(register.input.device_model,'BaleVPN Provider Lab (desktop)');
+ const register=f.calls.find(c=>c.method==='registerDevice');assert.equal(register.input.device_hash,record.profile.deviceHash);assert.equal(register.input.device_model,record.profile.deviceModel);assert.match(record.profile.deviceModel,/^Desktop [a-f0-9]{12}$/);
  for(const value of [auth,record.privateKey,phone.internationalNumber,'fixture-private-code-hash'])assert.ok(!JSON.stringify(f.session.state).includes(value));
  record.profile.deviceHash='changed';assert.notEqual(f.session.exportSession().profile.deviceHash,'changed');f.session.close();
 });
@@ -63,6 +63,27 @@ test('registration is retried only after an explicit service requirement and exp
  await f.session.start(phone);await assert.rejects(f.session.verify('123456'),/registration_required/);assert.equal(f.session.state.stage,'device_required');
  assert.equal(f.calls.filter(c=>c.method==='registerDevice').length,1);required=false;await f.session.register();
  assert.equal(f.calls.filter(c=>c.method==='registerDevice').length,2);assert.equal(f.calls.filter(c=>c.method==='signIn').length,1);f.session.close();
+});
+
+test('an explicit NOT_REGISTERED after a confirmed login clears stale confirmation but preserves the same session and device',async()=>{
+ const f=fixture({hook:async method=>{if(method==='logout')throw new ApiError('registration_required',undefined,'NOT_REGISTERED');}});
+ try{
+  await login(f);const before=f.session.exportSession();assert.equal(f.session.state.signedIn,true);
+  await assert.rejects(f.session.logout(),/registration_required/);
+  const state=f.session.state,after=f.session.exportSession();assert.equal(state.signedIn,false);assert.equal(state.connected,false);assert.equal(state.selfConfirmed,false);
+  assert.equal(state.stage,'device_required');assert.equal(state.registration,'required');assert.equal(state.hasSession,true);
+  assert.deepEqual(after,{...before,registration:'required'});assert.equal(f.calls.filter(c=>c.method==='registerDevice').length,1);
+  assert.deepEqual(f.calls.map(c=>c.method),['getDCs','sendCode','signIn','registerDevice','getUserInfo','logout']);
+  assert.ok(!JSON.stringify(state).includes(before.auth));
+ }finally{f.session.close();}
+});
+
+test('a method-specific access denial does not pretend the retained account session was globally revoked',async()=>{
+ const f=fixture({hook:async method=>{if(method==='logout')throw new ApiError('access_denied',undefined,'INVALID_AUTH');}});
+ try{await login(f);const before=f.session.exportSession();await assert.rejects(f.session.logout(),/access_denied/);
+  assert.equal(f.session.state.signedIn,true);assert.equal(f.session.state.selfConfirmed,true);assert.deepEqual(f.session.exportSession(),before);
+  assert.equal(f.calls.filter(c=>c.method==='registerDevice').length,1);
+ }finally{f.session.close();}
 });
 test('failure to seal new auth halts device registration and keeps the auth available for recovery',async()=>{
  let fail=true;const f=fixture({save:async()=>{if(fail)throw Error('fixture disk error');}});await f.session.start(phone);

@@ -14,6 +14,7 @@ const {AuthSession:EitaaAuth}=require('../eitaa/auth-session.cjs');
 const {ApiError:EitaaError}=require('../eitaa/http-client.cjs');
 const {CallPair:EitaaCallPair}=require('../eitaa/call-pair.cjs');
 const {CallPair:RubikaCallPair}=require('../rubika/call-pair.cjs');
+const {CallClient:RubikaCallClient}=require('../rubika/call-client.cjs');
 function sameSecret(a,b){const x=Buffer.from(a||''),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
 async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimBridgeExecutable,nasimOpenBridge,eitaaBridgeExecutable,eitaaOpenBridge,eitaaCallClientFactory,eitaaAccountClientFactory,rubikaBridgeExecutable,rubikaOpenBridge,rubikaCallClientFactory,rubikaSessionPollInterval=2000,privacyOperation=privacy.operate,eitaaSessionFactory=(slot,options)=>new EitaaAuth(options),rubikaSessionFactory=(slot,options)=>new RubikaAuth(options),nasimSessionFactory=()=>new NasimAuth(),sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
  if(!directory)throw new Error('An explicit isolated laboratory data directory is required');
@@ -42,7 +43,15 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
 
  const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpenBridge});
  const eitaaCalls=new EitaaCallPair(eitaaSessions,{executable:eitaaBridgeExecutable,open:eitaaOpenBridge,createClient:eitaaCallClientFactory,createAccountClient:eitaaAccountClientFactory});
- const rubikaCalls=new RubikaCallPair(rubikaSessions,{executable:rubikaBridgeExecutable,open:rubikaOpenBridge,createClient:rubikaCallClientFactory,pollInterval:rubikaSessionPollInterval});
+ const rubikaCallTransport=account=>{
+  const slot=[...rubikaSessions].find(([,value])=>value===account)?.[0];if(!slot)throw new RubikaError('invalid_account_binding');
+  const options={saveCallRecovery:(record,guard)=>rubikaWrite(slot,async()=>{guard();await vault.saveCallRecovery('rubika',slot,record);guard();}),
+   clearCallRecovery:(record,guard)=>rubikaWrite(slot,async()=>{guard();const current=await vault.loadCallRecovery('rubika',slot);guard();
+    if(current&&['selfId','peerId','accountBinding','capturedAt'].some(key=>current[key]!==record[key]))throw new RubikaError('account_binding_changed');
+    if(current){await vault.removeCallRecovery('rubika',slot);guard();}})};
+  return rubikaCallClientFactory?rubikaCallClientFactory(account,options):new RubikaCallClient(account,options);
+ };
+ const rubikaCalls=new RubikaCallPair(rubikaSessions,{executable:rubikaBridgeExecutable,open:rubikaOpenBridge,createClient:rubikaCallTransport,pollInterval:rubikaSessionPollInterval});
  const media=bridgeExecutable?new MediaPair({executable:bridgeExecutable,accounts:sessions,calls,...openBridge?{open:openBridge}:{}}):null;
  // Keep UI and backend from the same startup snapshot while research code is
  // edited. A live user must not receive a newer form against older routes.
@@ -62,7 +71,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    if(req.method==='GET'&&url.pathname==='/api/state'){
     const accounts=[];for(const [slot,session]of sessions)accounts.push({provider:'igap',slot,...session.state,call:calls.get(slot).state,stored:await vault.has('igap',slot)});
     const nasimAccounts=[];for(const [slot,session]of nasimSessions)nasimAccounts.push({provider:'nasim',slot,...session.state,call:nasimCalls.getCall(slot),stored:await vault.has('nasim',slot)});
-    const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,call:rubikaCalls.getCall(slot),busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot)});
+    const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,call:rubikaCalls.getCall(slot),busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot),callRecoveryStored:await vault.hasCallRecovery('rubika',slot)});
     const eitaaAccounts=[];for(const [slot,session]of eitaaSessions)eitaaAccounts.push({provider:'eitaa',slot,...session.state,call:eitaaCalls.getCall(slot),busy:session.state.busy||eitaaOperations.has(slot),stored:await vault.has('eitaa',slot),recoveryStored:await vault.hasRecovery('eitaa',slot)});
     for(const [provider,list]of Object.entries({igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts}))for(const account of list){account.callPrivacy=privacyStatus(provider,account.slot);account.callPrivacySupported=privacy.supported(provider);account.busy||=privacyBusy.has(provider+'/'+account.slot);}
     return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking||locking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts},nasimMedia:nasimCalls.state,eitaaMedia:eitaaCalls.state,rubikaMedia:rubikaCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:true,liveCallVerified:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:true,liveCallVerified:false,tunnelReady:false}}});
@@ -75,6 +84,12 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    let body;try{body=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!body||typeof body!=='object'||Array.isArray(body))throw new Error();}catch{throw error('invalid_json');}
    const privacyAllow=url.pathname.match(/^\/api\/(igap|nasim|rubika|eitaa)\/([12])\/allow-calls$/);if(privacyAllow){if(Object.keys(body).length)throw error('invalid_request');return json({ok:true,callPrivacy:await callPrivacy(privacyAllow[1],Number(privacyAllow[2]),true)});}
    const lifecycle=url.pathname.match(/^\/api\/(igap|nasim|rubika|eitaa)\/([12])\/(start|verify|password|profile|resume|stop|logout|forget|refresh|register)$/);
+   if(lifecycle?.[3]==='start'){
+    if(!vault.unlocked)throw error('vault_locked',423);
+    // A locked/restarted panel can have an unloaded but retained session. A new
+    // login must never silently replace it; resume or explicit local forget first.
+    if(await vault.has(lifecycle[1],Number(lifecycle[2])))throw error('already_signed_in');
+   }
    if(lifecycle){const key=lifecycle[1]+'/'+lifecycle[2];privacyCache.delete(key);privacyControllers.get(key)?.abort();privacyGeneration.set(key,(privacyGeneration.get(key)||0)+1);}
    if(['/api/vault/lock','/api/vault/unlock'].includes(url.pathname)){privacyCache.clear();for(const controller of privacyControllers.values())controller.abort();for(const provider of Object.keys(privacyAccounts))for(const slot of [1,2]){const key=provider+'/'+slot;privacyGeneration.set(key,(privacyGeneration.get(key)||0)+1);}}
    if(url.pathname==='/api/vault/unlock'){
@@ -87,6 +102,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     if(Object.keys(body).some(k=>!allowed.includes(k)))throw error('invalid_media_options');
     if([1,2].some(slot=>rubikaOperations.has(slot)||rubikaSessions.get(slot).state.busy)&&!['reset','end'].includes(action))throw error('account_busy',409);
     if(action==='reset'){rubikaCalls.reset();return json({ok:true});}
+    if(['prepare','dial'].includes(action))for(const slot of [1,2])if(await vault.hasCallRecovery('rubika',slot))throw error('call_recovery_available');
     if(!['prepare','reset'].includes(action)&&![1,2].includes(body.slot))throw error('invalid_call_target');
     if(action==='dial'&&rubikaCalls.getCall(body.slot).phase==='ready')await ensureCallPrivacy('rubika');
     const result=action==='prepare'?await rubikaCalls.prepare(body):await rubikaCalls[action](body.slot);return json({ok:true,...result});
@@ -107,7 +123,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     if(!vault.unlocked)throw error('vault_locked',423);const slot=Number(eitaa[1]),session=eitaaSessions.get(slot);let result;
     const tracked=eitaa[2]!=='stop';if(tracked&&eitaaOperations.has(slot))throw error('account_busy',409);if(tracked)eitaaOperations.add(slot);
     try{switch(eitaa[2]){
-     case 'start':{if(await vault.hasRecovery('eitaa',slot))throw error('auth_recovery_available');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone);break;}
+     case 'start':{if(await vault.hasRecovery('eitaa',slot))throw error('auth_recovery_available');if(Object.hasOwn(body,'protocolProfile')&&!['web','android-7.1.8-compat'].includes(body.protocolProfile))throw error('invalid_client_profile');let phone;try{phone=normalize(body.country,body.phone);}catch(e){throw error(e.message);}result=await session.start(phone,Object.hasOwn(body,'protocolProfile')?{protocolProfile:body.protocolProfile}:{});break;}
      case 'verify':try{result=await session.verify(body.code);}finally{body.code='';}break;
      case 'password':try{result=await session.password(body.password);}finally{body.password='';}break;
      case 'resume':eitaaCalls.invalidate();if(session.state.hasSession)result=await session.resume();else{const record=await vault.load('eitaa',slot);if(record)result=await session.restore(record);else{const recovery=await vault.loadRecovery('eitaa',slot);if(!recovery)throw error('no_saved_session');result=await session.recoverAuthorization(recovery);}}if(session.state.signedIn)await eitaaWrite(slot,()=>vault.removeRecovery('eitaa',slot));break;
@@ -130,7 +146,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
      case 'register':rubikaCalls.invalidate();result=await session.register();break;
      case 'stop':rubikaCalls.invalidate();session.stop();return json({ok:true});
      case 'logout':rubikaCalls.invalidate();result=await session.logout();await rubikaWrite(slot,()=>vault.remove('rubika',slot));return json({ok:true,...result});
-     case 'forget':if(session.state.busy)throw error('account_busy',409);rubikaCalls.invalidate();session.close();await rubikaWrite(slot,()=>vault.remove('rubika',slot));return json({ok:true});
+     case 'forget':if(session.state.busy)throw error('account_busy',409);rubikaCalls.invalidate();session.close();await rubikaWrite(slot,async()=>{await vault.remove('rubika',slot);await vault.removeCallRecovery('rubika',slot);});return json({ok:true});
     }
     return json({ok:true,...result});
     }finally{if(tracked)rubikaOperations.delete(slot);}

@@ -28,7 +28,7 @@ const inputs={
  'auth.signIn':{phone_number:'+989120000001',phone_code_hash:'fixture-hash',phone_code:'123456'},
  'auth.checkPassword2':{password_hash:Buffer.alloc(32,0xa5),phone_number:'+989120000001',phone_code:'123456'},
  'account.getPassword':{},'account.getPasswordLayer68':{},'users.getUsers':{id:[{_:'inputUserSelf'}]},'auth.logOut':{},
- 'eitaaRefreshToken':{app_info:{_:'eitaaAppInfo',build_version:2496,device_model:'BaleVPN Provider Lab (desktop)',system_version:'fixture platform',app_version:'5.2 K',lang_code:'fa',sign:''}}
+ 'eitaaRefreshToken':{app_info:{_:'eitaaAppInfo',build_version:2496,device_model:'Desktop '+crypto.createHash('sha256').update('0123456789abcde__web').digest('hex').slice(0,12),system_version:'fixture platform',app_version:'5.2 K',lang_code:'fa',sign:''}}
 };
 for(const [name,input]of Object.entries(inputs)){const official=new context.OfficialWriter();official.storeMethod(name,officialValue(input));assert.deepEqual(Buffer.from(official.getBytes()),codec.method(name,input));}
 const user={_:'user',self:true,id:123456789012345n,access_hash:-42n,first_name:'کاربر',phone:'989120000001',photo:{_:'userProfilePhotoEmpty'},status:{_:'userStatusOffline',was_online:1234}};

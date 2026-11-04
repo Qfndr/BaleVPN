@@ -1,0 +1,59 @@
+{
+  "provider": "rubika",
+  "date": "2026-11-04",
+  "scope": "Explicit read-only Android V4 DC reload; no automatic change to login, restore, registration or call behavior",
+  "primaryAndroidEvidence": {
+    "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+    "flow": [
+      "DataCenterManager.reloadDcs(auth) invokes NetworkHelper.getDCs(auth, fixedDcUrl)",
+      "NetworkHelperImpl.getDCs invokes Network.sendV4 with null input",
+      "NetworkImpl.sendV4 uses getJsonInput with both V5/V6 flags disabled",
+      "MessangerInput2 constructor retains auth directly",
+      "MessangerInput2.getJsonObject emits raw auth, numeric api_version 4, client and method getDCs",
+      "Only getJsonObjectV6 applies EncryptionHelper.encodeChars to auth"
+    ],
+    "discoveryStorage": "DataCenterManager caches GetDcsOutput and chooses default_api_urls using apiCounter; no sign-in response endpoint persistence or auth-to-DC map was identified"
+  },
+  "primaryWebEvidence": {
+    "bootstrap": "DC discovery runs before stored auth registration at bootstrap",
+    "laterReload": "The generic unencrypted transport can include existing auth during a later getDcs request",
+    "registrationRequired": "NOT_REGISTERED invokes the device-registration event; it is not treated as a DC failover result"
+  },
+  "implementation": {
+    "api": "HttpClient.discoverWithCredentials({credentials, timeout})",
+    "androidOnly": true,
+    "fixedOfficialHttpsDestination": true,
+    "redirectsRejected": true,
+    "privateOrPublicRsaKeysSent": false,
+    "phoneSent": false,
+    "futureProtectedRequestsBoundToSameAccountAndProfile": true,
+    "automaticRetriesOrRegistration": false,
+    "defaultAnonymousDiscoveryChanged": false,
+    "returnedDiagnostics": ["candidateCount", "comparedWithPrevious", "apiListEqual", "selectedServerChanged"]
+  },
+  "validation": {
+    "newOfflineTestsPassed": 5,
+    "existingHttpTestsPassed": 11,
+    "liveCredentialedDiscoveryVerified": true,
+    "dcAffinityAsFailureCauseProven": false
+  },
+  "rootControlledLiveProbe": {
+    "scope": "Retained Android test credentials; metadata reported by the root executor, without account identifiers or URLs",
+    "credentialedDiscovery": {"candidateCount": 3, "apiListEqual": false, "selectedServerChanged": true},
+    "selectedServerSelfRead": "NOT_REGISTERED",
+    "explicitExistingDeviceRegistration": {"attempts": 1, "sameAuthRsaKeysAndDeviceHash": true, "result": "INVALID_AUTH"},
+    "protectedSessionComparison": {
+      "discoveredCount": 3,
+      "attemptedCount": 3,
+      "successfulSessionReads": 0,
+      "resultCodes": ["NOT_REGISTERED", "NOT_REGISTERED", "NOT_REGISTERED"],
+      "rateLimited": false,
+      "activeRouteChangedByComparison": false
+    },
+    "noNewOtpOrSignIn": true,
+    "noLocalCredentialWrites": true,
+    "authenticationRestoredByDcReload": false,
+    "interpretation": "None of the three returned official DCs accepted the protected session read. Routing alone did not restore this retained session in the tested set; the cause of the later authentication failure remains unproven. No further registration was attempted."
+  },
+  "privacy": "No account IDs, credentials, discovered URLs, phone numbers, RSA keys or private responses"
+}

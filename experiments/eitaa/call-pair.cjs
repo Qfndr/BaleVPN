@@ -2,8 +2,9 @@
 // access hashes come from the calling account's protected target lookup.
 'use strict';
 const {CallSession,CallError}=require('./call-session.cjs'),{CallMedia}=require('./call-media.cjs'),{TargetResolver,binding}=require('./target-resolver.cjs');
+const profiles=require('./client-profile.cjs');
 const fail=reason=>{throw new CallError(reason);};
-const same=(a,b)=>a.userId===b.userId&&a.token===b.token&&a.imei===b.imei;
+const same=(a,b)=>a.userId===b.userId&&a.token===b.token&&a.imei===b.imei&&profiles.fromRecord(a)===profiles.fromRecord(b);
 class CallPair{
  #accounts;#executable;#open;#clientFactory;#resolver;#calls=new Map();#media=new Map();#records;#targets;#epoch=0;#busy=false;#phase='idle';#reason=null;#clientSlot=1;
  constructor(accounts,{executable,open,createClient,createAccountClient}={}){

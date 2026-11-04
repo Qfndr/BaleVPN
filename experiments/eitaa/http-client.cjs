@@ -1,5 +1,6 @@
 'use strict';
 const wire=require('./wire.cjs');
+const profiles=require('./client-profile.cjs');
 // Client endpoints observed in the pinned official worker; download/upload DCs
 // and caller-provided arbitrary URLs are not allowed.
 const ENDPOINTS=Object.freeze(['hasan.eitaa.ir','hosna.eitaa.com','armita.eitaa.com','majid.eitaa.com','alireza.eitaa.com','mostafa.eitaa.com','sajad.eitaa.ir','bagher.eitaa.ir','sadegh.eitaa.ir','kazem.eitaa.ir'].map(host=>'https://'+host+'/eitaa/'));
@@ -13,8 +14,8 @@ async function bounded(response){
  return Buffer.concat(chunks,sizeRead);
 }
 class Transport{
- #fetch;#server;#pending;#closed=false;
- constructor({fetchImpl=globalThis.fetch,server=ENDPOINTS[0]}={}){if(!ENDPOINTS.includes(server))throw new ApiError('invalid_server');this.#fetch=fetchImpl;this.#server=server;}
+ #fetch;#server;#pending;#closed=false;#profile;
+ constructor({fetchImpl=globalThis.fetch,server,protocolProfile='web'}={}){try{this.#profile=profiles.mode(protocolProfile);}catch{throw new ApiError('invalid_client_profile');}server??=this.#profile===profiles.ANDROID?profiles.ANDROID_ENDPOINT:ENDPOINTS[0];if(!(this.#profile===profiles.ANDROID?server===profiles.ANDROID_ENDPOINT:ENDPOINTS.includes(server)))throw new ApiError('invalid_server');this.#fetch=fetchImpl;this.#server=server;}
  assertOpen(){if(this.#closed)throw new ApiError('closed');}
  async post(body,{timeout=10000}={}){
   if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new ApiError('tls_verification_disabled');
@@ -23,7 +24,7 @@ class Transport{
   if(!(body instanceof Uint8Array)||!body.length||body.length>wire.MAX)throw new ApiError('invalid_request');
   const controller=new AbortController();this.#pending=controller;const timer=setTimeout(()=>controller.abort(),timeout);
   try{
-   const response=await this.#fetch(this.#server,{method:'POST',body,headers:{'content-type':'application/octet-stream',origin:'https://web.eitaa.com',referer:'https://web.eitaa.com/'},redirect:'error',cache:'no-store',signal:controller.signal});
+   const response=await this.#fetch(this.#server,{method:'POST',body,headers:this.#profile===profiles.ANDROID?{'content-type':'text/stream'}:{'content-type':'application/octet-stream',origin:'https://web.eitaa.com',referer:'https://web.eitaa.com/'},redirect:'error',cache:'no-store',signal:controller.signal});
    if(controller.signal.aborted||this.#closed)throw new ApiError(this.#closed?'closed':'timeout');
    if(response.status!==200){await response.body?.cancel().catch(()=>{});throw new ApiError(response.status===429?'rate_limited':'http_error',response.status);}
    const result=await bounded(response);if(controller.signal.aborted||this.#closed)throw new ApiError(this.#closed?'closed':'timeout');return result;

@@ -2,6 +2,7 @@
 // private and do not imply a working provider relay, proxy or discounted tariff.
 'use strict';
 const {CallClient}=require('./call-client.cjs'),{CallKeyExchange}=require('./call-key.cjs');
+const profiles=require('./client-profile.cjs');
 const {SignalingCipher,MAX_PAYLOAD,validateSignal}=require('./call-signaling.cjs'),codec=require('./call-wire.cjs');
 class CallError extends Error{constructor(reason){super('Eitaa call '+reason);this.reason=reason;}}
 const fail=reason=>{throw new CallError(reason);};
@@ -28,8 +29,9 @@ class CallSession{
  #context(){
   const state=this.#account.state;if(state?.provider!=='eitaa'||state.signedIn!==true||state.selfConfirmed!==true)fail('not_authenticated');
   let record;try{record=this.#account.exportSession();}catch{fail('not_authenticated');}
-  if(record?.provider!=='eitaa'||record.userId!==state.userId||typeof record.userId!=='string'||!/^\d{1,19}$/.test(record.userId)||!id(BigInt(record.userId))||typeof record.token!=='string'||!record.token||typeof record.imei!=='string'||!/^[a-z0-9]{15}__web$/.test(record.imei))fail('invalid_account_binding');
-  if(this.#binding&&(record.token!==this.#binding.token||record.imei!==this.#binding.imei||record.userId!==this.#binding.userId))fail('account_binding_changed');
+  let mode;try{mode=profiles.fromRecord(record);}catch{fail('invalid_account_binding');}
+  if(record?.provider!=='eitaa'||record.userId!==state.userId||typeof record.userId!=='string'||!/^\d{1,19}$/.test(record.userId)||!id(BigInt(record.userId))||typeof record.token!=='string'||!record.token||!profiles.validImei(record.imei,mode))fail('invalid_account_binding');
+  if(this.#binding&&(record.token!==this.#binding.token||record.imei!==this.#binding.imei||record.userId!==this.#binding.userId||mode!==profiles.fromRecord(this.#binding)))fail('account_binding_changed');
   return record;
  }
  #guard(epoch){if(epoch!==this.#epoch)fail('call_cancelled');this.#context();}
@@ -77,7 +79,7 @@ class CallSession{
   if(!Number.isInteger(pollInterval)||pollInterval!==0&&(pollInterval<1000||pollInterval>30000))fail('invalid_call_options');
   return this.#enqueue(async guard=>{
    if(this.#client)fail('call_busy');const record=this.#context();if(this.#allowed.has(record.userId))fail('invalid_call_options');
-   this.#binding={token:record.token,imei:record.imei,userId:record.userId};this.#self=record.userId;this.#client=this.#create({provider:'eitaa',token:record.token,imei:record.imei});
+   this.#binding={token:record.token,imei:record.imei,userId:record.userId,...record.profile?{profile:{...record.profile}}:{}};this.#self=record.userId;this.#client=this.#create({provider:'eitaa',token:record.token,imei:record.imei,...record.profile?{profile:{...record.profile}}:{}});
    this.#cursor=cursor(await this.#rpc('updates.getState',{},guard));this.#phase='listening';this.#reason=null;
    let next=Date.now()+pollInterval;const timerEpoch=this.#epoch;
    this.#timer=setInterval(()=>{

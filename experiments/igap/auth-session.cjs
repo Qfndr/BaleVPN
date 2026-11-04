@@ -10,11 +10,13 @@ function registrationProfile(p){
  if(p&&[undefined,'independent'].includes(p.registrationProfile)&&Number.isInteger(p.appId)&&p.appId>=1000&&p.appId<=100000)return 'independent';
  throw new RpcError('invalid_profile');
 }
-function createProfile({registrationProfile:mode='independent'}={}){if(!Object.hasOwn(REGISTRATION_PROFILES,mode))throw new RpcError('invalid_profile');return {registrationProfile:mode,appId:REGISTRATION_PROFILES[mode],appBuild:1,appVersion:'0.1.0',appName:'BaleVPN Provider Lab',platform:({win32:4,linux:5,darwin:3})[process.platform]||0,platformVersion:process.platform,device:1,deviceName:'BaleVPN Lab '+crypto.randomUUID().slice(0,8),language:1};}
+function createProfile({registrationProfile:mode='independent'}={}){if(!Object.hasOwn(REGISTRATION_PROFILES,mode))throw new RpcError('invalid_profile');return {registrationProfile:mode,appId:REGISTRATION_PROFILES[mode],appBuild:1,appVersion:'0.1.0',appName:'Desktop',platform:({win32:4,linux:5,darwin:3})[process.platform]||0,platformVersion:process.platform,device:1,deviceName:'Desktop '+crypto.randomUUID().slice(0,8),language:1};}
+function outboundLabel(value,app){return typeof value==='string'&&/balevpn/i.test(value)?app?'Desktop':'Desktop '+crypto.createHash('sha256').update(value).digest('hex').slice(0,8):value;}
 function profileFields(p,verify){
  registrationProfile(p);if(!Number.isInteger(p.platform)||p.platform<0||p.platform>6||p.device!==1||p.language!==1)throw new RpcError('invalid_profile');
  const offset=verify?2:0;
- return Buffer.concat([w.string(3+offset,p.appName,64),w.field(4+offset,p.appId,0),w.field(5+offset,w.uint(p.appBuild,0xffffffffn),0),w.string(6+offset,p.appVersion,64),w.field(7+offset,p.platform,0),w.string(8+offset,p.platformVersion,64),w.field(9+offset,p.device,0),w.string(10+offset,p.deviceName,64),w.field(11+offset,p.language,0)]);
+ w.string(3+offset,p.appName,64);w.string(10+offset,p.deviceName,64); // Validate retained values before masking display metadata.
+ return Buffer.concat([w.string(3+offset,outboundLabel(p.appName,true),64),w.field(4+offset,p.appId,0),w.field(5+offset,w.uint(p.appBuild,0xffffffffn),0),w.string(6+offset,p.appVersion,64),w.field(7+offset,p.platform,0),w.string(8+offset,p.platformVersion,64),w.field(9+offset,p.device,0),w.string(10+offset,outboundLabel(p.deviceName,false),64),w.field(11+offset,p.language,0)]);
 }
 class AuthSession{
  #connect;#rpc;#loggedRpc;#needsProfile=false;#profile;#stage='idle';#busy=false;#pending;#deliveryMethod=null;#token;#userId;#phone='';#retryAt=0;#error=null;#hint='';#onPush;#epoch=0;

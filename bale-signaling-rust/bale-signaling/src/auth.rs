@@ -34,7 +34,7 @@ const AUTH_APP_ID:       i32  = 4;
 const AUTH_API_KEY:      &str = "C28D46DC4C3A7A26564BFCC48B929086A95C93C98E789A19847BEE8627DE4E7D";
 const SENDCODE_DEFAULT:  i32  = 1;
 const DEFAULT_LANGUAGE:  &str = "fa";
-const CLIENT_LABEL:      &str = "BaleVPN";
+const CLIENT_LABEL:      &str = "Client";
 
 /// Outcome of `start_phone_auth`.
 #[derive(Debug, Clone)]
@@ -122,7 +122,8 @@ impl BaleAuth {
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let uuid = format!("{}-{}-{}-{}-{}", &hex[..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..]);
-        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), device_label: CLIENT_LABEL.into(), device_override:std::sync::Mutex::new(None), completed: tokio::sync::Mutex::new(None), login_phone: std::sync::Mutex::new(None) }
+        let device_label=format!("{CLIENT_LABEL} {}", &uuid[..8]);
+        Self { http, jar, endpoint: format!("https://{AUTH_HOST}"), device_hash: uuid.into_bytes(), device_label, device_override:std::sync::Mutex::new(None), completed: tokio::sync::Mutex::new(None), login_phone: std::sync::Mutex::new(None) }
     }
     /// Reuse the account installation identity on restart and session import.
     /// This does not create or refresh a server session.
@@ -319,10 +320,13 @@ fn encode_start_phone_auth(phone: i64, device_hash: &[u8]) -> Vec<u8> {
     encode_start_phone_auth_named(phone, device_hash, CLIENT_LABEL)
 }
 fn encode_start_phone_auth_named(phone: i64, device_hash: &[u8], label: &str) -> Vec<u8> {
+    let label = if label.to_ascii_lowercase().contains("balevpn") {
+        std::borrow::Cow::Owned(format!("Client {}",device_hash.iter().take(8).map(|b|format!("{b:02x}")).collect::<String>()))
+    } else { std::borrow::Cow::Borrowed(label) };
     // Official web client: DEFAULT delivery lets Bale choose the channel;
     // packed field 10 advertises Telegram Gateway (0) and six-digit OTP (1).
     ProtoWriter::new().int64(1, phone).int32(2, AUTH_APP_ID)
-        .string(3, AUTH_API_KEY).bytes(4, device_hash).string(5, label)
+        .string(3, AUTH_API_KEY).bytes(4, device_hash).string(5, &label)
         .string(7, DEFAULT_LANGUAGE).int32(9, SENDCODE_DEFAULT)
         .bytes(10, &[0, 1]).build()
 }
@@ -392,6 +396,20 @@ fn extract_access_token_from_cookie_header(header: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn legacy_project_label_does_not_leave_in_auth_metadata() {
+        let hash=b"01234567-89ab-4cde-8123-0123456789ab";
+        let payload=encode_start_phone_auth_named(0,hash,"BaleVPN legacy desktop");
+        let mut reader=ProtoReader::new(&payload);let mut sent_hash=None;let mut sent_label=None;
+        while reader.has_more(){let (field,wire)=reader.tag().unwrap();match field {
+            4=>sent_hash=Some(reader.bytes().unwrap().to_vec()),
+            5=>sent_label=Some(String::from_utf8(reader.bytes().unwrap().to_vec()).unwrap()),
+            _=>reader.skip(wire).unwrap(),
+        }}
+        assert_eq!(sent_hash.as_deref(),Some(hash.as_slice()));
+        let label=sent_label.unwrap();assert!(label.starts_with("Client ")&&!label.to_ascii_lowercase().contains("vpn"));
+        assert_eq!(payload,encode_start_phone_auth_named(0,hash,"BaleVPN legacy desktop"));
+    }
     #[tokio::test]
     #[ignore = "Live Bale health check; sends only invalid phone 0, never a real number"]
     async fn live_auth_endpoint_rejects_invalid_phone() {

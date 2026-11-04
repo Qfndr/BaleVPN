@@ -175,3 +175,50 @@ unimplemented and is explicitly rejected rather than downgraded. This must be
 completed if the live service requires it. The browser exercises the actual
 Eitaa controller with a synthetic account client, not a real account. A separate
 real AccountClient/wire/vault fixture verifies disk restore without another OTP.
+
+## Explicit experimental Android HTTPS login profile
+
+The lab now offers `android-7.1.8-compat` only before a new login in an empty
+Eitaa slot. Web remains the default; selecting a profile sends no request and
+never converts a retained Web session. Use a separate empty slot or isolated
+lab data directory for this experiment. Existing records and recovery entries
+keep their original token, device ID and profile.
+
+The pinned APK uses public app ID 1782360, a persistent random UUID, and an
+HTTPS wrapper with layer 138 and **BuildVars build 2637**, distinct from manifest
+versionCode 26379. Account, call and privacy clients retain that same profile.
+Desktop metadata remains truthful. See [primary evidence and limitations](android-profile-evidence-2026-11-04.json).
+
+This profile has offline wire, save/restore, cancellation, privacy and UI tests.
+Subsequent live tests coordinated by the parent verified login and self identity
+for two Android-profile accounts. A single corrected APK2637 HTTPS DH request
+still returned `INVALID_CONSTRUCTOR`; live calls remain unverified. Explicit Android token refresh is
+blocked before network I/O until its metadata flow is implemented. The actual
+Android VoIP path uses native transport; an HTTPS login alone cannot prove it
+will carry calls. No raw native socket credentials are transmitted.
+
+An already strictly validated, exact 56-byte opaque authorization appendix is
+now retained only inside the encrypted session record for future investigation.
+Its meaning remains unknown. It is never used for authentication or exposed in
+public state; the Android token-update socket field is a separate schema field.
+Legacy records without the appendix remain unchanged. This cannot reconstruct
+appendices discarded by older versions.
+
+The pinned APK also defines a parameterless HTTPS `TL_getSocketToken`
+(1653816932). The Android-only private client now supports this explicit
+operation, without fabricating `AppInfo.sign` or refreshing handset metadata.
+Its typed response can rotate the main HTTP token and supplies a separate
+socket credential; both are sealed before another self read. Profile, UUID,
+account and HTTP-token binding are validated on restore. Raw server date and
+expiry fields are retained without guessing their semantics.
+
+This operation is not automatic and has no public HTTP/UI route. The private
+AuthSession method requires a separate encrypted recovery saver because an
+undecodable or semantically unusable reply might already have rotated the main token. It retains only
+one bounded purpose-specific response and never sends either credential over
+the unverified native socket route. See [primary evidence and failure policy](socket-credential-evidence-2026-11-04.json).
+
+An opted-in direct private AccountClient caller receives the non-enumerable
+`SOCKET_RECOVERY_FRAME` on both successful replies and errors. It owns that
+buffer and must seal or acknowledge it, then zero it in `finally`. AuthSession
+performs this cleanup on healthy, rejected and failed-persistence paths.

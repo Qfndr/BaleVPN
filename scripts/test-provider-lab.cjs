@@ -7,6 +7,17 @@ async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,eitaaN
  try{await fn({lab,request,dir,calls,key,eitaaHarness});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
 
+test('every provider blocks a new login over an unloaded encrypted session without any account request or file replacement',()=>fixture(async({request,calls,dir})=>{
+ const {SessionVault}=require('../experiments/providers/session-vault.cjs'),seed=new SessionVault(dir),providers=['igap','nasim','rubika','eitaa'],password='fixture-retained-session-passphrase',originals=new Map();
+ try{await seed.unlock(password);for(const provider of providers){const record={provider,token:'fixture-retained-private-'+provider,fixture:'unloaded-session'};await seed.save(provider,1,record);const disk=await fs.readFile(path.join(dir,provider,'1.json'),'utf8');assert.ok(!disk.includes(record.token));originals.set(provider,{record,disk});}}finally{seed.lock();}
+ for(const provider of providers)assert.equal((await request('/api/'+provider+'/1/start',{country:'IR',phone:'09120000001'})).status,423);
+ assert.equal(calls.length,0);await request('/api/vault/unlock',{password});const state=await(await request('/api/state')).json();
+ for(const provider of providers){const account=provider==='igap'?state.accounts[0]:state.providerAccounts[provider][0];assert.equal(account.hasSession,false);assert.equal(account.stored,true);
+  const result=await request('/api/'+provider+'/1/start',{country:'IR',phone:'09120000001',...provider==='eitaa'?{protocolProfile:'android-7.1.8-compat'}:provider==='rubika'?{protocolProfile:'android-4.1.1-compat'}:{}});assert.equal(result.status,400);assert.equal((await result.json()).reason,'already_signed_in');assert.equal(calls.length,0);assert.equal(await fs.readFile(path.join(dir,provider,'1.json'),'utf8'),originals.get(provider).disk);
+ }
+ await request('/api/vault/lock',{});try{await seed.unlock(password);for(const provider of providers)assert.deepEqual(await seed.load(provider,1),originals.get(provider).record);}finally{seed.lock();}
+}));
+
 test('two Eitaa HTTP accounts distinguish bare acknowledgement, handle password and restore sealed identities without another login',()=>fixture(async({request,calls,dir})=>{
  assert.equal((await request('/api/eitaa/1/start',{country:'IR',phone:'09120000001'})).status,423);assert.equal(calls.length,0);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
@@ -18,6 +29,8 @@ test('two Eitaa HTTP accounts distinguish bare acknowledgement, handle password 
  const publicState=JSON.stringify(state);for(const secret of ['fixture-eitaa-token','fixture-eitaa-code-hash','fixture-password','+989120000001','"imei"'])assert.ok(!publicState.includes(secret));
  for(const slot of [1,2]){const disk=await fs.readFile(path.join(dir,'eitaa',slot+'.json'),'utf8');assert.ok(!disk.includes('fixture-eitaa-token'));}
  await request('/api/vault/lock',{});state=await(await request('/api/state')).json();assert.ok(state.providerAccounts.eitaa.every(a=>!a.hasSession&&a.stored));await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ const storedBefore=await fs.readFile(path.join(dir,'eitaa','1.json'),'utf8'),callsBefore=calls.length;
+ assert.equal((await(await request('/api/eitaa/1/start',{country:'IR',phone:'09120000001',protocolProfile:'android-7.1.8-compat'})).json()).reason,'already_signed_in');assert.equal(calls.length,callsBefore);assert.equal(await fs.readFile(path.join(dir,'eitaa','1.json'),'utf8'),storedBefore);
  for(const slot of [1,2])assert.equal((await request('/api/eitaa/'+slot+'/resume',{})).status,200);
  assert.equal(calls.filter(c=>c.action==='eitaa-auth.sendCode').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-auth.signIn').length,2);assert.equal(calls.filter(c=>c.action==='eitaa-users.getUsers').length,4);
  await request('/api/eitaa/1/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.eitaa[0].stored,false);assert.equal(state.providerAccounts.eitaa[1].signedIn,true);

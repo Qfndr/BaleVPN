@@ -4,6 +4,7 @@
 const crypto=require('node:crypto'),wire=require('./wire.cjs'),codec=require('./call-wire.cjs');
 const {Transport,ApiError}=require('./http-client.cjs');
 const {serviceError}=require('./account-client.cjs');
+const profiles=require('./client-profile.cjs'),{apkEnvelope}=require('./android-envelope.cjs');
 const FIELDS={
  'messages.getDhConfig':[],'phone.getCallConfig':[],'updates.getState':[],
  'phone.requestCall':['user_id','g_a_hash'],
@@ -45,14 +46,15 @@ function input(name,value){
  return value;
 }
 class CallClient{
- #transport;#imei;#token;
- constructor({imei,token,provider='eitaa',...options}={}){
-  if(provider!=='eitaa'||typeof imei!=='string'||!/^[a-z0-9]{15}__web$/.test(imei)||!text(token))throw new ApiError('invalid_credentials');
-  this.#transport=new Transport(options);this.#imei=imei;this.#token=token;
+ #transport;#imei;#token;#profile;#mode;
+ constructor({imei,token,provider='eitaa',profile,...options}={}){
+  let mode;try{mode=profiles.fromProfile(profile);}catch{throw new ApiError('invalid_credentials');}
+  if(provider!=='eitaa'||!profiles.validImei(imei,mode)||!text(token))throw new ApiError('invalid_credentials');
+  this.#mode=mode;this.#profile=profile?{...profile}:undefined;this.#transport=new Transport({...options,protocolProfile:mode});this.#imei=imei;this.#token=token;
  }
  async request(name,value={},options={}){
   this.#transport.assertOpen();const packed=codec.method(name,input(name,value));
-  const body=wire.envelope(packed,{imei:this.#imei,token:this.#token});
+  const body=this.#mode===profiles.ANDROID?apkEnvelope(packed,{record:{provider:'eitaa',imei:this.#imei,token:this.#token,profile:this.#profile}}):wire.envelope(packed,{imei:this.#imei,token:this.#token});
   let result=codec.response(await this.#transport.post(body,options),name);this.#transport.assertOpen();
   if(result?._==='rpc_result')result=result.result;
   if(['error','eitta_error'].includes(result?._))throw serviceError(result);

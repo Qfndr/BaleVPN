@@ -40,7 +40,27 @@ test('recovery of an observed flag-10 appendix uses only the original token and 
  const record=recovery(),prefix=codec.object(authorization);prefix.writeUInt32LE(1024,4);const opaque='X'.repeat(56);
  record.frame=Buffer.concat([prefix,new wire.Writer().bytes(Buffer.from(opaque)).finish()]).toString('base64');let saved;
  const f=fake({saveSession:async value=>{saved=structuredClone(value);}});await f.session.recoverAuthorization(record);
- assert.deepEqual(f.calls,['users.getUsers']);assert.equal(saved.token,authorization.token);assert.ok(!JSON.stringify(saved).includes(opaque));assert.ok(!JSON.stringify(f.session.state).includes(opaque));assert.equal(f.session.state.selfConfirmed,true);f.session.close();
+ assert.deepEqual(f.calls,['users.getUsers']);assert.equal(saved.token,authorization.token);assert.deepEqual(saved.authorizationAppendix,{format:'eitaa-auth-appendix-v1',constructorId:3439659286,flags:1024,value:opaque});assert.ok(!JSON.stringify(f.session.state).includes(opaque));assert.equal(f.session.state.selfConfirmed,true);
+ const exported=f.session.exportSession();exported.authorizationAppendix.value='Y'.repeat(56);assert.equal(f.session.exportSession().authorizationAppendix.value,opaque);f.session.close();
+ const restored=fake();await restored.session.restore(saved);assert.deepEqual(restored.calls,['users.getUsers']);assert.deepEqual(restored.session.exportSession().authorizationAppendix,saved.authorizationAppendix);assert.ok(!JSON.stringify(restored.session.state).includes(opaque));restored.session.close();
+ for(const change of [{value:'X'.repeat(55)},{value:'X'.repeat(55)+'='},{flags:0},{constructorId:0},{format:'socket-token'},{extra:'bad'}]){const invalid=fake();await assert.rejects(invalid.session.restore({...saved,authorizationAppendix:{...saved.authorizationAppendix,...change}}),{reason:'invalid_saved_session'});assert.deepEqual(invalid.calls,[]);invalid.session.close();}
+});
+
+test('only exact observed appendix shape is privately archived and public wire JSON excludes it',()=>{
+ for(const length of [55,56,57]){const prefix=codec.object(authorization);prefix.writeUInt32LE(1024,4);const opaque='Z'.repeat(length),frame=Buffer.concat([prefix,new wire.Writer().bytes(Buffer.from(opaque)).finish()]);
+  const result=codec.response(frame,'auth.signIn');assert.equal(!!result[codec.AUTHORIZATION_APPENDIX],length===56);assert.ok(!JSON.stringify(result,(_,v)=>typeof v==='bigint'?String(v):v).includes(opaque));
+  if(length===56)assert.equal(Object.getOwnPropertyDescriptor(result,codec.AUTHORIZATION_APPENDIX).enumerable,false);
+ }
+});
+
+test('minimal authorization appendix round-trips inside encrypted session storage without plaintext disk fields',async()=>{
+ const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{SessionVault}=require('../experiments/providers/session-vault.cjs');
+ const base=path.resolve(os.tmpdir()),dir=await fs.mkdtemp(path.join(base,'eitaa-appendix-fixture-'));assert.match(dir,/^E:[\\/]/i);const vault=new SessionVault(dir);
+ try{await vault.unlock('fixture-appendix-passphrase');const prefix=codec.object(authorization);prefix.writeUInt32LE(1024,4);const opaque='Q'.repeat(56),record=recovery();record.frame=Buffer.concat([prefix,new wire.Writer().bytes(Buffer.from(opaque)).finish()]).toString('base64');
+  const f=fake({saveSession:value=>vault.save('eitaa',1,value)});await f.session.recoverAuthorization(record);f.session.close();
+  const disk=await fs.readFile(path.join(dir,'eitaa','1.json'),'utf8');for(const secret of [opaque,authorization.token,'authorizationAppendix'])assert.ok(!disk.includes(secret));
+  vault.lock();await vault.unlock('fixture-appendix-passphrase');const saved=await vault.load('eitaa',1),restored=fake();await restored.session.restore(saved);assert.equal(restored.session.exportSession().authorizationAppendix.value,opaque);assert.deepEqual(restored.calls,['users.getUsers']);assert.ok(!JSON.stringify(restored.session.state).includes(opaque));restored.session.close();
+ }finally{vault.lock();const resolved=path.resolve(dir);if(!resolved.startsWith(base+path.sep)||!path.basename(resolved).startsWith('eitaa-appendix-fixture-'))throw Error('Unexpected cleanup target');await fs.rm(resolved,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 });
 
 test('invalid or stale recovery metadata cannot issue any request',async()=>{

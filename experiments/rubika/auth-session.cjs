@@ -21,7 +21,7 @@ class AuthSession {
   catch(e){const safe=e instanceof ApiError?e:new ApiError('invalid_auth_response');if(epoch===this.#epoch){
    this.#error={reason:safe.reason,...safe.statusCode?{statusCode:safe.statusCode}:{},...safe.serviceCode?{serviceCode:safe.serviceCode}:{}};
    if(safe.reason==='rate_limited')this.#retryAt=Math.max(this.#retryAt,Date.now()+60000);
-   if(safe.reason==='not_authorized'){this.#signed=false;this.#selfConfirmed=false;}
+   if(['not_authorized','registration_required'].includes(safe.reason)){this.#signed=false;this.#selfConfirmed=false;if(safe.reason==='registration_required'&&this.#record){this.#record.registration='required';this.#stage='device_required';}}
   }throw safe;}finally{if(epoch===this.#epoch)this.#busy=false;}
  }
  async #transport(guard){
@@ -59,7 +59,8 @@ class AuthSession {
     !/^\+[1-9]\d{6,14}$/.test(internationalNumber)||country==='IR'&&!/^9\d{9}$/.test(nationalNumber))throw new ApiError('invalid_phone');
    this.#pending={phone:internationalNumber.slice(1),hash:null};this.#phone=internationalNumber;this.#identity=null;this.#hint='';this.#count=0;this.#delivery=null;
    this.#client?.close();this.#client=null;this.#discovered=false;
-   this.#profile={protocolProfile,deviceHash:crypto.randomBytes(16).toString('hex'),deviceModel:'BaleVPN Provider Lab (desktop)',systemVersion:clean(os.platform()+' '+os.release()+' '+os.arch(),128)};
+   const deviceHash=crypto.randomBytes(16).toString('hex');
+   this.#profile={protocolProfile,deviceHash,deviceModel:'Desktop '+deviceHash.slice(0,12),systemVersion:clean(os.platform()+' '+os.release()+' '+os.arch(),128)};
    await this.#transport(guard);guard();this.#retryAt=Date.now()+60000;
    return this.#result(await this.#request('sendCode',{phone_number:this.#pending.phone,send_type:'SMS'},guard));
   });

@@ -1,0 +1,67 @@
+{
+  "provider": "rubika",
+  "date": "2026-11-04",
+  "scope": "Static review of retained-credential lifecycle; not proof of the cause of later live NOT_REGISTERED responses",
+  "primaryAndroid": {
+    "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+    "signInOutputFields": ["auth", "status", "timeStamp", "user"],
+    "signInSuccess": "LoginUtils$2.onResponse decrypts auth with retained RSA private key, calls KeyValueStorageHelper.setAuth, then onSwitchToV6Success",
+    "fullAuthWrapperAudit": {
+      "officialActiveSessionEvidence": "The user reports both Lab desktop sessions remain present in the official application's active-session list. Later NOT_REGISTERED responses therefore do not establish that the sessions were globally revoked.",
+      "signInFlowOffsets": "LoginUtils$2.onResponse: SignInOutput.auth at 84, CoreEncryptionHelper.decryptRSA at 94, KeyValueStorageHelper.setAuth at 113; no intervening encodeChars call",
+      "coreDecryptWrapper": "CoreEncryptionHelperImpl.decryptRSA directly delegates to EncryptionHelper.decryptRSA in a five-code-unit method",
+      "authStorage": "KeyValueStorageHelper.setAuth writes the same input to its instance cache and auth1; getAuth returns that cache or getString(auth1) unchanged. Concrete KeyValueStorageImpl directly delegates to SharedPreferences getString and edit.putString.apply.",
+      "authForwarder": "CoreMainClassImpl.getAuth directly forwards KeyValueStorageHelper.getAuth; onAuthSuccess(Z) has no auth string argument or auth rewrite",
+      "requestConstruction": "NetworkImpl.getJsonInput constructs MessangerInput2 with the supplied auth at offset 4; makeDataV5 uses raw auth for encryptAuth at offset 89. getJsonObjectV6 transforms only outer auth at 16 and signs the existing data_enc at 31.",
+      "privateKeyRepresentation": "CoreEncryptionHelperImpl.toPrivate decodes the obfuscated serialized private-key representation. This is storage representation decoding, not a post-decryption auth-token transform; the Lab retains its own PEM identity.",
+      "hiddenAuthNormalizationFound": false,
+      "transformVariantsTriedLive": false,
+      "sourceArtifacts": ["auth-storage-wrapper-references-2026-11-04.json", "auth-underlying-storage-references-2026-11-04.json", "auth-storage-chain-summary-2026-11-04.json", "core-crypto-lifecycle-references-2026-11-04.json", "network-authscope-references-2026-11-04.json", "auth-clientprofile-references-2026-11-04.json"],
+      "limitation": "Static bounded method references and the official active-session report do not yet identify why the retained credential context is rejected by protected methods. No credential mutation or alternate live encoding is justified by this audit."
+    },
+    "registerDeviceOutputDeclaredFields": [],
+    "firebaseFallback": {
+      "primaryFailureCallback": "PushNotificationImpl.lambda$getToken$0 sets empty token and Firebase type, then calls LoadListener.onDidLoad",
+      "registrationCaller": "CoreMainClassImpl$5.onDidLoad passes the returned token and tokenType to LoginUtils.registerDevice",
+      "mandatoryNonemptyFirebaseTokenProven": false,
+      "registrationAcknowledgement": "LoginUtils$19 reads no RegisterDeviceOutput fields; it stores last token/version/ads ID and notifies its listener with Integer 1"
+    },
+    "cryptoComparison": {
+      "authDecrypt": "RSA/NONE/OAEPPadding then Base64.DEFAULT decode and UTF-8-compatible auth text; no post-decrypt encodeChars",
+      "signature": "SHA256withRSA over exact UTF-8 data_enc including Base64.DEFAULT line feeds",
+      "publicKey": "SPKI DER DEFAULT Base64 is transformed in toString and transformed again in toPemString; the two inner transforms cancel, followed by LoginUtils outer transform",
+      "officialApkRsaGenerationBits": 1024,
+      "implementationRsaGenerationBits": 2048,
+      "weakenedToMatchLegacyKeySize": false,
+      "keySizeAsLaterFailureCauseProven": false
+    },
+    "genericResponseAuthRotation": "No replacement-auth field or handler identified in the reviewed MessangerOutput/NetworkImpl response paths",
+    "reviewedResponseHeaders": ["content-type", "total_length"],
+    "protectedSessionsMethod": {
+      "name": "getMySessions",
+      "input": {},
+      "transport": "NetworkHelperImpl.getMySessions -> Network.sendV5OrV6",
+      "outputFields": ["active_session", "other_sessions", "can_remove_all"],
+      "privacy": "SessionObject contains opaque keys, IP, location and device data; do not log or expose raw results"
+    }
+  },
+  "primaryWeb": {
+    "bundleSha256": "47b302b9166ed8c9138f9d959e9107c53dcb78c9447f8281715f657b68080acb",
+    "responseHandling": "Reviewed generic HTTP handling decrypts bodies without reading replacement auth from response headers",
+    "registration": "registerDevice response content is ignored; local registration/version flags are updated",
+    "authAssignments": "Sign-in and retained-auth restoration; no mandatory per-response auth rotation identified",
+    "keyUpgrade": "setPublicKey is conditional on a missing retained private key, not required for an already retained RSA identity",
+    "socketHeartbeat": "Empty JSON object; no auth rotation handler identified in reviewed push handling",
+    "unconfirmedSessions": "Explicit Confirm/Deny UI exists, but there is no evidence that the test sessions were denied"
+  },
+  "stateCorrection": {
+    "behavior": "An explicit registration_required result clears stale signedIn/connected/selfConfirmed flags and marks the retained record device_required without replacing auth, RSA keys or device metadata",
+    "scopeLimit": "resume already clears its flags before confirmation. An external diagnostic client's failure cannot automatically update a separate running panel's in-memory account state",
+    "noImplicitRegistrationOrLogin": true,
+    "methodSpecificAccessDenialIsNotGlobalRevocation": true,
+    "newRegressionTestsPassed": 2
+  },
+  "rootCauseOfLaterLiveCredentialFailureProven": false,
+  "newLiveActionsPerformedForThisAudit": false,
+  "privacy": "No account IDs, phone numbers, auth tokens, session keys, RSA keys or live private response content"
+}

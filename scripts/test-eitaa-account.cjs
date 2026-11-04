@@ -127,6 +127,17 @@ test('two accounts keep stable independent tokens/devices and restore self reads
  assert.deepEqual(calls.map(c=>[c.imei,c.token]),[[imei,'fixture-token-a'],['fedcba987654321__web','fixture-token-b']]);for(const c of calls)assert.deepEqual(c.payload,codec.method('users.getUsers',{id:[{_:'inputUserSelf'}]}));
  await assert.rejects(a.request('auth.sendCode',{phone_number:phone}),{reason:'already_signed_in'});assert.equal(calls.length,2);a.close();b.close();
 });
+
+test('Web refresh advertises a stable neutral label only for the known legacy brand while preserving retained identity and metadata',async()=>{
+ for(const deviceModel of ['BaleVPN Provider Lab (desktop)','Desktop 0123456789ab']){
+  const profile=Object.freeze({deviceModel,systemVersion:'fixture platform'}),retained=Object.freeze({provider:'eitaa',imei,profile,token:'fixture-retained-token'}),snapshot=JSON.stringify(retained),calls=[],expectedModel=deviceModel.startsWith('BaleVPN ')?'Desktop '+crypto.createHash('sha256').update(imei).digest('hex').slice(0,12):deviceModel;
+  const client=new AccountClient({...retained,fetchImpl:async(_url,o)=>{calls.push(unpack(o.body));return new Response(codec.object({_:'eitaa_updates_token',token:'fixture-retained-token',expire:123,date:100}));}});
+  try{await client.request('eitaaRefreshToken');await client.request('eitaaRefreshToken');assert.equal(JSON.stringify(retained),snapshot);assert.equal(calls.length,2);
+   for(const request of calls){assert.equal(request.imei,imei);assert.equal(request.token,'fixture-retained-token');assert.deepEqual(request.payload,codec.method('eitaaRefreshToken',{app_info:{_:'eitaaAppInfo',build_version:2496,device_model:expectedModel,system_version:profile.systemVersion,app_version:'5.2 K',lang_code:'fa',sign:''}}));assert.equal(request.payload.includes(Buffer.from('BaleVPN')),false);assert.equal(request.payload.includes(Buffer.from('VPN')),false);}
+   assert.deepEqual(calls[0].payload,calls[1].payload);
+  }finally{client.close();}
+ }
+});
 test('only known service error metadata escapes; token expiry never silently refreshes or retries',async()=>{
  for(const [value,expected]of [[{_:'eitta_error',code:401,text:'SESSION_PASSWORD_NEEDED'},{reason:'service_rejected',serviceCode:'SESSION_PASSWORD_NEEDED'}],[{_:'error',code:400,text:'FLOOD_WAIT_123'},{reason:'rate_limited',waitSeconds:123}],[{_:'error',code:400,text:'raw-secret-token-phone'},{reason:'service_rejected'}],[{_:'eitaa_updates_expire_token'},{reason:'session_refresh_required'}]]){
   let count=0;const client=new AccountClient({imei,token:'fixture-token',fetchImpl:async()=>{count++;return new Response(codec.object(value));}});await assert.rejects(client.request('users.getUsers'),e=>{for(const[k,v]of Object.entries(expected))assert.equal(e[k],v);assert.ok(!JSON.stringify(e).includes('raw-secret'));assert.ok(!e.message.includes('raw-secret'));return true;});assert.equal(count,1);client.close();

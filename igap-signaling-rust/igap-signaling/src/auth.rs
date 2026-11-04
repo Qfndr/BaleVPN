@@ -3,6 +3,7 @@
 use crate::wire;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt;
 use zeroize::Zeroize;
 
@@ -67,11 +68,11 @@ impl Profile {
             },
             app_build: 1,
             app_version: "0.1.0".into(),
-            app_name: "BaleVPN Provider Lab".into(),
+            app_name: "Desktop".into(),
             platform,
             platform_version: platform_version.into(),
             device: 1,
-            device_name: format!("BaleVPN Lab {device_suffix}"),
+            device_name: format!("Desktop {device_suffix}"),
             language: 1,
         }
     }
@@ -263,11 +264,27 @@ pub fn register_fields(
     );
     Ok(output)
 }
+fn outbound_label(value: &str, app: bool) -> std::borrow::Cow<'_, str> {
+    if !value.to_ascii_lowercase().contains("balevpn") {
+        return std::borrow::Cow::Borrowed(value);
+    }
+    if app {
+        return std::borrow::Cow::Borrowed("Desktop");
+    }
+    let suffix = Sha256::digest(value.as_bytes())
+        .iter()
+        .take(4)
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    std::borrow::Cow::Owned(format!("Desktop {suffix}"))
+}
 pub fn profile_fields(profile: &Profile, verify: bool) -> Result<Vec<u8>, AuthError> {
     profile.validate()?;
     let offset = if verify { 2 } else { 0 };
-    let mut out = wire::string_field(3 + offset, &profile.app_name, 64)
-        .map_err(|_| AuthError::InvalidProfile)?;
+    let app_name = outbound_label(&profile.app_name, true);
+    let device_name = outbound_label(&profile.device_name, false);
+    let mut out =
+        wire::string_field(3 + offset, &app_name, 64).map_err(|_| AuthError::InvalidProfile)?;
     out.extend(
         wire::uint_field(4 + offset, profile.app_id as u64)
             .map_err(|_| AuthError::InvalidProfile)?,
@@ -293,8 +310,7 @@ pub fn profile_fields(profile: &Profile, verify: bool) -> Result<Vec<u8>, AuthEr
             .map_err(|_| AuthError::InvalidProfile)?,
     );
     out.extend(
-        wire::string_field(10 + offset, &profile.device_name, 64)
-            .map_err(|_| AuthError::InvalidProfile)?,
+        wire::string_field(10 + offset, &device_name, 64).map_err(|_| AuthError::InvalidProfile)?,
     );
     out.extend(
         wire::uint_field(11 + offset, profile.language as u64)
@@ -424,6 +440,22 @@ mod tests {
         }
     }
     #[test]
+    fn retained_project_labels_are_neutral_only_in_outbound_display_fields() {
+        let mut profile = Profile::new(RegistrationProfile::WebV3Compatibility);
+        profile.app_name = "BaleVPN Provider Lab".into();
+        profile.device_name = "BaleVPN Lab ab123456".into();
+        let retained = serde_json::to_vec(&profile).unwrap();
+        let packed = profile_fields(&profile, false).unwrap();
+        let fields = wire::parse(&packed).unwrap();
+        assert_eq!(wire::text(&fields, 3, 64).unwrap(), "Desktop");
+        let name = wire::text(&fields, 10, 64).unwrap();
+        assert!(name.starts_with("Desktop ") && !name.to_ascii_lowercase().contains("vpn"));
+        assert_eq!(wire::number(&fields, 4, u64::MAX).unwrap(), 1);
+        assert_eq!(wire::number(&fields, 9, u64::MAX).unwrap(), 1);
+        assert_eq!(packed, profile_fields(&profile, false).unwrap());
+        assert_eq!(serde_json::to_vec(&profile).unwrap(), retained);
+    }
+    #[test]
     fn registration_profiles_are_explicit_honest_and_legacy_ids_are_retained() {
         let independent = Profile::default();
         assert_eq!(independent.app_id, 67291);
@@ -446,7 +478,7 @@ mod tests {
         );
         let compatibility = Profile::new(RegistrationProfile::WebV3Compatibility);
         assert_eq!(compatibility.app_id, 1);
-        assert_eq!(compatibility.app_name, "BaleVPN Provider Lab");
+        assert_eq!(compatibility.app_name, "Desktop");
         assert_eq!(compatibility.app_version, "0.1.0");
         let mut legacy = independent.clone();
         legacy.registration_profile = None;

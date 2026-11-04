@@ -1,0 +1,140 @@
+{
+  "scope": "Explicit read-only alternative Android request envelope; no auth or call mutation and no change to saved Web sessions",
+  "apkSha256": "9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb",
+  "apkVersion": "7.1.8",
+  "primaryClasses": [
+    "org.eitaa.messenger.voip.VoIPService.startOutgoingCall and acceptIncomingCall",
+    "org.eitaa.tgnet.TLRPC$TL_messages_getDhConfig.serializeToStream",
+    "org.eitaa.tgnet.TLRPC$TL_clientRequestAPK.serializeToStream and encoded static constructor",
+    "org.eitaa.tgnet.ConnectionsManager.lambda$sendMessagesToTransport$30",
+    "org.eitaa.tgnet.http.HelperHttp.send and static TEXT MediaType",
+    "org.eitaa.tgnet.DataCenter.getGenericConnection"
+  ],
+  "method": {
+    "name": "messages.getDhConfig",
+    "constructorId": 651135312,
+    "version": 0,
+    "random_length": 256
+  },
+  "androidEnvelope": {
+    "constructorId": 2059302894,
+    "fieldOrder": [
+      "token",
+      "imei",
+      "flags",
+      "packed_data",
+      "layer",
+      "buildVersion",
+      "lang"
+    ],
+    "layer": 138,
+    "buildVersion": 2637
+  },
+  "flags": {
+    "wifi": 2,
+    "mobileData": 4,
+    "paused": 8,
+    "background": 16,
+    "english": 128,
+    "arabic": 64,
+    "otherLanguage": 32
+  },
+  "webEnvelopePreserved": {
+    "constructorId": 2059302893,
+    "fieldOrder": [
+      "token",
+      "imei",
+      "packed_data",
+      "layer",
+      "flags"
+    ],
+    "layer": 135,
+    "flags": 128
+  },
+  "endpoint": "https://armita.eitaa.com/eitaa/index.php",
+  "contentType": "text/stream",
+  "transportBoundaries": {
+    "tlsVerificationRequired": true,
+    "redirects": false,
+    "automaticRetries": false,
+    "responseLimitBytes": 65536,
+    "maximumTimeoutMs": 30000
+  },
+  "sessionBoundaries": "Retain exact supplied token and IMEI; never log in, register, relabel device metadata, refresh, persist, forget or revoke",
+  "cryptographicBoundary": "Probe validates only TL structure; existing CallKeyExchange safe-prime and public-key validation remains mandatory before actual calls",
+  "officialVoiceCallReportedSuccessfulByUser": true,
+  "liveApkEnvelopeDhVerified": false,
+  "liveApkEnvelopeDhTrial": {
+    "requests": 1,
+    "authenticatedSessionRetained": true,
+    "result": "service_rejected",
+    "statusCode": 404,
+    "serviceCode": "INVALID_CONSTRUCTOR",
+    "callIssued": false,
+    "otpRequested": false,
+    "buildVersionUsed": 26379,
+    "limitation": "This earlier trial used AndroidManifest versionCode26379; later primaryBuildVars inspection corrected the actual wrapper buildVersion to2637. It does not test the corrected APKframe."
+  },
+  "nativeCallRoute": "DEX sendRequestInternal tests connectionType & 64; VoIP getDhConfig uses 64 and goes through native_sendRequest with raw TL, bypassing HelperHttp. The APK HTTP wrapper is therefore not established as the working voice-call route.",
+  "nativeSocketEnvelopeSymbolObserved": "TL_clientRequestSocket",
+  "nativeSocketEnvelope": {
+    "constructorId": 2059302894,
+    "fieldOrder": [
+      "token",
+      "imei",
+      "flags",
+      "packed_data",
+      "layer"
+    ],
+    "flags": 2048,
+    "layer": 136,
+    "buildOrLanguageFields": false
+  },
+  "nativeSocketPrimaryOffsets": {
+    "libraryMember": "lib/arm64-v8a/libtmessages.49.so",
+    "Datacenter_createRequestsData": {
+      "virtualAddress": 14092072,
+      "flagsObjectOffset": 112,
+      "flagsImmediateInstructionOffset": 1060,
+      "flagsStoreInstructionOffset": 1068,
+      "layerObjectOffset": 128,
+      "layerImmediateInstructionOffset": 1064,
+      "layerStoreInstructionOffset": 1072,
+      "packedDataWriteByteArrayInstructionOffset": 1096,
+      "bytes": 1312,
+      "sha256": "57f900acf1c35d5705fe961bd3abeae45f39405a3e07532e6d2cc407038b900a"
+    },
+    "TL_clientRequestSocket_serializeToStream": {
+      "virtualAddress": 14121996,
+      "bytes": 228,
+      "sha256": "551aca93928a6d2b909c10935247e9656064cfc3163ad7b219816177ec1bd5c8"
+    }
+  },
+  "socketProfileTransportPolicy": "Only explicit android-socket-7.1.8 probe over the same verified HTTPS endpoint is implemented; raw TCP/TLS-like native framing is not used with account credentials",
+  "liveNativeEnvelopeOverHttpsTrial": {
+    "requests": 1,
+    "result": "service_rejected",
+    "statusCode": 404,
+    "serviceCode": "INVALID_CONSTRUCTOR",
+    "callIssued": false,
+    "otpRequested": false,
+    "sessionModified": false
+  },
+  "nativeDefaultEndpointEvidence": {
+    "productionIp": "2.189.58.63",
+    "productionPort": 443,
+    "initDatacentersVirtualAddress": 13969312,
+    "ipLiteralReferenceInstructionOffset": 284,
+    "portInstructionOffset": 320
+  },
+  "anonymousTlsTrial": {
+    "scope": "Standard TLS handshake only to APK default production IP; no credentials or application bytes",
+    "timeoutMs": 6000,
+    "tlsVerified": false,
+    "reason": "timeout",
+    "interpretation": "Timeout does not establish lack of TLS, endpoint availability, expected hostname or transport confidentiality"
+  },
+  "currentConclusion": "Official account-to-account voice calls work according to the user. Historical APK probe build26379 and exact native socket envelope over HTTPS rejected getDhConfig. Corrected APK BuildVars2637 was not live-probed; native VoIP route and its server authentication/encryption remain unverified. Changing method IDs or skipping DH validation is not justified.",
+  "liveTunnelVerified": false,
+  "offlineValidation": "Four tests including independent Python TL byte fixtures, fixed read-only method/URL, malformed responses, oversized frames and cancellation; no account used"
+}

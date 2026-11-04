@@ -31,7 +31,7 @@ test('Android ciphertext and signatures preserve DEFAULT line breaks as signed b
 test('explicit fresh Android login retains its protocol, key and truthful device metadata across registration and restoration',async()=>{
  const seen=[],saved=[],session=new AuthSession({createClient:transport(seen),saveSession:async r=>saved.push(structuredClone(r))});
  await session.start(phone,{protocolProfile:profiles.ANDROID});await session.verify('123456');assert.equal(session.state.signedIn,true);assert.equal(session.state.protocolProfile,profiles.ANDROID);
- const record=session.exportSession();assert.equal(record.profile.protocolProfile,profiles.ANDROID);assert.match(record.profile.deviceModel,/BaleVPN/);assert.equal(saved[0].registration,'required');
+ const record=session.exportSession();assert.equal(record.profile.protocolProfile,profiles.ANDROID);assert.match(record.profile.deviceModel,/^Desktop [a-f0-9]{12}$/);assert.equal(saved[0].registration,'required');
  for(const request of seen){assert.equal(request.client.platform,'Android');assert.equal(request.client.package,'app.rbmain.a');assert.equal(request.client.app_version,'4.1.1');assert.equal(request.headers.origin,undefined);if(request.method!=='getDCs'){assert.equal(request.is_background,false);assert.equal(request.body.api_version,6);}}
  const registered=seen.find(r=>r.method==='registerDevice');assert.equal(registered.input.token_type,'Firebase');assert.equal(registered.input.app_version,'MA_4.1.1');assert.equal(registered.input.is_multi_account,false);assert.equal(registered.input.ads_id,undefined);
  for(const request of seen.filter(r=>r.body?.sign))assert.equal(crypto.verify('RSA-SHA256',Buffer.from(request.body.data_enc),record.publicKey,Buffer.from(request.body.sign,'base64')),true);
@@ -56,4 +56,36 @@ test('profile replacement retires call ownership and cancels late privacy discov
  record.profile.protocolProfile=profiles.ANDROID;let requests=0;
  const privacy=new CallPrivacy(account,{createClient:options=>{assert.equal(options.protocolProfile,profiles.ANDROID);return {async discover(){record.profile.protocolProfile='web';},async request(){requests++;throw Error('Must not send');},close(){}};}});
  await assert.rejects(privacy.read(),/account_binding_changed/);assert.equal(requests,0);privacy.close();session.close();
+});
+
+test('legacy branded registration names are projected only in serialized outbound payload without changing saved identity',async()=>{
+ const identity=await wire.createIdentity(),deviceHash='0123456789abcdef0123456789abcdef';
+ const labels=['BaleVPN','BaleVPNDesktop','BaleVPN Desktop','BaleVPN Desktop abcdef012345','BaleVPN Provider Lab','BaleVPN Provider Lab (desktop)','ProviderLab','Provider Lab','Provider Lab (desktop)'];
+ for(const mode of [profiles.WEB,profiles.ANDROID])for(const label of labels){
+  const record={provider:'rubika',userId:uid,auth,...identity,profile:{protocolProfile:mode,deviceHash,deviceModel:label,systemVersion:'fixture-system'}};
+  const before=JSON.stringify(record);let sent=0;
+  const client=new HttpClient({protocolProfile:mode,updatesFactory:null,fetchImpl:async(_url,options)=>{
+   sent++;const body=JSON.parse(options.body),decoded=wire.decrypt(body.data_enc,auth,mode);
+   assert.equal(decoded.method,'registerDevice');assert.equal(decoded.input.device_model,'Desktop 0123456789ab');
+   assert.equal(decoded.input.device_hash,deviceHash);assert.equal(decoded.input.system_version,'fixture-system');
+   assert.equal(decoded.client.platform,mode===profiles.ANDROID?'Android':'Web');
+   assert.equal(decoded.client.package,mode===profiles.ANDROID?'app.rbmain.a':'web.rubika.ir');
+   assert.ok(!JSON.stringify(decoded).includes('BaleVPN'));assert.ok(!JSON.stringify(decoded).includes('Provider Lab'));
+   return new Response(JSON.stringify({data_enc:wire.encrypt({status:'OK',data:{}},auth,mode)}));
+  }});
+  try{
+   const first=profiles.registration(mode,record.profile,'fa'),second=profiles.registration(mode,record.profile,'fa');
+   assert.deepEqual(first,second,'outgoing label must be stable, not randomized per request');
+   await client.request('registerDevice',first,{credentials:record});assert.equal(sent,1);assert.equal(JSON.stringify(record),before);
+  }finally{client.close();}
+ }
+});
+
+test('neutral and custom registration names remain unchanged while malformed legacy identity cannot be substituted',()=>{
+ const hash='abcdef0123456789abcdef0123456789';
+ for(const label of ['Desktop abcdef012345','Pixel 9','Personal desktop','My BaleVPN-compatible client','BaleVPN Desktop custom-name']){
+  const device={deviceHash:hash,deviceModel:label,systemVersion:'fixture-system'},before=JSON.stringify(device);
+  assert.equal(profiles.registration(profiles.ANDROID,device,'fa').device_model,label);assert.equal(JSON.stringify(device),before);
+ }
+ assert.throws(()=>profiles.registration(profiles.WEB,{deviceModel:'BaleVPN',deviceHash:'invalid',systemVersion:'fixture-system'},'fa'),/invalid_client_profile/);
 });

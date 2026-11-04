@@ -15,7 +15,7 @@ async function pair({connections=[{type:'WebRTC',ip:'192.0.2.1',port:3478,turn_u
   const identity=await wire.createIdentity();records.push({provider:'rubika',userId:ids[slot],auth:wire.temporarySession(),...identity});accountStates.push({provider:'rubika',userId:ids[slot],signedIn:true,selfConfirmed:true});
   accounts.push({get state(){return {...accountStates[slot]};},exportSession(){return {...records[slot]};}});
  }
- const create=slot=>account=>new CallClient(account,{createClient:()=>({closed:false,
+ const create=slot=>(account,options={})=>new CallClient(account,{...options,createClient:()=>({closed:false,
   async discover(){calls.push({slot,method:'getDCs'});return {apiServerSelected:true};},
   async request(method,input,{credentials}){
    assert.equal(credentials.auth,records[slot].auth);assert.equal(credentials.privateKey,records[slot].privateKey);codec.validateInput(method,input);calls.push({slot,method,input:structuredClone(input)});
@@ -32,7 +32,7 @@ async function pair({connections=[{type:'WebRTC',ip:'192.0.2.1',port:3478,turn_u
    throw Error('Unexpected fixture request');
   },close(){this.closed=true;}})});
  const a=new CallSession(accounts[0],{allowedPeers:[ids[1]],protocol:profile,createClient:create(0)}),b=new CallSession(accounts[1],{allowedPeers:[ids[0]],protocol:profile,createClient:create(1)});
- return {a,b,ids,callId,key,calls,events,signals,started,records,accountStates,accounts,createClient:account=>{const slot=accounts.indexOf(account);assert.ok(slot>=0);return create(slot)(account);},update,
+ return {a,b,ids,callId,key,calls,events,signals,started,records,accountStates,accounts,createClient:(account,options)=>{const slot=accounts.indexOf(account);assert.ok(slot>=0);return create(slot)(account,options);},update,
   async negotiate(){await a.start();await b.start();await a.dial(ids[1]);await b.pollOnce();await b.accept();await a.pollOnce();assert.equal(a.state.phase,'accepted');assert.equal(b.state.phase,'accepted');},
   close(){a.close();b.close();}};
 }

@@ -10,7 +10,8 @@ const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 const SAFE=new Set(['not_authenticated','invalid_account_binding','account_binding_changed','not_authorized','access_denied','rate_limited','registration_required',
  'invalid_update_server','update_stream_timeout','update_stream_failed','update_stream_closed','invalid_update_stream','update_stream_rejected','update_queue_full','service_rejected','timeout','network_error','http_error','invalid_dc_server','invalid_dc_response','invalid_response',
  'invalid_encrypted_response','response_too_large','tls_verification_disabled','invalid_call_response','call_identity_mismatch',
- 'unsupported_call_protocol','update_account_mismatch','call_operation_failed']);
+ 'unsupported_call_protocol','update_account_mismatch','call_operation_failed','recovery_save_failed','recovery_clear_failed',
+ 'call_recovery_available','invalid_call_recovery','call_recovery_expired']);
 const LOCAL=new Set(['call_not_started','call_already_started','call_not_listening','call_not_ringing','call_not_accepted','call_peer_not_allowed']);
 const rank={Requested:0,Waiting:1,Accepted:2,Discarded:3};
 const MEDIA_FIELDS=new Set(['key','connections','protocol_layer','library_versions','other_participants']);
@@ -145,7 +146,9 @@ class CallSession{
    this.#phase='dialing';this.#deadline=this.#now()+60000;
    const reply=await this.#rpc('requestCall',{call_type:'Voice',user_guid:peerId,...structuredClone(this.#profile)},guard);
    if(reply?.call_type!=='WebRtc')fail('unsupported_call_protocol');const update=updates.callUpdate(reply.call_update);
-   this.#begin(update,peerId,true);return {dialing:true,callId:this.#call.call_id};
+   this.#begin(update,peerId,true);
+   if(typeof this.#client.acknowledgeRequestCall==='function'){await this.#client.acknowledgeRequestCall(this.#call.call_id);guard();}
+   return {dialing:true,callId:this.#call.call_id};
   });
  }
  pollOnce(){return this.#run(async guard=>{

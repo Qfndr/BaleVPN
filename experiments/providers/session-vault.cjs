@@ -2,14 +2,19 @@
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const {promisify}=require('node:util');const scrypt=promisify(crypto.scrypt);
 const FORMAT='provider-lab-v1',PROVIDERS=new Set(['igap','eitaa','nasim','rubika']);
+const {validateCallRecovery,CallRecoveryError,MAX_CALL_RECOVERY_BYTES:CALL_RECOVERY_MAX}=require('../rubika/call-recovery.cjs');
+const CALL_RECOVERY='rubika-request-call-recovery-v1';
 class VaultError extends Error{constructor(reason){super('Session vault '+reason);this.reason=reason;}}
 function location(provider,slot){if(!PROVIDERS.has(provider)||!Number.isInteger(slot)||slot<1||slot>2)throw new VaultError('invalid_account');return provider+'/'+slot;}
+function callRecoveryLocation(provider,slot){const id=location(provider,slot);if(provider!=='rubika')throw new VaultError('invalid_account');return id;}
+function callRecoveryData(input){let data;try{data=validateCallRecovery(input);}catch(e){throw new VaultError(e instanceof CallRecoveryError?e.reason:'invalid_call_recovery');}return Buffer.from(JSON.stringify(data));}
+
 function seal(key,data,aad){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from(aad));const ciphertext=Buffer.concat([cipher.update(data),cipher.final()]);return {iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),ciphertext:ciphertext.toString('base64')};}
 function unseal(key,record,aad){if(!record||!/^[a-f0-9]{24}$/.test(record.iv)||!/^[a-f0-9]{32}$/.test(record.tag)||typeof record.ciphertext!=='string'||record.ciphertext.length>180000||!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.ciphertext))throw new VaultError('invalid_file');const decipher=crypto.createDecipheriv('aes-256-gcm',key,Buffer.from(record.iv,'hex'));decipher.setAAD(Buffer.from(aad));decipher.setAuthTag(Buffer.from(record.tag,'hex'));return Buffer.concat([decipher.update(Buffer.from(record.ciphertext,'base64')),decipher.final()]);}
 async function readJson(file){const bytes=await fs.readFile(file);if(bytes.length>200000)throw new VaultError('invalid_file');return JSON.parse(bytes.toString('utf8'));}
 async function atomic(file,data){const temp=file+'.'+crypto.randomBytes(8).toString('hex')+'.tmp';await fs.mkdir(path.dirname(file),{recursive:true,mode:0o700});try{await fs.writeFile(temp,JSON.stringify(data),{mode:0o600,flag:'wx'});await fs.rename(temp,file);}finally{await fs.unlink(temp).catch(e=>{if(e.code!=='ENOENT')throw e;});}}
 class SessionVault{
- #directory;#key;#unlocking=false;#epoch=0;
+ #directory;#key;#unlocking=false;#epoch=0;#callRecoveryWrites=new Map();
  constructor(directory){this.#directory=path.resolve(directory);}
  get unlocked(){return !!this.#key;}
  async unlock(password){
@@ -42,6 +47,36 @@ class SessionVault{
  async loadRecovery(provider,slot){const id=location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');try{const record=await readJson(path.join(this.#directory,'recovery',provider,slot+'.json'));if(record.format!==FORMAT||record.provider!==provider||record.slot!==slot)throw new VaultError('provider_mismatch');const plain=unseal(this.#key,record,FORMAT+'/recovery/'+id);try{const data=JSON.parse(plain.toString('utf8'));if(data.provider!==provider||data.format!=='eitaa-auth-recovery-v1')throw new VaultError('provider_mismatch');return data;}finally{plain.fill(0);}}catch(e){if(e.code==='ENOENT')return null;if(e instanceof VaultError)throw e;throw new VaultError('read_failed');}}
  async hasRecovery(provider,slot){location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');try{const stat=await fs.stat(path.join(this.#directory,'recovery',provider,slot+'.json'));return stat.isFile();}catch(e){if(e.code==='ENOENT')return false;throw new VaultError('read_failed');}}
  async removeRecovery(provider,slot){location(provider,slot);if(provider!=='eitaa')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');await fs.unlink(path.join(this.#directory,'recovery',provider,slot+'.json')).catch(e=>{if(e.code!=='ENOENT')throw new VaultError('write_failed');});}
+ async #callRecoveryWork(id,work){const prior=this.#callRecoveryWrites.get(id)||Promise.resolve(),current=prior.catch(()=>{}).then(work);this.#callRecoveryWrites.set(id,current);try{return await current;}finally{if(this.#callRecoveryWrites.get(id)===current)this.#callRecoveryWrites.delete(id);}}
+ async saveCallRecovery(provider,slot,input){
+  const id=callRecoveryLocation(provider,slot);if(!this.#key)throw new VaultError('locked');
+  const plain=callRecoveryData(input),epoch=this.#epoch;let envelope;
+  try{envelope={format:FORMAT,purpose:CALL_RECOVERY,provider,slot,...seal(this.#key,plain,FORMAT+'/call-recovery/'+id+'/requestCall')};}finally{plain.fill(0);}
+  return this.#callRecoveryWork(id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   await atomic(path.join(this.#directory,'call-recovery',provider,slot+'.json'),envelope);
+  });
+ }
+ async loadCallRecovery(provider,slot){
+  const id=callRecoveryLocation(provider,slot);if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork(id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   const file=path.join(this.#directory,'call-recovery',provider,slot+'.json');
+   try{
+    const record=await readJson(file);if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+    if(record.format!==FORMAT||record.purpose!==CALL_RECOVERY||record.provider!==provider||record.slot!==slot)throw new VaultError('provider_mismatch');
+    const plain=unseal(this.#key,record,FORMAT+'/call-recovery/'+id+'/requestCall');
+    try{
+     if(plain.length>CALL_RECOVERY_MAX)throw new VaultError('record_too_large');
+     const data=JSON.parse(plain.toString('utf8'));let checked;
+     try{checked=callRecoveryData(data);}catch(e){if(e instanceof VaultError&&e.reason==='call_recovery_expired'){await fs.unlink(file);return null;}throw e;}
+     checked.fill(0);return data;
+    }finally{plain.fill(0);}
+   }catch(e){if(e.code==='ENOENT')return null;if(e instanceof VaultError)throw e;throw new VaultError('read_failed');}
+  });
+ }
+ async hasCallRecovery(provider,slot){const id=callRecoveryLocation(provider,slot);return this.#callRecoveryWork(id,async()=>{try{return (await fs.stat(path.join(this.#directory,'call-recovery',provider,slot+'.json'))).isFile();}catch(e){if(e.code==='ENOENT')return false;throw new VaultError('read_failed');}});}
+ async removeCallRecovery(provider,slot){const id=callRecoveryLocation(provider,slot);if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;return this.#callRecoveryWork(id,async()=>{if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');await fs.unlink(path.join(this.#directory,'call-recovery',provider,slot+'.json')).catch(e=>{if(e.code!=='ENOENT')throw new VaultError('write_failed');});});}
  lock(){this.#epoch++;this.#key?.fill(0);this.#key=null;}
 }
 module.exports={SessionVault,VaultError};
