@@ -1124,6 +1124,42 @@ mod remote_ice_tests {
             }
         }
     }
+    #[tokio::test]
+    async fn relay_only_gathers_no_direct_candidates_without_turn() {
+        let advertised = proto::ClientConfiguration {
+            force_relay: proto::ClientConfigSetting::Disabled as i32,
+            ..Default::default()
+        };
+        for relay_only in [false, true] {
+            let candidates = tokio::time::timeout(Duration::from_secs(5), async {
+                let (ice_transport_policy, _) = effective_ice_policy(
+                    Some(&advertised),
+                    IceRouting { relay_only, ..IceRouting::default() },
+                );
+                let pc = make_api().unwrap().new_peer_connection(RTCConfiguration {
+                    ice_servers: map_ice_servers(&[]),
+                    ice_transport_policy,
+                    ..Default::default()
+                }).await.unwrap();
+                pc.create_data_channel("ice-policy-fixture", None).await.unwrap();
+                let offer = pc.create_offer(None).await.unwrap();
+                let mut complete = pc.gathering_complete_promise().await;
+                pc.set_local_description(offer).await.unwrap();
+                let _ = complete.recv().await;
+                let description = pc.local_description().await.unwrap();
+                pc.close().await.unwrap();
+                description.sdp.lines()
+                    .filter(|line| line.starts_with("a=candidate:"))
+                    .map(|line| line.split_ascii_whitespace().nth(7).unwrap_or("").to_owned())
+                    .collect::<Vec<_>>()
+            }).await.expect("local ICE gathering exceeded the fixture deadline");
+            if relay_only {
+                assert!(candidates.is_empty(), "relay-only produced a candidate without TURN");
+            } else {
+                assert!(candidates.iter().any(|kind| kind == "host"), "default fixture did not gather a host candidate");
+            }
+        }
+    }
     #[test]
     fn negotiation_counters_are_bounded_and_preserve_legacy_zero_answers() {
         let state=NegotiationState::default();
