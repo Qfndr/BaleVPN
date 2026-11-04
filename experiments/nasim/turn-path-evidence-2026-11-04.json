@@ -164,5 +164,26 @@
     "The earlier accepted WebRTC call failed ICE. The pre-acceptance raw TURN timeout neither exonerates ICE nor establishes that both failures share one cause.",
     "No provider-blocking, account-policy, billing, throughput or final root-cause conclusion follows from these probes."
   ],
-  "nextDiagnostic": "Review an explicitly experimental asymmetric route policy with a relay-only client and a bounded public server candidate set. Require selected-pair proof of the client relay, preserve the strict relay default, and obtain separate authorization before any new live call."
+  "asymmetricMediaTrial": {
+    "sourceCommit": "7565c67cbf80c77dbfbc173ad16cdab1ffb674a5",
+    "windowsHelperSha256": "591fc6f0b044412d4369c0a2161ef1bc153716c52e84dd7593a214167483bf9e",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41791550142",
+    "attempts": 1,
+    "topology": "Two retained accounts on one Windows host",
+    "serverClockVerified": true,
+    "configsBoundToBothAccountsAndSameCall": true,
+    "clientPhase": "uncertain",
+    "clientRouteProof": null,
+    "serverPhase": "negotiating",
+    "serverRouteProof": "client-relay/server-public",
+    "peerAuthenticated": [false, false],
+    "payloadTransferVerified": false,
+    "terminalReasonCaptured": false,
+    "exactCleanupAcknowledged": true,
+    "remainingEncryptedCleanupIntents": [false, false],
+    "labEventSubscriptionsRestored": [true, true],
+    "bothAccountsStillSignedIn": true,
+    "exitCode": 1
+  },
+  "nextDiagnostic": "Capture the client terminal reason and candidate statistics. Use the separate Windows and Linux packages to test the same authenticated media path across two independent networks."
 }
