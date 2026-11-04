@@ -104,6 +104,8 @@ jobs:
           cargo build --manifest-path lktunnel-rust/Cargo.toml -p lktunnel
           --locked --release --example nasim_relay_bridge
           --example eitaa_relay_bridge --example rubika_relay_bridge
+      - name: Build the isolated Nasim TURN diagnostic
+        run: cargo build --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --example nasim_turn_probe
       - name: Stage experimental artifacts and bind tests to these executables
         run: |
           python - <<'PY'
@@ -119,6 +121,7 @@ jobs:
           directory.mkdir(parents=True, exist_ok=True)
           suffix = '.exe' if sys.platform == 'win32' else ''
           helpers = []
+          diagnostic_helpers = []
           node = subprocess.check_output(['node', '-p', 'process.execPath'], text=True).strip()
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
               for provider in ('nasim', 'eitaa', 'rubika'):
@@ -131,9 +134,15 @@ jobs:
                   environment.write('BALEVPN_' + provider.upper() + '_BRIDGE=' + str(target) + '\n')
               for provider in ('EITAA', 'RUBIKA'):
                   environment.write('BALEVPN_' + provider + '_ADAPTER_NODE=' + node + '\n')
+          name = 'nasim_turn_probe' + suffix
+          target = directory / name
+          shutil.copy2(Path(os.environ['CARGO_TARGET_DIR']) / 'release' / 'examples' / name, target)
+          diagnostic_helpers.append({'provider': 'nasim', 'file': name, 'bytes': target.stat().st_size,
+                                     'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
           manifest = {'format': 1, 'scope': 'experimental-lab-only',
                       'sourceCommit': os.environ['GITHUB_SHA'], 'platform': os.environ['RUNNER_OS'],
                       'architecture': 'x86_64', 'helpers': helpers,
+                      'diagnosticHelpers': diagnostic_helpers,
                       'testScope': 'native lifecycle, local TURN/DTLS/RTP/QUIC interoperability, provider codec projection and proxy target filtering',
                       'nativeTestsPassed': False,
                       'liveProviderCallsVerified': False, 'operatorBillingVerified': False}
@@ -149,6 +158,9 @@ jobs:
           for provider in nasim eitaa rubika; do
             cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --example "${provider}_relay_bridge" two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection -- --ignored --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-${provider}-helpers.txt"
           done
+      - name: Test isolated TURN diagnostic against the local fixture
+        run: |
+          cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --example nasim_turn_probe -- --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-turn-probe.txt"
       - name: Require every native and interoperability test to pass
         run: |
           python - <<'PY'
@@ -183,6 +195,16 @@ jobs:
                                   'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}
           manifest['nativeTestsPassed'] = True
           manifest['rustInteropTests'] = rust_tests
+          path = directory / 'rust-turn-probe.txt'
+          report_text = path.read_text(encoding='utf-8')
+          summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', report_text, re.MULTILINE)
+          if summaries != [('4', '0', '0', '0')]:
+              raise SystemExit('TURN diagnostic fixture tests are incomplete')
+          for test in ('two_owned_allocations_exchange_exact_nonces', 'rejected_credentials_are_redacted_and_bounded', 'strict_input_has_no_separate_destination_or_extra_keys', 'production_guard_rejects_private_reserved_and_mapped_addresses'):
+              if not re.search(r'^test tests::' + test + r' \.\.\. ok\s*$', report_text, re.MULTILINE):
+                  raise SystemExit('TURN diagnostic regression did not execute')
+          manifest['diagnosticTests'] = {'turnProbe': {'passed': 4, 'failed': 0, 'ignored': 0,
+                                        'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}}
           manifest['nativeTests'] = {'passed': int(total.group(1)), 'skipped': 0,
                                      'report': report_path.name,
                                      'reportSha256': hashlib.sha256(report_path.read_bytes()).hexdigest()}
