@@ -60,6 +60,32 @@ test('initial media failure preserves both captured intents after the call conte
  }finally{f.close();}
 });
 
+test('event stream loss during an established call closes media and preserves bound cleanup',async()=>{
+ const saved=new Map();
+ const f=callFixture({cleanupFactory:account=>new CleanupIntent(account,{
+  async saveIntent(value,guard){guard();saved.set(account.state.userId,structuredClone(value));},
+  async loadIntent(){return saved.get(account.state.userId)||null;},
+  async clearIntent(value,guard){guard();saved.delete(account.state.userId);},
+ })});
+ try{
+  const {a,b}=await f.prepare();
+  await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  assert.equal(a.state.media.proxyReady,true);
+  const bound=structuredClone(saved.get('41'));
+  const account=f.accounts.get('41');
+  // Match AuthSession.signalConnection after the SSE reader marks the stream failed.
+  Object.defineProperty(account,'signalConnection',{get(){throw Error('event_stream_not_connected');}});
+  await waitFor(()=>a.state.phase==='uncertain');
+  assert.equal(a.state.reason,'event_stream_not_connected');
+  assert.equal(a.state.media,null);
+  assert.equal(f.natives[0].state.phase,'closed');
+  assert.equal(a.state.cleanup.pending,true);
+  assert.deepEqual(saved.get('41'),bound);
+  assert.equal(f.sent.filter(({signal})=>signal.type==='callRequest').length,1);
+ }finally{f.close();}
+});
+
 test('correlated call response wins queued old config and conflicting configs cannot replace cleanup identity',async()=>{
  const saved=new Map();let writes=0;
  const f=callFixture({

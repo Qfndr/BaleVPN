@@ -577,6 +577,7 @@ impl Runtime {
                 Some("other_device") => Some("other_device"),
                 Some("media_failure") => Some("media_failure"),
                 Some("stream_reset") => Some("stream_reset"),
+                Some("event_stream_not_connected") => Some("event_stream_not_connected"),
                 Some("call_connection_changed") => Some("call_connection_changed"),
                 Some("cleanup_save_failed") => Some("cleanup_save_failed"),
                 Some("call_timeout") => Some("call_timeout"),
@@ -931,6 +932,11 @@ mod tests {
         assert_eq!(
             runtime.update(&event).unwrap().termination,
             Some("stream_reset")
+        );
+        event["termination"] = json!("event_stream_not_connected");
+        assert_eq!(
+            runtime.update(&event).unwrap().termination,
+            Some("event_stream_not_connected")
         );
         event["termination"] = json!("private provider response");
         assert!(runtime.update(&event).unwrap().termination.is_none());

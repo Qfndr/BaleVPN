@@ -60,7 +60,7 @@ function safeTermination(call){
  if(!['ended','uncertain','failed'].includes(call.phase))return null;
  const signal=call.terminal?.signal;
  if(['bye','reject','busy','other_device','media_failure','stream_reset'].includes(signal))return signal;
- return ['call_connection_changed','cleanup_save_failed','call_timeout','transport_closed'].includes(call.reason)?call.reason:null;
+ return ['call_connection_changed','event_stream_not_connected','cleanup_save_failed','call_timeout','transport_closed'].includes(call.reason)?call.reason:null;
 }
 function safeState(controller,role){
  const call=controller.state,media=call.media;
@@ -188,6 +188,8 @@ async function selfTest(){
  connected.media.routeProof='unverified';
  assert.equal(safeMetrics(connected,'client'),undefined);
  assert.equal(safeTermination({phase:'uncertain',reason:'call_timeout'}),'call_timeout');
+ assert.equal(safeTermination({phase:'uncertain',reason:'event_stream_not_connected'}),'event_stream_not_connected');
+ assert.equal(safeTermination({phase:'connected',reason:'event_stream_not_connected'}),null);
  assert.equal(safeTermination({phase:'uncertain',reason:'call_stream_reset',terminal:{signal:'stream_reset'}}),'stream_reset');
  assert.equal(safeTermination({phase:'ended',terminal:{signal:'busy',peerId:'fixture-private-id'}}),'busy');
  assert.equal(safeTermination({phase:'ended',reason:'fixture-private-id'}),null);
