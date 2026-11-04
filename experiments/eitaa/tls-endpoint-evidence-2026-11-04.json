@@ -1,0 +1,46 @@
+{
+  "date": "2026-11-04",
+  "scope": "Three bounded standard TLS handshakes to fixed source-documented endpoints. No application bytes, account credentials or native protocol payload sent.",
+  "armitaDns": [
+    {
+      "address": "2.189.58.27",
+      "family": 4
+    }
+  ],
+  "results": [
+    {
+      "host": "2.189.58.63",
+      "port": 443,
+      "source": "official-native-config",
+      "elapsedMs": 6054,
+      "tlsVerified": false,
+      "result": "timeout"
+    },
+    {
+      "host": "2.189.58.100",
+      "port": 443,
+      "source": "official-native-config",
+      "elapsedMs": 6002,
+      "tlsVerified": false,
+      "result": "timeout"
+    },
+    {
+      "host": "armita.eitaa.com",
+      "port": 443,
+      "source": "official-android-https-control",
+      "servername": "armita.eitaa.com",
+      "elapsedMs": 143,
+      "tlsVerified": true,
+      "result": "secure_connect",
+      "protocol": "TLSv1.2",
+      "alpn": "http/1.1",
+      "certificate": {
+        "commonName": "*.eitaa.com",
+        "fingerprint256": "17:B5:21:66:F9:8B:80:F0:26:10:AB:70:11:12:DA:D4:49:85:AF:0E:F5:68:93:FD:AE:A5:76:7F:2A:58:7C:16"
+      }
+    }
+  ],
+  "limitation": "A verified TLS connection demonstrates endpoint TLS support only. It does not demonstrate acceptance of native RPC inside TLS. Timeout does not establish absence of TLS or endpoint availability.",
+  "nativeSocketUrl": "Archived native config socketURL identifies 2.189.58.63:443; no alternate TLS hostname or WSS path was derived.",
+  "secureNativeRpcVerified": false
+}

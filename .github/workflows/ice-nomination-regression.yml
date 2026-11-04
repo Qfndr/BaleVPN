@@ -32,7 +32,7 @@ jobs:
       - name: Verify source provenance and prepare original-code control
         run: python3 scripts/check-ice-nomination-backport.py --prepare-baseline "$RUNNER_TEMP/ice-original-control"
       - name: Patched implementation passes
-        run: cargo test --manifest-path vendor/webrtc-ice/Cargo.toml --locked --lib controlled_early_nomination -- --nocapture
+        run: cargo test --manifest-path vendor/webrtc-ice/Cargo.toml --locked --lib agent::agent_nomination_test:: -- --nocapture
       - name: Original implementation fails the same runtime assertion
         shell: bash
         run: |
