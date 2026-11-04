@@ -54,6 +54,22 @@
       "normal laboratory resume route"
     ]
   },
-  "liveFixedRefreshVerified": false,
-  "newOtpRequested": false
+  "liveFixedRefreshVerified": true,
+  "newOtpRequested": false,
+  "liveFixedRefresh": {
+    "sourceCommit": "c8f48da5bb83b20b27a54553dbbeb401590a9784",
+    "protocolProfile": "web",
+    "normalHttpEntryPoint": "POST /api/eitaa/2/refresh",
+    "requests": 1,
+    "httpStatus": 200,
+    "signedIn": true,
+    "stage": "authenticated",
+    "normalEncryptedRecordChanged": true,
+    "pendingRecoveryAtEnd": false,
+    "otherSevenStoredRecordsUnchangedDuringRefresh": true,
+    "newOtpRequested": false,
+    "newLoginRequested": false,
+    "callRequested": false,
+    "scope": "One normal session refresh followed by self confirmation. Does not validate Eitaa media or native transport."
+  }
 }
