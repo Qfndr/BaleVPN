@@ -208,5 +208,33 @@
     "exitCode": 1,
     "interpretation": "The client failed route verification even though one ICE pair succeeded and one was nominated. The saved diagnostics do not include the selected candidate type or which route verification stage rejected the path."
   },
-  "nextDiagnostic": "Distinguish client selected-candidate validation from verifier scheduling and readiness races. Test across two independent networks with the separate Windows and Linux endpoints."
+  "asymmetricMediaVerifierRaceFixRetest": {
+    "sourceCommit": "bbbaa92ee045ec63a7427fb1b664ba594c5f9c72",
+    "windowsHelperSha256": "3d8925df29fe8ef3616b82cb165dfc609746052a96427b0e9b45cb66d23f4613",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41794272616",
+    "attempts": 1,
+    "topology": "Two retained accounts on one Windows host",
+    "policyTestsPerPlatform": 12,
+    "nativeTestsPerPlatform": 48,
+    "interoperabilityTestsPerPlatform": 8,
+    "turnProbeTestsPerPlatform": 6,
+    "clientTerminalReason": "relay_route_failed",
+    "clientIce": {
+      "localRelayCandidates": 1,
+      "remoteRelayCandidates": 0,
+      "pairFailed": 1,
+      "pairSucceeded": 1,
+      "nominatedPairs": 1
+    },
+    "serverRouteProof": "client-relay/server-public",
+    "peerAuthenticated": [false, false],
+    "payloadTransferVerified": false,
+    "exactCleanupAcknowledged": true,
+    "remainingEncryptedCleanupIntents": [false, false],
+    "labEventSubscriptionsRestored": [true, true],
+    "bothAccountsStillSignedIn": true,
+    "exitCode": 1,
+    "interpretation": "The stale verifier replacement fix passed its regression but did not change the live outcome in the same-host setup. The client still rejected route proof after successful nomination."
+  },
+  "nextDiagnostic": "Retain a bounded enum-only observation of the selected candidate types and route verification stage at teardown. Test across two independent networks with the separate Windows and Linux endpoints."
 }
