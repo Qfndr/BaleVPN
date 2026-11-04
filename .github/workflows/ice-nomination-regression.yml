@@ -1,9 +1,16 @@
 name: ICE nomination backport regression
 
-# Deliberately isolated: this does not patch or build any application workspace.
+# Isolated runtime proof, also required when shipped ICE wiring changes.
 on:
   push:
-    branches: [codex/ice-nomination-regression]
+    branches: [main, codex/ice-nomination-regression]
+    paths:
+      - 'vendor/webrtc-ice/**'
+      - 'scripts/check-ice-nomination-backport.py'
+      - 'scripts/check-crypto-dependencies.py'
+      - '.github/workflows/ice-nomination-regression.yml'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
   workflow_dispatch:
 
 permissions:
@@ -20,6 +27,8 @@ jobs:
         run: |
           printf '%s\n' "CARGO_HOME=$RUNNER_TEMP/ice-cargo" "CARGO_TARGET_DIR=$RUNNER_TEMP/ice-target" "TEMP=$RUNNER_TEMP" "TMP=$RUNNER_TEMP" "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
+      - name: Verify shipped dependency source selection
+        run: python3 scripts/check-crypto-dependencies.py
       - name: Verify source provenance and prepare original-code control
         run: python3 scripts/check-ice-nomination-backport.py --prepare-baseline "$RUNNER_TEMP/ice-original-control"
       - name: Patched implementation passes

@@ -34,3 +34,6 @@ webrtc-dtls = { path = "../vendor/webrtc-dtls" }
 
 # GLib 0.18 API-compatible VariantStrIter soundness fix; see vendor/glib/BACKPORT.md.
 glib = { path = "../vendor/glib" }
+
+# Preserve controlled-agent early ICE nomination; see vendor/webrtc-ice/PATCH-NOTES.md.
+webrtc-ice = { path = "../vendor/webrtc-ice" }

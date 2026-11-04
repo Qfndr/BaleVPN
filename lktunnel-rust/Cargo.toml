@@ -33,3 +33,6 @@ livekit-api = { path = "../vendor/livekit-api" }
 
 # Upstream curve/constant-time security upgrade; see vendor/README.md.
 webrtc-dtls = { path = "../vendor/webrtc-dtls" }
+
+# Preserve controlled-agent early ICE nomination; see vendor/webrtc-ice/PATCH-NOTES.md.
+webrtc-ice = { path = "../vendor/webrtc-ice" }

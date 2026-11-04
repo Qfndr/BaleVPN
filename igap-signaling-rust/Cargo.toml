@@ -9,4 +9,5 @@ publish = false
 [patch.crates-io]
 livekit-api = { path = "../vendor/livekit-api" }
 webrtc-dtls = { path = "../vendor/webrtc-dtls" }
+webrtc-ice = { path = "../vendor/webrtc-ice" }
 

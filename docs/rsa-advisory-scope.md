@@ -45,6 +45,10 @@ before refreshing the inventory. Do not regenerate hashes merely to make CI
 pass. Private-key RSA use, another consumer or another advisory is outside this
 exception and must be assessed separately.
 
+The 2026-11-04 follow-up review updated only the workspace manifest fingerprint
+for the local `webrtc-ice` patch. RSA dependencies, features and all reviewed
+cryptographic source files remained unchanged.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.

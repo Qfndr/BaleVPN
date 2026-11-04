@@ -13,10 +13,14 @@ for workspace in workspaces:
             assert tuple(map(int,version.split('.'))) >= (0,7,10),(workspace,name,version)
         if name=='webrtc-dtls':
             assert 'source' not in package,(workspace,'Unpatched registry DTLS')
+        if name=='webrtc-ice':
+            assert version=='0.11.0' and 'source' not in package and 'checksum' not in package,(workspace,'Unreviewed ICE nomination source')
         if name in ['p256','p384','elliptic-curve']:
             assert tuple(map(int,version.split('.'))) >= (0,14,0),(workspace,name,version)
     if workspace in ['igap-signaling-rust','lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust','vendor/webrtc-dtls']:
         assert any(p['name']=='crypto-bigint' for p in packages),workspace
+    if workspace in ['igap-signaling-rust','lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust']:
+        assert sum(p['name']=='webrtc-ice' for p in packages)==1,(workspace,'Missing or duplicated ICE backport')
 
 vendor=root/'vendor/webrtc-dtls'
 record=json.loads((vendor/'UPSTREAM.json').read_text())

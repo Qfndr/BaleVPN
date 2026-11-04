@@ -211,5 +211,24 @@
     "requestCountersSupported": false,
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true
+  },
+  "configuredRoleTrial": {
+    "sourceCommit": "fb00948cf3c795e14581822af37aa605fa9232b7",
+    "binarySha256": "45d9f78d17d742010e15d0977628fcacc2295c992c6012ae5b25465343b96d40",
+    "success": false,
+    "failedStage": "initialConnection",
+    "clientFailure": "peer_wait_timeout",
+    "clientPublisherIceState": "connected",
+    "clientSubscriberIceState": "connected",
+    "clientSubscriberConfiguredRole": "controlled",
+    "clientSubscriberNominatedPairs": 1,
+    "clientPeerCount": 0,
+    "clientPeerWaitReleased": false,
+    "serverPhase": "listening",
+    "serverLastControlEvent": "call_ended",
+    "serverRtcPresent": false,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "interpretation": "This attempt confirms the configured subscriber role, but failed before peer admission. It does not test the pending ICE backport or prove the source of the server call-ended event."
   }
 }
