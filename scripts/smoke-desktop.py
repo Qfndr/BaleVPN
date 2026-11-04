@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -95,6 +96,17 @@ def main():
             directory = work / "portable build" / "data"
             assert not directory.exists()
             with running(binary, directory, work) as base:
+                local = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                for alias in ("/providers/igap", "/providers/igap/"):
+                    with local.open(base + alias, timeout=5) as response:
+                        panel_url = response.geturl()
+                        assert panel_url == base + "/providers/igap/ui"
+                        panel_html = response.read().decode()
+                        assert 'src="./ui.js"' in panel_html
+                        assert 'href="/providers/nasim/ui"' not in panel_html
+                    with local.open(urllib.parse.urljoin(panel_url, "./ui.js"), timeout=5) as response:
+                        assert response.headers.get_content_type() in ("application/javascript", "text/javascript")
+                        assert b"/providers/igap" in response.read()
                 for font in ("Vazirmatn.woff2", "InterVariable.woff2"):
                     with urllib.request.urlopen(base + "/fonts/" + font, timeout=5) as response:
                         assert response.headers.get_content_type() == "font/woff2"
