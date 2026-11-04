@@ -8,6 +8,7 @@ const {MediaPair}=require('./media-pair.cjs');
 const {AuthSession:NasimAuth}=require('../nasim/auth-session.cjs');
 const {ApiError:NasimError}=require('../nasim/http-client.cjs');
 const {CallPair:NasimCallPair}=require('../nasim/call-pair.cjs');
+const {CleanupIntent:NasimCleanupIntent}=require('../nasim/cleanup-intent.cjs');
 const {AuthSession:RubikaAuth}=require('../rubika/auth-session.cjs');
 const {ApiError:RubikaError}=require('../rubika/http-client.cjs');
 const {AuthSession:EitaaAuth}=require('../eitaa/auth-session.cjs');
@@ -41,7 +42,12 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
   for(const snapshot of snapshots){const state=privacyAccounts[provider].get(snapshot.slot).state;if(!vault.unlocked||!state.signedIn||state.userId!==snapshot.userId||(privacyGeneration.get(provider+'/'+snapshot.slot)||0)!==snapshot.generation)throw Object.assign(new Error('Account changed during permission check'),{reason:'account_binding_changed'});}
  }
 
- const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpenBridge});
+ const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpenBridge,
+  cleanupFactory:(account,slot)=>new NasimCleanupIntent(account,{
+   loadIntent:()=>vault.loadCleanupIntent('nasim',slot),
+   saveIntent:async(record,guard)=>{guard();await vault.saveCleanupIntent('nasim',slot,record);guard();},
+   clearIntent:async(record,guard)=>{guard();await vault.removeCleanupIntent('nasim',slot,record);guard();},
+  })});
  const eitaaCalls=new EitaaCallPair(eitaaSessions,{executable:eitaaBridgeExecutable,open:eitaaOpenBridge,createClient:eitaaCallClientFactory,createAccountClient:eitaaAccountClientFactory});
  const rubikaCallTransport=account=>{
   const slot=[...rubikaSessions].find(([,value])=>value===account)?.[0];if(!slot)throw new RubikaError('invalid_account_binding');
@@ -70,7 +76,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    if(locking&&req.method!=='GET')throw error('vault_locked',423);
    if(req.method==='GET'&&url.pathname==='/api/state'){
     const accounts=[];for(const [slot,session]of sessions)accounts.push({provider:'igap',slot,...session.state,call:calls.get(slot).state,stored:await vault.has('igap',slot)});
-    const nasimAccounts=[];for(const [slot,session]of nasimSessions)nasimAccounts.push({provider:'nasim',slot,...session.state,call:nasimCalls.getCall(slot),stored:await vault.has('nasim',slot)});
+    const nasimAccounts=[];for(const [slot,session]of nasimSessions)nasimAccounts.push({provider:'nasim',slot,...session.state,call:nasimCalls.getCall(slot),stored:await vault.has('nasim',slot),cleanupStored:await vault.hasCleanupIntent('nasim',slot)});
     const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,call:rubikaCalls.getCall(slot),busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot),callRecoveryStored:await vault.hasCallRecovery('rubika',slot)});
     const eitaaAccounts=[];for(const [slot,session]of eitaaSessions)eitaaAccounts.push({provider:'eitaa',slot,...session.state,call:eitaaCalls.getCall(slot),busy:session.state.busy||eitaaOperations.has(slot),stored:await vault.has('eitaa',slot),recoveryStored:await vault.hasRecovery('eitaa',slot)});
     for(const [provider,list]of Object.entries({igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts}))for(const account of list){account.callPrivacy=privacyStatus(provider,account.slot);account.callPrivacySupported=privacy.supported(provider);account.busy||=privacyBusy.has(provider+'/'+account.slot);}
@@ -152,10 +158,10 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     }finally{if(tracked)rubikaOperations.delete(slot);}
    }
    if(url.pathname==='/api/vault/lock'){locking=true;try{media?.close();nasimCalls.reset();eitaaCalls.reset();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values()]);vault.lock();return json({ok:true});}finally{locking=false;}}
-   const nasimMedia=url.pathname.match(/^\/api\/nasim\/media\/(prepare|dial|accept|end|reset)$/);
+   const nasimMedia=url.pathname.match(/^\/api\/nasim\/media\/(prepare|dial|accept|end|reset|cleanup)$/);
    if(nasimMedia){
     if(!vault.unlocked)throw error('vault_locked',423);
-    if(!nasimCalls.state.available)throw error('native_bridge_unavailable',503);
+    if(nasimMedia[1]!=='cleanup'&&!nasimCalls.state.available)throw error('native_bridge_unavailable',503);
     const fields=nasimMedia[1]==='prepare'?['clientSlot','socksPort','throughput']:nasimMedia[1]==='reset'?[]:['slot'];
     if(Object.keys(body).some(key=>!fields.includes(key)))throw error('invalid_call_request');
     if(nasimMedia[1]==='reset'){nasimCalls.reset();return json({ok:true});}

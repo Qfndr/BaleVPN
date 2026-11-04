@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-04",
+  "scope": "Future-call cleanup preservation in the isolated laboratory; no live cleanup, call, account modification or restart",
+  "vaultPurpose": "nasim-cleanup-intent-v1",
+  "separateAuthenticatedData": "provider-lab-v1/cleanup/nasim/<slot>",
+  "savedFields": ["format", "provider", "accountBinding", "selfId", "selfClientId", "peerId", "callUUID", "capturedAt"],
+  "secretsExcluded": ["token", "OTP", "password", "SDP", "TURN credentials"],
+  "capturePoint": "Matching config, before native media setup/SDP; encrypted readback verified",
+  "newCallBlockedWhilePending": true,
+  "noAutomaticDialOrCleanupOnRestore": true,
+  "noExpiryImpliesRemoteEnded": true,
+  "acknowledgement": {
+    "explicitAction": "/api/nasim/media/cleanup",
+    "requires": "Decrypted status success for the exact outgoing bye request with unchanged account/device/RPC binding, or existing validated same-call peer terminal event",
+    "genericAckAccepted": false,
+    "remoteEndedVerified": false
+  },
+  "tests": {
+    "passed": 77,
+    "failed": 0,
+    "skipped": 0,
+    "scope": ["Nasim cleanup manager", "actual encrypted temporary vault", "HTTP laboratory fixtures", "Nasim signaling and call controller", "existing Rubika recovery-vault isolation"],
+    "cases": ["wrong call/peer acknowledgement", "timeout", "failed disk write blocks new calls", "account and connection changes", "initial media failure after capture", "reset/restart readback", "ciphertext slot swaps", "exact expected-record removal", "no network on restore"]
+  },
+  "additionalFocusedRegression": {"passed": 1, "name": "Nasim cleanup does not need a native helper after a saved-intent restart", "nativeExecutableRequired": false},
+  "limitations": ["Cannot recover call identifiers discarded before this implementation", "No current-call read API or server-side timeout was established", "Service acceptance is not proof of peer receipt", "No live trial performed"]
+}

@@ -137,7 +137,8 @@ class SignalingConnection{
    if(result.data?.type&&result.data?.callUUID){
     try{reply=codec.incoming({...result,type:'msgGroupCall'},this.#session.userId);}catch{throw new ApiError('invalid_call_response');}
    }
-   return {acknowledged:true,reply};
+   return {acknowledged:true,reply,...signal.type==='bye'&&result.status==='success'?{
+    terminalAcknowledgement:{type:'bye',callUUID:signal.callUUID,peerId:String(peerId)}}:{}};
   }catch(error){if(error instanceof ApiError){if(error.reason==='not_authorized')this.#fail('not_authorized');throw error;}
    throw new ApiError(this.#abort.signal.aborted?'closed':controller.signal.aborted?'timeout':'call_transport_failed');}
   finally{clearTimeout(timer);plain?.fill(0);body?.fill(0);this.#pending.delete(controller);}

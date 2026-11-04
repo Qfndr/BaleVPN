@@ -11,9 +11,9 @@ const PREPARE_REASONS=new Set(['closed','not_authenticated','not_authorized','ac
  'timeout','transport_failed','access_denied','rate_limited','rejected','invalid_encrypted_response','tls_verification_disabled']);
 class CallPair {
  #accounts;#calls;#available;#preparing=false;#epoch=0;#phase='idle';#clientSlot=1;#reason=null;
- constructor(accounts,{executable,open}={}){
+ constructor(accounts,{executable,open,cleanupFactory}={}){
   this.#accounts=accounts;this.#available=!!executable;
-  this.#calls=new Map([1,2].map(slot=>[slot,new CallSession(accounts.get(slot),{executable,...open?{open}:{}})]));
+  this.#calls=new Map([1,2].map(slot=>[slot,new CallSession(accounts.get(slot),{executable,...open?{open}:{},...cleanupFactory?{cleanup:cleanupFactory(accounts.get(slot),slot)}:{}})]));
  }
  async connectEvents(slot){
   return this.#accounts.get(slot).connectSignals({onEvent:event=>this.#calls.get(slot).handleEvent(event)});
@@ -57,10 +57,12 @@ class CallPair {
   return this.#calls.get(slot).dial(this.#accounts.get(3-slot).state.userId);
  }
  async accept(slot){if(this.#preparing||![1,2].includes(slot))throw new CallError('call_busy');return this.#calls.get(slot).accept();}
+ async cleanup(slot){if(this.#preparing||![1,2].includes(slot))throw new CallError('call_busy');if(this.#accounts.get(slot).state.events?.phase!=='connected')await this.connectEvents(slot);return this.#calls.get(slot).cleanupPending();}
  async end(slot=this.#clientSlot){if(![1,2].includes(slot))throw new CallError('invalid_call_target');
   if(this.#preparing){this.reset();return {ended:true};}
-  const ending=this.#calls.get(slot).end();this.#calls.get(3-slot).reset();this.#epoch++;this.#phase='ended';
-  return ending;
+  const endings=[this.#calls.get(slot).end(),this.#calls.get(3-slot).end()];this.#epoch++;this.#phase='ended';
+  const results=await Promise.allSettled(endings);const failed=results.find(r=>r.status==='rejected');if(failed)throw failed.reason;
+  return {ended:true};
  }
  getCall(slot){return this.#calls.get(slot).state;}
  get state(){return {available:this.#available,phase:this.#phase,busy:this.#preparing,clientSlot:this.#clientSlot,reason:this.#reason,

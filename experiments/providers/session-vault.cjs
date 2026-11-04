@@ -4,6 +4,9 @@ const {promisify}=require('node:util');const scrypt=promisify(crypto.scrypt);
 const FORMAT='provider-lab-v1',PROVIDERS=new Set(['igap','eitaa','nasim','rubika']);
 const {validateCallRecovery,CallRecoveryError,MAX_CALL_RECOVERY_BYTES:CALL_RECOVERY_MAX}=require('../rubika/call-recovery.cjs');
 const CALL_RECOVERY='rubika-request-call-recovery-v1';
+const {validateIntent}=require('../nasim/cleanup-intent.cjs');
+const NASIM_CLEANUP='nasim-cleanup-intent-v1';
+const FIELDS_CLEANUP=['format','provider','accountBinding','selfId','selfClientId','peerId','callUUID','capturedAt'];
 class VaultError extends Error{constructor(reason){super('Session vault '+reason);this.reason=reason;}}
 function location(provider,slot){if(!PROVIDERS.has(provider)||!Number.isInteger(slot)||slot<1||slot>2)throw new VaultError('invalid_account');return provider+'/'+slot;}
 function callRecoveryLocation(provider,slot){const id=location(provider,slot);if(provider!=='rubika')throw new VaultError('invalid_account');return id;}
@@ -77,6 +80,40 @@ class SessionVault{
  }
  async hasCallRecovery(provider,slot){const id=callRecoveryLocation(provider,slot);return this.#callRecoveryWork(id,async()=>{try{return (await fs.stat(path.join(this.#directory,'call-recovery',provider,slot+'.json'))).isFile();}catch(e){if(e.code==='ENOENT')return false;throw new VaultError('read_failed');}});}
  async removeCallRecovery(provider,slot){const id=callRecoveryLocation(provider,slot);if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;return this.#callRecoveryWork(id,async()=>{if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');await fs.unlink(path.join(this.#directory,'call-recovery',provider,slot+'.json')).catch(e=>{if(e.code!=='ENOENT')throw new VaultError('write_failed');});});}
+ async saveCleanupIntent(provider,slot,value){
+  const id=location(provider,slot);if(provider!=='nasim')throw new VaultError('invalid_account');
+  const checked=validateIntent(value);if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork('cleanup/'+id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   const file=path.join(this.#directory,'cleanup-intents',provider,slot+'.json');
+   try{const old=await readJson(file);if(old.format!==FORMAT||old.purpose!==NASIM_CLEANUP||old.provider!==provider||old.slot!==slot)throw new VaultError('provider_mismatch');const plain=unseal(this.#key,old,FORMAT+'/cleanup/'+id);try{
+    const previous=validateIntent(JSON.parse(plain.toString('utf8')));
+    if(previous.callUUID!==checked.callUUID||previous.accountBinding!==checked.accountBinding||previous.peerId!==checked.peerId)throw new VaultError('cleanup_pending');
+   }finally{plain.fill(0);}}catch(e){if(e.code!=='ENOENT')throw e;}
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+   const bytes=Buffer.from(JSON.stringify(checked));try{await atomic(file,{format:FORMAT,purpose:NASIM_CLEANUP,provider,slot,...seal(this.#key,bytes,FORMAT+'/cleanup/'+id)});if(epoch!==this.#epoch)throw new VaultError('locked');}finally{bytes.fill(0);}
+  });
+ }
+ async loadCleanupIntent(provider,slot){
+  const id=location(provider,slot);if(provider!=='nasim')throw new VaultError('invalid_account');if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork('cleanup/'+id,async()=>{
+   try{const record=await readJson(path.join(this.#directory,'cleanup-intents',provider,slot+'.json'));
+    if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');
+    if(record.format!==FORMAT||record.purpose!==NASIM_CLEANUP||record.provider!==provider||record.slot!==slot)throw new VaultError('provider_mismatch');
+    const bytes=unseal(this.#key,record,FORMAT+'/cleanup/'+id);try{return validateIntent(JSON.parse(bytes.toString('utf8')));}finally{bytes.fill(0);}
+   }catch(e){if(e.code==='ENOENT')return null;if(e instanceof VaultError)throw e;throw new VaultError('read_failed');}
+  });
+ }
+ async hasCleanupIntent(provider,slot){const id=location(provider,slot);if(provider!=='nasim')throw new VaultError('invalid_account');return this.#callRecoveryWork('cleanup/'+id,async()=>{try{return (await fs.stat(path.join(this.#directory,'cleanup-intents',provider,slot+'.json'))).isFile();}catch(e){if(e.code==='ENOENT')return false;throw new VaultError('read_failed');}});}
+ async removeCleanupIntent(provider,slot,expected){
+  const id=location(provider,slot);if(provider!=='nasim')throw new VaultError('invalid_account');const checked=validateIntent(expected);if(!this.#key)throw new VaultError('locked');const epoch=this.#epoch;
+  return this.#callRecoveryWork('cleanup/'+id,async()=>{
+   if(!this.#key||epoch!==this.#epoch)throw new VaultError('locked');const file=path.join(this.#directory,'cleanup-intents',provider,slot+'.json');
+   try{const record=await readJson(file);if(record.format!==FORMAT||record.purpose!==NASIM_CLEANUP||record.provider!==provider||record.slot!==slot)throw new VaultError('provider_mismatch');const bytes=unseal(this.#key,record,FORMAT+'/cleanup/'+id);try{const old=validateIntent(JSON.parse(bytes.toString('utf8')));
+    if(FIELDS_CLEANUP.some(k=>old[k]!==checked[k]))throw new VaultError('account_binding_changed');
+   }finally{bytes.fill(0);}if(epoch!==this.#epoch)throw new VaultError('locked');await fs.unlink(file);}catch(e){if(e.code!=='ENOENT')throw e;}
+  });
+ }
  lock(){this.#epoch++;this.#key?.fill(0);this.#key=null;}
 }
 module.exports={SessionVault,VaultError};

@@ -7,6 +7,35 @@ async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,eitaaN
  try{await fn({lab,request,dir,calls,key,eitaaHarness});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
 
+test('Nasim cleanup does not need a native helper after a saved-intent restart',()=>fixture(async({request,calls,dir})=>{
+ const password='fixture-passphrase-123';await request('/api/vault/unlock',{password});
+ for(const slot of [1,2]){await request('/api/nasim/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/nasim/'+slot+'/verify',{code:'12345'});}
+ const {SessionVault}=require('../experiments/providers/session-vault.cjs'),{CleanupIntent}=require('../experiments/nasim/cleanup-intent.cjs');
+ const seed=new SessionVault(dir);await seed.unlock(password);
+ try{const record=await seed.load('nasim',1),account={state:{...record,signedIn:true},exportSession:()=>record};
+  const manager=new CleanupIntent(account,{saveIntent:value=>seed.saveCleanupIntent('nasim',1,value),loadIntent:()=>seed.loadCleanupIntent('nasim',1),clearIntent:value=>seed.removeCleanupIntent('nasim',1,value)});
+  await manager.capture({peerId:'42',callUUID:'fixture-restarted-call'});
+ }finally{seed.lock();}
+ const before=await(await request('/api/state')).json();assert.equal(before.nasimMedia.available,false);assert.equal(before.providerAccounts.nasim[0].cleanupStored,true);
+ const response=await request('/api/nasim/media/cleanup',{slot:1});assert.equal(response.status,200);assert.equal((await response.json()).serviceAcknowledged,true);
+ const after=await(await request('/api/state')).json();assert.equal(after.providerAccounts.nasim[0].cleanupStored,false);
+ assert.deepEqual(calls.filter(c=>c.action==='nasim-signal').map(c=>c.type),['bye']);
+}));
+
+test('Nasim reset preserves sealed cleanup intents and blocks a fresh call until explicit cleanup',()=>fixture(async({request,calls})=>{
+ await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+ for(const slot of [1,2]){await request('/api/nasim/'+slot+'/start',{country:'IR',phone:'09120000001'});await request('/api/nasim/'+slot+'/verify',{code:'12345'});}
+ assert.equal((await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090})).status,200);
+ assert.equal((await request('/api/nasim/media/dial',{slot:1})).status,200);
+ await waitForLab(request,s=>s.providerAccounts.nasim.every(a=>a.cleanupStored));await request('/api/nasim/media/reset',{});
+ const blocked=await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090});assert.equal(blocked.status,400);assert.equal((await blocked.json()).reason,'cleanup_pending');
+ const before=calls.filter(c=>c.action==='nasim-signal').length;
+ for(const slot of [1,2]){const response=await request('/api/nasim/media/cleanup',{slot});assert.equal(response.status,200);assert.equal((await response.json()).serviceAcknowledged,true);}
+ assert.equal(calls.filter(c=>c.action==='nasim-signal').length,before+2);
+ const state=await(await request('/api/state')).json();assert.ok(state.providerAccounts.nasim.every(a=>!a.cleanupStored));
+ assert.equal((await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090})).status,200);
+},{nasimNative:true}));
+
 test('every provider blocks a new login over an unloaded encrypted session without any account request or file replacement',()=>fixture(async({request,calls,dir})=>{
  const {SessionVault}=require('../experiments/providers/session-vault.cjs'),seed=new SessionVault(dir),providers=['igap','nasim','rubika','eitaa'],password='fixture-retained-session-passphrase',originals=new Map();
  try{await seed.unlock(password);for(const provider of providers){const record={provider,token:'fixture-retained-private-'+provider,fixture:'unloaded-session'};await seed.save(provider,1,record);const disk=await fs.readFile(path.join(dir,provider,'1.json'),'utf8');assert.ok(!disk.includes(record.token));originals.set(provider,{record,disk});}}finally{seed.lock();}

@@ -6,7 +6,8 @@ const {iceDiagnostics}=require('../providers/ice-diagnostics.cjs');
 const SAFE=new Set(['timeout','closed','not_authorized','not_connected','call_transport_failed','call_rejected','invalid_call_response',
  'invalid_native_output','operation_timeout','input_closed','process_exited','process_failed','prepare_timeout','invalid_relay',
  'invalid_pairing','invalid_description','negotiation_failed','gather_timeout','no_relay','transport_closed','transport_failed',
- 'transport_disconnected','ice_failed','dtls_failed','relay_route_failed','proxy_bind_failed','server_setup_failed','media_setup_failed','unsafe_environment']);
+ 'transport_disconnected','ice_failed','dtls_failed','relay_route_failed','proxy_bind_failed','server_setup_failed','media_setup_failed','unsafe_environment',
+ 'cleanup_pending','cleanup_save_failed','cleanup_unconfirmed','cleanup_cancelled','account_binding_changed']);
 class CallError extends Error {constructor(reason,fatal=false){super('Nasim call '+reason);this.reason=reason;this.fatal=fatal;}}
 const error=(reason,fatal=false)=>new CallError(reason,fatal);
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}
@@ -21,8 +22,9 @@ class CallSession {
  #signalCounts=signalCounts();
  #terminal=null;
  #terminalSnapshot=null;
+ #cleanup;
  #countSignal(key){this.#signalCounts[key]=Math.min(1000000,this.#signalCounts[key]+1);}
- constructor(account,{executable,open=NativeMediaBridge.open}={}){this.#account=account;this.#executable=executable;this.#open=open;}
+ constructor(account,{executable,open=NativeMediaBridge.open,cleanup}={}){this.#account=account;this.#executable=executable;this.#open=open;this.#cleanup=cleanup;}
  #context(){
   const state=this.#account.state;
   if(state.provider!=='nasim'||!state.signedIn)throw error('not_authenticated',true);
@@ -106,6 +108,7 @@ class CallSession {
   return this.#enqueue(async guard=>{
    if(!['idle','ended'].includes(this.#phase)||this.#bridge)throw error('call_busy');
    if(!['client','server'].includes(role)||!Number.isInteger(socksPort)||socksPort<0||socksPort>65535||socksPort>0&&socksPort<1024||typeof throughput!=='boolean')throw error('invalid_media_options');
+   if(this.#cleanup)await this.#io(()=>this.#cleanup.ensureClear(),guard);
    this.#terminal=null;this.#terminalSnapshot=null;this.#phase='preparing';this.#reason=null;
    const bridge=await this.#io(async()=>{
     const bridge=await this.#open(this.#executable);try{guard();return bridge;}catch(e){bridge.close();throw e;}
@@ -182,6 +185,7 @@ class CallSession {
     if(this.#phase!=='outgoing'||this.#peer!==event.peerId||event.senderClientId!==this.#client){this.#ignored++;return;}
    }
    this.#call=event.callUUID;this.#config=event;
+   if(this.#cleanup)await this.#io(()=>this.#cleanup.capture({callUUID:this.#call,peerId:this.#peer}),guard);
    const early=this.#early;this.#early=[];this.#earlyBytes=0;
    for(const pending of early){guard();if(pending.callUUID===this.#call)await this.#event(pending,guard);else this.#ignored++;}
    return;
@@ -226,6 +230,7 @@ class CallSession {
   }
   if(['bye','reject','busy'].includes(event.type)){
    if(!this.#remote&&this.#direction==='caller')this.#remote=event.senderClientId;
+   if(this.#cleanup)await this.#io(()=>this.#cleanup.peerEnded({peerId:this.#peer,callUUID:this.#call}),guard);
    this.#finish('ended',null,false,{signal:event.type,actor:'peer'});return;
   }
   this.#ignored++;
@@ -236,16 +241,17 @@ class CallSession {
   // Close media immediately, even if an earlier operation still awaits HTTP.
   this.#finish('ended',null,!call&&['dialing','outgoing'].includes(this.#phase),{signal:'local_end',actor:'self'});
   if(!rpc||!peer||!call)return {ended:true};
-  try{if(this.#account.signalConnection!==rpc)throw error('call_connection_changed');await rpc.send({type,callUUID:call,callData:null},{peerId:peer});}
+  try{if(this.#account.signalConnection!==rpc)throw error('call_connection_changed');const result=await rpc.send({type,callUUID:call,callData:null},{peerId:peer});if(this.#cleanup)await this.#cleanup.terminalAck({peerId:peer,callUUID:call},result);}
   catch(e){if(this.#epoch===epoch+1)this.#reason=SAFE.has(e?.reason)?e.reason:'call_end_uncertain';throw error('call_end_uncertain');}
   return {ended:true};
  }
- reset(){this.#finish('idle',null,true);this.#peer=null;this.#direction=null;}
+ async cleanupPending(){if(!this.#cleanup)throw error('cleanup_unavailable');if(this.#working||this.#call)throw error('call_busy');return this.#cleanup.cleanup();}
+ reset(){this.#finish('idle',null,true);this.#peer=null;this.#direction=null;this.#cleanup?.forgetMemory();}
  get state(){
   const media=this.#bridge?.state||null;
   const phase=this.#phase==='negotiating'&&this.#negotiated&&this.#localAccepted&&this.#remoteAccepted&&this.#mediaReady(media)?'connected':this.#phase;
   return {provider:'nasim',phase,busy:this.#working||this.#queue.length>0,direction:this.#direction||null,peerId:this.#peer||null,callUUID:this.#call||null,
-   selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,
+   selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,cleanup:this.#cleanup?.state||null,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,terminal:this.#terminal?{...this.#terminal}:null,
    terminalSnapshot:this.#terminalSnapshot?{signaling:{...this.#terminalSnapshot.signaling},media:this.#terminalSnapshot.media?{...this.#terminalSnapshot.media,...this.#terminalSnapshot.media.ice?{ice:{...this.#terminalSnapshot.media.ice}}:{}}:null}:null,
    signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,

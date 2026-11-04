@@ -107,6 +107,15 @@ test('call requests use v2.5 encrypted JSON on the fixed topic and do not retry 
  }finally{connection.close();}
 });
 
+test('terminal acknowledgement requires decrypted success and is tied to the exact bye request',async()=>{
+ for(const success of [true,false]){
+  const f=fixture({apiResponse:()=>new Response(wire.encryptBytes(Buffer.from(JSON.stringify(success?{status:'success'}:{})),token))}),connection=await f.open();
+  try{const result=await connection.send({type:'bye',callUUID:'fixture-call-1',callData:null},{peerId:'42'});
+   assert.deepEqual(result.terminalAcknowledgement,success?{type:'bye',callUUID:'fixture-call-1',peerId:'42'}:undefined);
+  }finally{connection.close();}
+ }
+});
+
 test('cleanSession resets old call state and continues receiving fresh events without loading chat history or reconnecting',async()=>{
  const f=fixture(),connection=await f.open();
  try{

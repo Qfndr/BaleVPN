@@ -58,7 +58,7 @@ class FakeNasimAuth extends FakeAuth{
     for(const target of [this,other])target.onEvent(codec.incoming({type:'msgGroupCall',senderClientID:this.record.clientId,time:Date.now(),data:{type:'config',callUUID:'fixture-nasim-call',callData:{method:'audio',
      participants:[{userID:Number(this.record.userId)},{userID:Number(peerId)}],invitedParticipantUserID:Number(peerId),stunServer:{url:'relay.fixture.gap.im:3478'},turnServer:{url:'relay.fixture.gap.im:3478',username:'fixture-private-turn-user',password:'fixture-private-turn-password'}}}},target.record.userId));
    }else other.onEvent?.(codec.incoming({type:'msgGroupCall',senderClientID:this.record.clientId,from:{id:Number(this.record.userId)},data:request.body.data},other.record.userId));
-   return {acknowledged:true};
+   return {acknowledged:true,...signal.type==='bye'?{terminalAcknowledgement:{type:'bye',callUUID:signal.callUUID,peerId}}:{}};
   }};return {eventsConnected:true};}
  disconnectSignals(){this.eventsState={phase:'closed'};this.signalConnection=null;this.onEvent=null;}
  stop(){this.disconnectSignals();super.stop();}

@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const codec=require('../experiments/nasim/call-codec.cjs');
 const {CallSession}=require('../experiments/nasim/call-session.cjs');
 const sdp=type=>({type,sdp:'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=fingerprint:sha-256 '+Array(32).fill('AA').join(':')+'\r\na=ice-pwd:fixture-private-ice\r\n'});
-function fixture({autoConfig=true,open,sendHook}={}){
+function fixture({autoConfig=true,open,sendHook,cleanupFactory}={}){
  const accounts=new Map(),controllers=new Map(),natives=[],sent=[];let sequence=0;
  const raw=(sender,type,callUUID,callData)=>({type:'msgGroupCall',from:{id:Number(sender)},senderClientID:'client-'+sender,time:Date.now(),data:{type,callUUID,callData}});
  const deliver=(to,message)=>controllers.get(to).handleEvent(codec.incoming(message,to));
@@ -13,6 +13,7 @@ function fixture({autoConfig=true,open,sendHook}={}){
  }
  for(const id of ['41','42']){
   const account={state:{provider:'nasim',signedIn:true,userId:id,clientId:'client-'+id},disconnects:0,
+   exportSession(){return {provider:'nasim',userId:id,clientId:'client-'+id,token:'fixture-account-token-'+id};},
    disconnectSignals(){this.disconnects++;this.signalConnection=null;}};
   account.signalConnection={send:async(signal,{peerId})=>{
    const request=codec.outgoing(signal,id,peerId);sent.push({sender:id,peerId,signal:structuredClone(signal)});
@@ -21,7 +22,7 @@ function fixture({autoConfig=true,open,sendHook}={}){
    else deliver(peerId,raw(id,signal.type,signal.callUUID,request.body.data.callData));
    return {acknowledged:true,reply:null};
   }};accounts.set(id,account);
-  const controller=new CallSession(account,{executable:'fixture-bridge',open:open||(async()=>{
+  const controller=new CallSession(account,{executable:'fixture-bridge',...cleanupFactory?{cleanup:cleanupFactory(account)}:{},open:open||(async()=>{
    const certificate=(++sequence).toString(16).padStart(2,'0').repeat(80);
    const bridge={publicCertificate:certificate,ops:[],latest:{phase:'prepared'},get state(){return {...this.latest};},
     async configure(call,options){this.ops.push({op:'configure',call,options});this.call=call;this.options=options;this.latest.phase='configured';},

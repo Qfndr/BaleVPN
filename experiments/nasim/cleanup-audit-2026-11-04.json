@@ -17,5 +17,18 @@
   },
   "sourceFinding": "CallSession.#finish retires and clears #call, clears #remote and disconnects/clears the pinned RPC. end() uses current #call and therefore cannot send an exact prior-call bye after this cleanup. Current local ended/uncertain state does not establish that a prior remote call ended.",
   "result": "No new call attempted because exact prior-call cleanup could not be established from this state.",
+  "offlineOfficialSourceReview": {
+    "source": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+    "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149",
+    "currentCallReadRpcVerified": false,
+    "serverSideExpirationVerified": false,
+    "ringingTimeout": "At character377577, startRingingTimeout defaults to60000ms and invokes local sendBye or expireUnanswered; it is a browser timer, not evidence of server expiry.",
+    "transportTimeout": "Around character378000, watchTransport uses15000ms only for a previously connected peer that then disconnects/fails/closes. It does not establish expiration of an initial failed ICE negotiation.",
+    "byeRequiresPreservedContext": "At character389029, sendBye retains the participant and UUID and sends msgGroupCall bye to that exact peer. Current laboratory state discarded that UUID.",
+    "historyIsNotActiveCallProof": "At character390000, updateCallLogStatus edits history metadata. A finished history record is not an authoritative active-call query.",
+    "activeCallIsLocalUiState": "Messenger-DUDPkifM.js character4887 subscribes to ve.active; it is not a server query.",
+    "scopeLimit": "This bounded cache review did not find a usable authoritative read-only endpoint or server TTL. It does not prove no such endpoint exists."
+  },
+  "futureInstrumentation": "Before any future call, retain one encrypted cleanup intent bound to account, device, peer, call UUID and call epoch; preserve it across media failure and distinguish local cleanup from a confirmed terminal action. No such cleanup was attempted in this audit.",
   "privacy": "No account IDs, call IDs, tokens, panel keys, network addresses, credentials or raw state included."
 }
