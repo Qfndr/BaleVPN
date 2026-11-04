@@ -545,5 +545,29 @@
       "This measurement does not identify the cause of the client subscriber handshake failure."
     ],
     "liveTunnelReady": false
+  },
+  "relayOnlyRepeatTrial": {
+    "sourceCommit": "6ea8a93ea4961b7c0ea759c7afe41ef58345ea81",
+    "binarySha256": "d5bb0ce900000396e1e6736c35cc37f1492f9c2e0904636656525905695e2253",
+    "scope": "Two sequential calls on one Windows host, nested client and standalone server, diagnostic relay-only enabled on both sides.",
+    "cycles": 2,
+    "bothSidesPolicy": "relay",
+    "bothSidesDiagnosticRelayOnly": true,
+    "mutualAuthentication": true,
+    "downloadBytesPerCycle": 352240,
+    "downloadSha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+    "uploadBytesPerCycle": 71680,
+    "uploadSha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+    "uploadEchoMatches": true,
+    "stableAfterTransferSecondsPerCycle": 20,
+    "serverReturnedToListeningAfterEachCycle": true,
+    "cleanupBothLocallyStopped": true,
+    "otpRequested": false,
+    "deviceRegistrationRequested": false,
+    "limitations": [
+      "This is a short single-host functional trial, not a throughput benchmark.",
+      "The default ICE policy failed prior controlled trials; relay-only succeeded in these two calls.",
+      "Remote VPS deployment, sustained reliability, operator billing and international-outage behavior remain unverified."
+    ]
   }
 }
