@@ -11,6 +11,7 @@
 ۲. از پوشهٔ بستهٔ لینوکس روی VPS اجرا کنید. در این مثال مخزن حساب سرور در جایگاه ۲ است.
 
 ```bash
+chmod u+x ./nasim_relay_bridge
 bash start.sh server /root/nasim-vault 2
 ```
 
@@ -37,6 +38,7 @@ curl.exe --proxy socks5h://127.0.0.1:1098 --noproxy 127.0.0.1 --max-time 15 --fa
 بستهٔ برنامه و کیت نسیم را در پوشه‌های جدا استخراج کنید. در VPS از پوشهٔ برنامه اجرا کنید. مسیرهای کیت، Node.js و مخزن را مطابق نصب خود جایگزین کنید.
 
 ```bash
+chmod u+x ./bale-vpn /root/Nasim-Linux-x64/nasim_relay_bridge
 ./bale-vpn --headless --port 37130 --config-dir /root/nasim-app-data \
   --nasim-kit /root/Nasim-Linux-x64 --nasim-node "$(command -v node)" \
   --nasim-vault /root/nasim-vault
