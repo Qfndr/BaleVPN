@@ -9,6 +9,7 @@ const NASIM_CLEANUP='nasim-cleanup-intent-v1';
 const refreshRecovery=require('../eitaa/refresh-recovery.cjs');
 const {validateOfficialIntent}=require('../nasim/official-call-gate.cjs');
 const NASIM_OFFICIAL='nasim-official-call-journal-v1',NASIM_OFFICIAL_MAX=64*1024;
+const EITAA_CALL='eitaa-call-journal-v1',EITAA_CALL_MAX=2048;
 const FIELDS_CLEANUP=['format','provider','accountBinding','selfId','selfClientId','peerId','callUUID','capturedAt'];
 class VaultError extends Error{constructor(reason){super('Session vault '+reason);this.reason=reason;}}
 function location(provider,slot){if(!PROVIDERS.has(provider)||!Number.isInteger(slot)||slot<1||slot>2)throw new VaultError('invalid_account');return provider+'/'+slot;}
@@ -35,6 +36,33 @@ function advanceOfficial(previous,next,response){
  if(oldPhase==='requested')return phase==='bound'&&response!==null&&response.status>=200&&response.status<300&&terminalEvents.length===0;
  return phase==='bound'&&callUUID===oldUUID&&terminalEvents.length===oldEvents.length+1&&
   oldEvents.every(old=>terminalEvents.some(event=>isDeepStrictEqual(event,old)));
+}
+
+function eitaaCallIntent(value){
+ const plain=v=>v&&Object.getPrototypeOf(v)===Object.prototype;
+ const fields=(v,keys)=>plain(v)&&isDeepStrictEqual(Object.keys(v).sort(),keys);
+ if(!fields(value,['bindings','callId','cursor','operationId','phase','slot','terminalProof'])||
+  typeof value.operationId!=='string'||!/^[a-f0-9]{32}$/.test(value.operationId)||![1,2].includes(value.slot)||
+  !Array.isArray(value.bindings)||value.bindings.length!==2||Object.keys(value.bindings).length!==2||
+  ![0,1].every(index=>typeof value.bindings[index]==='string'&&/^[a-f0-9]{64}$/.test(value.bindings[index]))||
+  value.bindings[0]===value.bindings[1])throw new VaultError('invalid_eitaa_call_intent');
+ if(value.phase==='requested'){
+  if(value.callId!==null||value.cursor!==null||value.terminalProof!==null)throw new VaultError('invalid_eitaa_call_intent');
+ }else if(!['bound','terminal'].includes(value.phase)||typeof value.callId!=='string'||!/^[1-9][0-9]{0,18}$/.test(value.callId)||
+  BigInt(value.callId)>=(1n<<63n)||!fields(value.cursor,['date','pts','qts','seq'])||
+  !Object.values(value.cursor).every(v=>Number.isInteger(v)&&v>=0&&v<=0x7fffffff)||
+  (value.phase==='bound'?value.terminalProof!==null:!['discard-ack','event-history'].includes(value.terminalProof)))
+  throw new VaultError('invalid_eitaa_call_intent');
+ return structuredClone(value);
+}
+
+function advanceEitaaCall(previous,next){
+ if(!previous)return next.phase==='requested';
+ const {phase,callId,cursor,terminalProof,...identity}=next;
+ const {phase:oldPhase,callId:oldId,cursor:oldCursor,terminalProof:oldProof,...oldIdentity}=previous;
+ if(!isDeepStrictEqual(identity,oldIdentity))return false;
+ if(oldPhase==='requested')return phase==='bound';
+ return oldPhase==='bound'&&phase==='terminal'&&callId===oldId&&isDeepStrictEqual(cursor,oldCursor);
 }
 
 function seal(key,data,aad){const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',key,iv);cipher.setAAD(Buffer.from(aad));const ciphertext=Buffer.concat([cipher.update(data),cipher.final()]);return {iv:iv.toString('hex'),tag:cipher.getAuthTag().toString('hex'),ciphertext:ciphertext.toString('base64')};}
@@ -136,6 +164,58 @@ class SessionVault{
     if(!isDeepStrictEqual(stored?.intent,intent)||intent.phase!=='prepared'&&intent.terminalEvents.length!==2)throw new VaultError('official_call_intent_conflict');
     await fs.unlink(file);await syncOfficialDirectory(directory);checkVault();check();
    }),
+   close
+  });
+ }
+ async openEitaaCallJournal(){
+  if(!this.#key)throw new VaultError('locked');
+  const epoch=this.#epoch,directory=path.join(this.#directory,'eitaa-call'),file=path.join(directory,'pair.json');
+  const ownerFile=path.join(directory,'owner.json'),owner={pid:process.pid,nonce:crypto.randomBytes(16).toString('hex')};
+  const aad=FORMAT+'/'+EITAA_CALL+'/pair';
+  let closed=false;
+  const guard=()=>{if(closed||!this.#key||epoch!==this.#epoch)throw new VaultError('locked');};
+  await fs.mkdir(directory,{recursive:true,mode:0o700});await syncOfficialDirectory(this.#directory);guard();
+  try{await fs.writeFile(ownerFile,JSON.stringify(owner),{flag:'wx',mode:0o600});}
+  catch(error){throw new VaultError(error.code==='EEXIST'?'eitaa_call_owner_busy':'write_failed');}
+  const close=async()=>{
+   if(closed)return;closed=true;
+   await this.#callRecoveryWork(EITAA_CALL,async()=>{
+    if(!isDeepStrictEqual(await readJson(ownerFile),owner))throw new VaultError('eitaa_call_owner_changed');
+    await fs.unlink(ownerFile);
+   });
+  };
+  try{guard();}catch(error){await close();throw error;}
+  const work=action=>this.#callRecoveryWork(EITAA_CALL,async()=>{
+   guard();let stored=null;
+   try{
+    const envelope=await readJson(file);guard();
+    if(envelope.format!==FORMAT||envelope.purpose!==EITAA_CALL||envelope.provider!=='eitaa')throw new VaultError('provider_mismatch');
+    if(typeof envelope.ciphertext!=='string'||envelope.ciphertext.length>4*Math.ceil(EITAA_CALL_MAX/3))throw new VaultError('invalid_file');
+    const plain=unseal(this.#key,envelope,aad);
+    try{stored=eitaaCallIntent(JSON.parse(plain.toString('utf8')));}finally{plain.fill(0);}
+   }catch(error){if(error.code!=='ENOENT')throw error instanceof VaultError?error:new VaultError('read_failed');}
+   guard();return action(stored);
+  });
+  return Object.freeze({
+   load:()=>work(stored=>stored),
+   save:async(value,previous,check)=>{
+    const next=eitaaCallIntent(value),expected=previous===null?null:eitaaCallIntent(previous);
+    await work(async stored=>{
+     check();
+     if(!isDeepStrictEqual(stored,expected)||!advanceEitaaCall(stored,next))throw new VaultError('eitaa_call_intent_conflict');
+     const data=Buffer.from(JSON.stringify(next));let envelope;
+     try{envelope={format:FORMAT,purpose:EITAA_CALL,provider:'eitaa',...seal(this.#key,data,aad)};}finally{data.fill(0);}
+     await writeOfficialJournal(file,envelope);guard();check();
+    });
+   },
+   clear:async(value,check)=>{
+    const expected=eitaaCallIntent(value);
+    await work(async stored=>{
+     check();
+     if(expected.phase!=='terminal'||!isDeepStrictEqual(stored,expected))throw new VaultError('eitaa_call_intent_conflict');
+     await fs.unlink(file);await syncOfficialDirectory(directory);guard();check();
+    });
+   },
    close
   });
  }

@@ -88,6 +88,20 @@ Those fields remain false in this signaling-only state; consumers read the
 separate media owner's role-specific readiness. The core public state contains no token, access hash, DH key, TURN
 credential, SDP or raw error response.
 
+## Pending call recovery in the experimental lab
+
+The lab seals a pair-bound intent before sending the call request and records
+the validated call ID and event cursor before acknowledging the incoming call.
+An unbound request blocks another call after a restart. For a known ID, **Check
+call end** can read event history from the saved cursor. Only an exact terminal
+event or an already recorded terminal receipt clears the journal.
+
+Recovery requires the original authenticated account pair and session bindings.
+Replacing or refreshing a session can leave the journal pending. Logging out
+and removing a saved account remain available. Neither clears the call journal.
+A journal owner file left by an abrupt stop blocks access until ownership can be
+verified separately. The lab does not reclaim it automatically.
+
 ## Verification
 
 Twenty-one offline lifecycle tests cover both caller directions, actual native

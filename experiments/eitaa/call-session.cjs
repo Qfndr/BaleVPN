@@ -22,9 +22,9 @@ class CallSession{
  #account;#create;#callbacks;#client;#binding;#allowed;#self;#cursor;
  #phase='idle';#reason=null;#call;#peer;#outgoing=false;#remotePending=false;#dh;#commitment;#cipher;#early=[];#earlyBytes=0;
  #epoch=0;#queue=[];#queuedBytes=0;#working=false;#timer;#pollQueued=false;#deadline=0;#startedAt=0;#retired=new Set();#ignored=0;#waits=new Set();
- constructor(account,{allowedPeers=[],createClient=options=>new CallClient(options),onSecure=async()=>{},onSignal=async()=>{},onEnd=()=>{}}={}){
+ constructor(account,{allowedPeers=[],createClient=options=>new CallClient(options),onSecure=async()=>{},onSignal=async()=>{},onEnd=()=>{},beforeRequest,beforeBind,beforeReceipt,beforeTerminal}={}){
   if(!account||typeof createClient!=='function'||![onSecure,onSignal,onEnd].every(v=>typeof v==='function')||!Array.isArray(allowedPeers)||allowedPeers.length>32||allowedPeers.some(v=>typeof v!=='string'||!/^\d{1,19}$/.test(v)||!id(BigInt(v)))||new Set(allowedPeers).size!==allowedPeers.length)fail('invalid_call_options');
-  this.#account=account;this.#allowed=new Set(allowedPeers);this.#create=createClient;this.#callbacks={onSecure,onSignal,onEnd};
+  this.#account=account;this.#allowed=new Set(allowedPeers);this.#create=createClient;this.#callbacks={onSecure,onSignal,onEnd,beforeRequest,beforeBind,beforeReceipt,beforeTerminal};
  }
  #context(){
   const state=this.#account.state;if(state?.provider!=='eitaa'||state.signedIn!==true||state.selfConfirmed!==true)fail('not_authenticated');
@@ -44,7 +44,7 @@ class CallSession{
   try{while(this.#queue.length){const job=this.#queue.shift();this.#queuedBytes-=job.size;
    try{const guard=()=>this.#guard(job.epoch);guard();const value=await job.action(guard);guard();job.resolve(value);}
    catch(e){const error=e instanceof CallError?e:new CallError(SAFE.has(e?.reason)?e.reason:'call_operation_failed');
-    if(job.epoch===this.#epoch&&!['call_cancelled','call_busy','call_not_ringing','call_not_secure','call_peer_not_allowed','call_not_listening','invalid_call_peer','invalid_call_options','call_not_started'].includes(error.reason))this.#finish('failed',error.reason,true);
+    if(job.epoch===this.#epoch&&!['call_cancelled','call_busy','call_not_ringing','call_not_secure','call_peer_not_allowed','call_not_listening','invalid_call_peer','invalid_call_options','call_not_started','call_request_unbound'].includes(error.reason))this.#finish('failed',error.reason,true);
     job.reject(error);
    }
   }}finally{this.#working=false;}
@@ -95,10 +95,13 @@ class CallSession{
   return this.#enqueue(async guard=>{
    if(!this.#client)fail('call_not_started');if(this.#phase!=='listening')fail('call_not_listening');if(!this.#allowed.has(userId)||userId===this.#self)fail('call_peer_not_allowed');
    this.#outgoing=true;this.#peer=BigInt(userId);this.#phase='dialing';this.#deadline=Date.now()+60000;this.#reason=null;this.#dh=await this.#generate(guard);
+   if(this.#callbacks.beforeRequest){await this.#callbacks.beforeRequest(guard);guard();}
    this.#remotePending=true;
    const reply=await this.#rpc('phone.requestCall',{user_id:{_:'inputUser',user_id:this.#peer,access_hash:accessHash},g_a_hash:this.#dh.commitment},guard);
    if(reply?._!=='phone.phoneCall'||reply.phone_call?._!=='phoneCallWaiting')fail('invalid_call_response');
-   this.#checkCall(reply.phone_call);if(this.#retired.has(String(reply.phone_call.id)))fail('retired_call');this.#call=reply.phone_call;this.#phase='waiting';return {dialing:true};
+   this.#checkCall(reply.phone_call);if(this.#retired.has(String(reply.phone_call.id)))fail('retired_call');
+   if(this.#callbacks.beforeBind){await this.#callbacks.beforeBind(reply.phone_call.id,{...this.#cursor},guard);guard();}
+   this.#call=reply.phone_call;this.#phase='waiting';return {dialing:true};
   });
  }
  async accept(){
@@ -130,15 +133,20 @@ class CallSession{
   if(!isBytes(call.g_a_or_b,256))fail('invalid_call_response');const {key}=this.#dh.derive(call.g_a_or_b,{expectedCommitment:this.#commitment,expectedFingerprint:call.key_fingerprint});
   await this.#secure(call,key,guard);
  }
- async #onCall(call,guard){
+ async #onCall(call,guard,proof='event-history'){
   if(this.#retired.has(String(call?.id))){this.#ignored++;return;}
   if(call?._==='phoneCallRequested'&&!this.#call){
    if(this.#phase!=='listening'||!this.#allowed.has(String(call.admin_id))||call.participant_id!==BigInt(this.#self)){this.#ignored++;return;}
-   this.#peer=this.#checkCall(call,{incoming:true});if(!isBytes(call.g_a_hash,32))fail('invalid_call_response');this.#outgoing=false;this.#call=call;this.#remotePending=true;this.#commitment=Buffer.from(call.g_a_hash);this.#phase='ringing';this.#deadline=Date.now()+60000;
+   const peer=this.#checkCall(call,{incoming:true});if(!isBytes(call.g_a_hash,32))fail('invalid_call_response');
+   this.#callbacks.beforeReceipt?.(call.id);
+   this.#peer=peer;this.#outgoing=false;this.#call=call;this.#remotePending=true;this.#commitment=Buffer.from(call.g_a_hash);this.#phase='ringing';this.#deadline=Date.now()+60000;
    if(await this.#rpc('phone.receivedCall',{peer:this.#peerInput()},guard)!==true)fail('call_receipt_not_confirmed');return;
   }
   if(!this.#call||call.id!==this.#call.id){this.#ignored++;return;}
-  if(call._==='phoneCallDiscarded'){this.#remotePending=false;this.#resetCall();this.#phase='listening';this.#reason='remote_call_ended';return;}
+  if(call._==='phoneCallDiscarded'){
+   if(this.#callbacks.beforeTerminal){await this.#callbacks.beforeTerminal(call.id,proof,guard);guard();}
+   this.#remotePending=false;this.#resetCall();this.#phase='listening';this.#reason='remote_call_ended';return;
+  }
   this.#checkCall(call);
   if(call._==='phoneCallAccepted')await this.#accepted(call,guard);
   else if(call._==='phoneCall')await this.#active(call,guard);
@@ -200,7 +208,11 @@ class CallSession{
    if(!call)fail('call_not_started');if(call!==this.#call)fail('call_cancelled');const target=call.id,response=await this.#rpc('phone.discardCall',{peer:this.#peerInput(),duration:Math.min(604800,this.#startedAt?Math.floor((Date.now()-this.#startedAt)/1000):0),reason},guard);
    const updates=response?._==='updates'||response?._==='updatesCombined'?response.updates:response?._==='updateShort'?[response.update]:null;
    if(!Array.isArray(updates)||!updates.some(v=>v?._==='updatePhoneCall'&&v.phone_call?._==='phoneCallDiscarded'&&v.phone_call.id===target))fail('call_end_not_confirmed');
-   for(const update of updates)await this.#onUpdate(update,guard);return {ended:true};
+   for(const update of updates){
+    if(update?._==='updatePhoneCall')await this.#onCall(update.phone_call,guard,'discard-ack');
+    else await this.#onUpdate(update,guard);
+   }
+   return {ended:true};
   });
  }
  stop(){this.#finish('stopped',null,true);}

@@ -51,7 +51,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    saveIntent:async(record,guard)=>{guard();await vault.saveCleanupIntent('nasim',slot,record);guard();},
    clearIntent:async(record,guard)=>{guard();await vault.removeCleanupIntent('nasim',slot,record);guard();},
   })});
- const eitaaCalls=new EitaaCallPair(eitaaSessions,{executable:eitaaBridgeExecutable,open:eitaaOpenBridge,createClient:eitaaCallClientFactory,createAccountClient:eitaaAccountClientFactory});
+ const eitaaCalls=new EitaaCallPair(eitaaSessions,{executable:eitaaBridgeExecutable,open:eitaaOpenBridge,createClient:eitaaCallClientFactory,createAccountClient:eitaaAccountClientFactory,openJournal:()=>vault.openEitaaCallJournal()});
  const rubikaCallTransport=account=>{
   const slot=[...rubikaSessions].find(([,value])=>value===account)?.[0];if(!slot)throw new RubikaError('invalid_account_binding');
   const options={saveCallRecovery:(record,guard)=>rubikaWrite(slot,async()=>{guard();await vault.saveCallRecovery('rubika',slot,record);guard();}),
@@ -104,7 +104,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
    if(lifecycle){const key=lifecycle[1]+'/'+lifecycle[2];privacyCache.delete(key);privacyControllers.get(key)?.abort();privacyGeneration.set(key,(privacyGeneration.get(key)||0)+1);}
    if(['/api/vault/lock','/api/vault/unlock'].includes(url.pathname)){privacyCache.clear();for(const controller of privacyControllers.values())controller.abort();for(const provider of Object.keys(privacyAccounts))for(const slot of [1,2]){const key=provider+'/'+slot;privacyGeneration.set(key,(privacyGeneration.get(key)||0)+1);}}
    if(url.pathname==='/api/vault/unlock'){
-    if(unlocking)throw error('vault_busy',409);unlocking=true;try{await vault.unlock(body.password);return json({ok:true});}finally{unlocking=false;body.password='';}
+    if(unlocking)throw error('vault_busy',409);unlocking=true;try{await vault.unlock(body.password);await eitaaCalls.loadJournal().catch(()=>{});return json({ok:true});}finally{unlocking=false;body.password='';}
    }
    const rubikaMedia=url.pathname.match(/^\/api\/rubika\/media\/(prepare|dial|accept|end|reset)$/);
    if(rubikaMedia){
@@ -169,7 +169,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     return json({ok:true,...result});
     }finally{if(tracked)rubikaOperations.delete(slot);}
    }
-   if(url.pathname==='/api/vault/lock'){locking=true;try{media?.close();nasimCalls.reset();eitaaCalls.invalidate();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values()]);vault.lock();return json({ok:true});}finally{locking=false;}}
+   if(url.pathname==='/api/vault/lock'){locking=true;try{media?.close();nasimCalls.reset();eitaaCalls.invalidate();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values(),eitaaCalls.settleJournal()]);vault.lock();return json({ok:true});}finally{locking=false;}}
    const nasimMedia=url.pathname.match(/^\/api\/nasim\/media\/(prepare|dial|accept|end|reset|cleanup)$/);
    if(nasimMedia){
     if(!vault.unlocked)throw error('vault_locked',423);
@@ -242,7 +242,7 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
   const data=uiAssets.get(url.pathname)||await fs.readFile(file);res.writeHead(200,{'Content-Type':type});res.end(data);
  }catch(e){const reason=e.reason||'request_failed';res.writeHead(e.status||400,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify({ok:false,reason,...e instanceof IgapPrivacyError&&e.privacyDiagnostic?{privacyDiagnostic:e.privacyDiagnostic}:{},...e instanceof RpcError&&e.major!==undefined?{major:e.major,minor:e.minor}:{},...e instanceof NasimError?{statusCode:e.statusCode,serviceType:e.serviceType}:{},...e instanceof EitaaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e instanceof RubikaError?{statusCode:e.statusCode,serviceCode:e.serviceCode}:{},...e.waitSeconds?{waitSeconds:e.waitSeconds}:{}}));}});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{origin='http://127.0.0.1:'+server.address().port;resolve();});});
- async function close(){if(closing)return;closing=true;for(const controller of privacyControllers.values())controller.abort();media?.close();nasimCalls.reset();eitaaCalls.invalidate();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values()]);vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+ async function close(){if(closing)return;closing=true;for(const controller of privacyControllers.values())controller.abort();media?.close();nasimCalls.reset();eitaaCalls.invalidate();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values(),eitaaCalls.settleJournal()]);vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  return {origin,url:origin+'/#'+secret,close,server};
 }
 function startupOptions(args){
