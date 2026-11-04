@@ -40,12 +40,11 @@ pub enum RouteProof {
     Rejected,
 }
 
-/// One literal public server address and one explicit UDP port. No hostname,
-/// implicit NAT rewrite, port range, or arbitrary peer-selected destination.
+/// Candidate policy for the two authenticated Nasim call roles. The server
+/// discovers its own public endpoint through ICE without an operator IP pin.
 #[derive(Clone, Copy)]
 pub struct NasimRoutePolicy {
     role: Role,
-    server: SocketAddr,
     #[cfg(test)]
     local_fixture: bool,
 }
@@ -131,21 +130,18 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
 }
 
 impl NasimRoutePolicy {
-    pub fn new(role: Role, server: SocketAddr) -> Option<Self> {
-        (is_public_ip(server.ip()) && server.port() >= 1024).then_some(Self {
+    pub fn new(role: Role) -> Self {
+        Self {
             role,
-            server,
             #[cfg(test)]
             local_fixture: false,
-        })
+        }
     }
 
     #[cfg(test)]
-    pub(crate) fn local_fixture(role: Role, server: SocketAddr) -> Self {
-        assert!(server.ip().is_loopback() && server.port() >= 1024);
+    pub(crate) fn local_fixture(role: Role) -> Self {
         Self {
             role,
-            server,
             local_fixture: true,
         }
     }
@@ -154,22 +150,17 @@ impl NasimRoutePolicy {
         self.role
     }
 
-    pub fn server(&self) -> SocketAddr {
-        self.server
-    }
-
     pub fn allows(&self, candidate: Candidate, local: bool) -> bool {
         if !candidate.udp
             || !matches!(candidate.component, 1 | 2)
             || candidate.address.port() == 0
             || !self.public_candidate(candidate.address.ip())
-            || candidate.address.is_ipv4() != self.server.is_ipv4()
         {
             return false;
         }
         let server_candidate = (self.role == Role::Server) == local;
         if server_candidate {
-            candidate.address == self.server
+            candidate.address.port() >= 1024
                 && matches!(
                     candidate.kind,
                     CandidateKind::Host | CandidateKind::ServerReflexive
@@ -179,7 +170,7 @@ impl NasimRoutePolicy {
         }
     }
 
-    fn public_candidate(&self, address: IpAddr) -> bool {
+    pub(crate) fn public_candidate(&self, address: IpAddr) -> bool {
         #[cfg(test)]
         if self.local_fixture && address.is_loopback() {
             return true;
@@ -201,6 +192,7 @@ impl NasimRoutePolicy {
         };
         if nominated.next().is_some()
             || !pair.succeeded
+            || pair.local.address.is_ipv4() != pair.remote.address.is_ipv4()
             || !self.allows(pair.local, true)
             || !self.allows(pair.remote, false)
         {
@@ -243,7 +235,8 @@ mod tests {
     }
 
     #[test]
-    fn requires_explicit_public_nonprivileged_server_endpoint() {
+    fn requires_discovered_server_candidate_to_be_public_and_nonprivileged() {
+        let policy = NasimRoutePolicy::new(Role::Client);
         for value in [
             "127.0.0.1:37000",
             "10.0.0.1:37000",
@@ -256,29 +249,31 @@ mod tests {
             "8.8.8.8:0",
             "8.8.8.8:443",
         ] {
-            assert!(NasimRoutePolicy::new(Role::Client, value.parse().unwrap()).is_none());
+            let mut candidate = server();
+            candidate.address = value.parse().unwrap();
+            assert!(!policy.allows(candidate, false));
         }
-        assert!(NasimRoutePolicy::new(Role::Client, endpoint()).is_some());
+        assert!(policy.allows(server(), false));
     }
 
     #[test]
-    fn client_requires_own_relay_and_exact_server_endpoint() {
-        let policy = NasimRoutePolicy::new(Role::Client, endpoint()).unwrap();
+    fn client_requires_own_relay_and_accepts_public_server_address_changes() {
+        let policy = NasimRoutePolicy::new(Role::Client);
         assert!(policy.allows(relay(), true));
         assert!(policy.allows(server(), false));
         assert!(!policy.allows(server(), true));
         assert!(!policy.allows(relay(), false));
         let mut changed = server();
         changed.address.set_port(37001);
-        assert!(!policy.allows(changed, false));
+        assert!(policy.allows(changed, false));
         changed = server();
         changed.address.set_ip("9.9.9.9".parse().unwrap());
-        assert!(!policy.allows(changed, false));
+        assert!(policy.allows(changed, false));
     }
 
     #[test]
     fn server_has_inverse_roles_and_rejects_peer_host_candidates() {
-        let policy = NasimRoutePolicy::new(Role::Server, endpoint()).unwrap();
+        let policy = NasimRoutePolicy::new(Role::Server);
         assert!(policy.allows(server(), true));
         assert!(policy.allows(relay(), false));
         assert!(!policy.allows(server(), false));
@@ -287,7 +282,7 @@ mod tests {
 
     #[test]
     fn rejects_tcp_private_unknown_components_and_peer_reflexive() {
-        let policy = NasimRoutePolicy::new(Role::Client, endpoint()).unwrap();
+        let policy = NasimRoutePolicy::new(Role::Client);
         let mut candidate = relay();
         candidate.udp = false;
         assert!(!policy.allows(candidate, true));
@@ -304,7 +299,7 @@ mod tests {
 
     #[test]
     fn proof_requires_selected_unique_successful_nomination() {
-        let policy = NasimRoutePolicy::new(Role::Client, endpoint()).unwrap();
+        let policy = NasimRoutePolicy::new(Role::Client);
         assert_eq!(policy.prove(false, &[pair()]), RouteProof::Unverified);
         assert_eq!(policy.prove(true, &[]), RouteProof::Unverified);
         assert_eq!(
@@ -318,11 +313,14 @@ mod tests {
         let mut bypass = pair();
         bypass.local = server();
         assert_eq!(policy.prove(true, &[bypass]), RouteProof::Rejected);
+        let mut mixed = pair();
+        mixed.local.address = "[2606:4700:4700::1111]:48000".parse().unwrap();
+        assert_eq!(policy.prove(true, &[mixed]), RouteProof::Rejected);
     }
 
     #[test]
-    fn server_reflexive_allowed_only_for_the_pinned_server() {
-        let policy = NasimRoutePolicy::new(Role::Client, endpoint()).unwrap();
+    fn server_reflexive_allowed_only_for_server_role() {
+        let policy = NasimRoutePolicy::new(Role::Client);
         let mut candidate = server();
         candidate.kind = CandidateKind::ServerReflexive;
         assert!(policy.allows(candidate, false));

@@ -173,7 +173,7 @@ mod tests {
     use crate::nasim_route_policy::Role;
 
     fn policy() -> NasimRoutePolicy {
-        NasimRoutePolicy::new(Role::Client, "8.8.8.8:37000".parse().unwrap()).unwrap()
+        NasimRoutePolicy::new(Role::Client)
     }
 
     #[test]

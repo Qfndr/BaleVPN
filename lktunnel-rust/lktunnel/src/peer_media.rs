@@ -238,6 +238,75 @@ fn config(servers: Vec<RTCIceServer>) -> Result<RTCConfiguration, MediaError> {
     })
 }
 
+async fn nasim_server_config(
+    servers: Vec<RTCIceServer>,
+    policy: NasimRoutePolicy,
+) -> Result<RTCConfiguration, MediaError> {
+    if servers.len() > 4 {
+        return Err(MediaError::InvalidRelay);
+    }
+    let ice_servers = tokio::time::timeout(Duration::from_secs(2), async {
+        let mut resolved = Vec::new();
+        for server in servers {
+            if server.urls.is_empty()
+                || server.urls.len() > 4
+                || !server.username.is_empty()
+                || !server.credential.is_empty()
+            {
+                return Err(MediaError::InvalidRelay);
+            }
+            let mut urls = Vec::new();
+            for url in server.urls {
+                if url.len() > 512 || !url.starts_with("stun:") || url.contains(['@', '#', '?']) {
+                    return Err(MediaError::InvalidRelay);
+                }
+                let parsed =
+                    webrtc::ice::url::Url::parse_url(&url).map_err(|_| MediaError::InvalidRelay)?;
+                if parsed.port == 0 || parsed.proto != webrtc::ice::url::ProtoType::Udp {
+                    return Err(MediaError::InvalidRelay);
+                }
+                let host = parsed.host.trim_matches(['[', ']']);
+                let endpoints: Vec<_> = tokio::net::lookup_host((host, parsed.port))
+                    .await
+                    .map_err(|_| MediaError::InvalidRelay)?
+                    .take(17)
+                    .collect();
+                if endpoints.is_empty()
+                    || endpoints.len() > 16
+                    || endpoints
+                        .iter()
+                        .any(|address| !policy.public_candidate(address.ip()))
+                {
+                    return Err(MediaError::InvalidRelay);
+                }
+                // Pin each resolved STUN destination for this setup, not the
+                // VPS. Select at most one address per family and avoid re-DNS.
+                for v4 in [true, false] {
+                    if let Some(address) = endpoints.iter().find(|address| address.is_ipv4() == v4)
+                    {
+                        let literal = format!("stun:{address}");
+                        if !urls.contains(&literal) {
+                            urls.push(literal);
+                        }
+                    }
+                }
+            }
+            resolved.push(RTCIceServer {
+                urls,
+                ..Default::default()
+            });
+        }
+        Ok(resolved)
+    })
+    .await
+    .map_err(|_| MediaError::InvalidRelay)??;
+    Ok(RTCConfiguration {
+        ice_servers,
+        ice_transport_policy: RTCIceTransportPolicy::All,
+        ..Default::default()
+    })
+}
+
 fn route(stats: &StatsReport) -> RelayRoute {
     for report in stats.reports.values() {
         if let StatsReportType::CandidatePair(pair) = report {
@@ -328,8 +397,8 @@ impl RelayMedia {
         Self::new_with_policy(input, output, servers, None).await
     }
 
-    /// Explicit Nasim experiment. The public server endpoint must be locally
-    /// assigned on the server; no implicit NAT or hostname rewrite is enabled.
+    /// Explicit Nasim experiment. The server discovers public host/STUN
+    /// candidates while the client still gathers only provider TURN relay.
     pub async fn new_nasim_asymmetric(
         input: CarrierInput,
         output: CarrierOutput,
@@ -345,7 +414,12 @@ impl RelayMedia {
         servers: Vec<RTCIceServer>,
         nasim_policy: Option<NasimRoutePolicy>,
     ) -> Result<Self, MediaError> {
-        let mut configuration = config(servers)?;
+        let configuration = match nasim_policy {
+            Some(policy) if policy.role() == NasimRole::Server => {
+                nasim_server_config(servers, policy).await?
+            }
+            _ => config(servers)?,
+        };
         let mut media = MediaEngine::default();
         media
             .register_default_codecs()
@@ -353,20 +427,15 @@ impl RelayMedia {
         let mut builder = APIBuilder::new().with_media_engine(media);
         if let Some(policy) = nasim_policy {
             let mut settings = webrtc::api::setting_engine::SettingEngine::default();
-            settings.set_network_types(vec![if policy.server().is_ipv4() {
-                webrtc::ice::network_type::NetworkType::Udp4
-            } else {
-                webrtc::ice::network_type::NetworkType::Udp6
-            }]);
+            settings.set_network_types(vec![
+                webrtc::ice::network_type::NetworkType::Udp4,
+                webrtc::ice::network_type::NetworkType::Udp6,
+            ]);
+            settings.set_ice_multicast_dns_mode(webrtc::ice::mdns::MulticastDnsMode::Disabled);
             if policy.role() == NasimRole::Server {
-                configuration.ice_transport_policy = RTCIceTransportPolicy::All;
-                configuration.ice_servers.clear();
-                let server = policy.server();
-                settings.set_ip_filter(Box::new(move |ip| ip == server.ip()));
-                settings.set_udp_network(webrtc::ice::udp_network::UDPNetwork::Ephemeral(
-                    webrtc::ice::udp_network::EphemeralUDP::new(server.port(), server.port())
-                        .map_err(|_| MediaError::Setup)?,
-                ));
+                // Host gathering sees public interfaces only. The pinned
+                // library's STUN path binds separately to discover NAT mapping.
+                settings.set_ip_filter(Box::new(move |ip| policy.public_candidate(ip)));
             }
             builder = builder.with_setting_engine(settings);
         }
@@ -942,9 +1011,10 @@ mod tests {
     #[tokio::test]
     async fn asymmetric_nasim_route_keeps_client_on_turn_and_authenticates_quic() {
         let (relay, turn_server) = relay().await;
-        let reservation = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let server_address = reservation.local_addr().unwrap();
-        drop(reservation);
+        let stun_server = RTCIceServer {
+            urls: vec![turn_server.urls[0].replacen("turn:", "stun:", 1)],
+            ..Default::default()
+        };
         let client_identity = Identity::generate().unwrap();
         let server_identity = Identity::generate().unwrap();
         let (client, client_in, client_out) = carrier::authenticated(
@@ -965,20 +1035,21 @@ mod tests {
             client_in,
             client_out,
             vec![turn_server.clone()],
-            NasimRoutePolicy::local_fixture(NasimRole::Client, server_address),
+            NasimRoutePolicy::local_fixture(NasimRole::Client),
         )
         .await
         .unwrap();
         let server_media = RelayMedia::new_nasim_asymmetric(
             server_in,
             server_out,
-            vec![turn_server],
-            NasimRoutePolicy::local_fixture(NasimRole::Server, server_address),
+            vec![stun_server],
+            NasimRoutePolicy::local_fixture(NasimRole::Server),
         )
         .await
         .unwrap();
         let offer = server_media.offer().await.unwrap();
         assert!(!offer.sdp.contains("typ relay"));
+        assert!(offer.sdp.contains("typ srflx"));
         let answer = client_media.answer(offer).await.unwrap();
         assert!(answer.sdp.contains("typ relay"));
         assert!(!answer.sdp.contains("raddr"));
