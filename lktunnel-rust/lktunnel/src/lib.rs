@@ -43,7 +43,7 @@ pub mod peer_media;
 #[cfg(test)]
 mod recovery_tests;
 
-use crate::rtc::{Engine, EngineEvent};
+use crate::rtc::{Engine, EngineEvent, IceRouting};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
@@ -1487,10 +1487,13 @@ async fn run_connect_task(
     // Phase 1: join the SFU, bring up both PeerConnections, publish the
     // carrier track(s). `Engine::connect` does the LiveKit two-PC
     // handshake on webrtc-rs and returns the publish-side senders.
-    let (wait_for_track_published, diagnostic_relay_only) = weak.upgrade()
-        .map(|inner| (inner.options.wait_for_track_published, inner.options.diagnostic_relay_only))
+    let (wait_for_track_published, ice_routing) = weak.upgrade()
+        .map(|inner| (inner.options.wait_for_track_published, IceRouting {
+            relay_only: inner.options.relay_only,
+            diagnostic_relay_only: inner.options.diagnostic_relay_only,
+        }))
         .unwrap_or_default();
-    let (engine, senders, event_rx) = match Engine::connect(id, &url, &token, on_packet, wait_for_track_published, diagnostic_relay_only).await {
+    let (engine, senders, event_rx) = match Engine::connect(id, &url, &token, on_packet, wait_for_track_published, ice_routing).await {
         Ok(x) => x,
         Err(e) => {
             log::warn!("LkTunnel[{id}]: Engine::connect failed: {e}");

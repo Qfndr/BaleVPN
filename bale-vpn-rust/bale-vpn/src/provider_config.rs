@@ -52,6 +52,7 @@ pub struct NativeProviderConfig {
     pub socks5_port: u16,
     pub trusted_certificates: Vec<String>,
     pub throughput: bool,
+    pub relay_only: bool,
 }
 pub type Config = NativeProviderConfig;
 
@@ -73,6 +74,8 @@ struct RawConfig {
     trusted_certificates: Vec<String>,
     #[serde(default)]
     throughput: bool,
+    #[serde(default)]
+    relay_only: bool,
 }
 impl Default for NativeProviderConfig {
     fn default() -> Self {
@@ -84,6 +87,7 @@ impl Default for NativeProviderConfig {
             socks5_port: default_port(),
             trusted_certificates: vec![],
             throughput: false,
+            relay_only: false,
         }
     }
 }
@@ -98,6 +102,7 @@ impl TryFrom<RawConfig> for NativeProviderConfig {
             socks5_port: raw.socks5_port,
             trusted_certificates: raw.trusted_certificates,
             throughput: raw.throughput,
+            relay_only: raw.relay_only,
         };
         result.validate()?;
         Ok(result)
@@ -295,9 +300,24 @@ mod tests {
         assert_eq!(config.validate(), Ok(()));
         assert_eq!(config.validate_ready(), Err(ConfigError::NotReady));
         assert!(!config.throughput);
+        assert!(!config.relay_only);
         assert_eq!(config.socks5_port, 18080);
         let copy: Config = serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
         assert!(copy.mode.is_none() && copy.peer_id.is_none());
+    }
+    #[test]
+    fn legacy_configuration_defaults_to_normal_ice_and_boolean_preference_roundtrips() {
+        let legacy = serde_json::json!({"format":1,"provider":"igap","throughput":true});
+        let mut config: Config = serde_json::from_value(legacy).unwrap();
+        assert!(!config.relay_only);
+        config.relay_only = true;
+        let encoded = serde_json::to_value(config).unwrap();
+        assert_eq!(encoded["relayOnly"], true);
+        let restored: Config = serde_json::from_value(encoded).unwrap();
+        assert!(restored.relay_only && restored.throughput);
+        assert!(serde_json::from_value::<Config>(serde_json::json!({
+            "format":1,"provider":"igap","relayOnly":"true"
+        })).is_err());
     }
     #[test]
     fn only_explicit_provider_format_and_known_fields_are_accepted() {

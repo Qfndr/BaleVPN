@@ -294,7 +294,7 @@ async fn cancelled_sdp_completion_cannot_reopen_gate_or_cancel_a_new_generation(
 #[tokio::test]
 async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     let (url, accept) = fixture().await;
-    let connect = tokio::spawn(async move { Engine::connect_inner(901, &url, "fixture-token", Arc::new(|_| {}), true, false, LIMIT).await });
+    let connect = tokio::spawn(async move { Engine::connect_inner(901, &url, "fixture-token", Arc::new(|_| {}), true, IceRouting::default(), LIMIT).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     let track = add_track(&mut socket).await;
     no_offer(&mut socket).await;
@@ -393,7 +393,7 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
 #[tokio::test]
 async fn publication_response_without_track_fails_and_closes_socket() {
     let (url, accept) = fixture().await;
-    let connect = tokio::spawn(async move { Engine::connect_inner(902, &url, "fixture-token", Arc::new(|_| {}), true, false, LIMIT).await });
+    let connect = tokio::spawn(async move { Engine::connect_inner(902, &url, "fixture-token", Arc::new(|_| {}), true, IceRouting::default(), LIMIT).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     let track = add_track(&mut socket).await;
     acknowledge(&mut socket, &track.cid, None).await;
@@ -405,7 +405,7 @@ async fn publication_response_without_track_fails_and_closes_socket() {
 #[tokio::test]
 async fn subscriber_accepts_application_only_offer_without_a_local_data_channel() {
     let (url, accept) = fixture().await;
-    let connect=tokio::spawn(async move {Engine::connect_inner(909,&url,"fixture-token",Arc::new(|_|{}),true, false, LIMIT).await});
+    let connect=tokio::spawn(async move {Engine::connect_inner(909,&url,"fixture-token",Arc::new(|_|{}),true, IceRouting::default(), LIMIT).await});
     let mut socket=timeout(LIMIT,accept).await.unwrap().unwrap();
     let track=add_track(&mut socket).await;
     let remote=super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap();
@@ -461,7 +461,7 @@ async fn subscriber_accepts_application_only_offer_without_a_local_data_channel(
 #[tokio::test]
 async fn publication_timeout_closes_socket_without_negotiation() {
     let (url, accept) = fixture().await;
-    let connect = tokio::spawn(async move { Engine::connect_inner(903, &url, "fixture-token", Arc::new(|_| {}), true, false, Duration::from_millis(50)).await });
+    let connect = tokio::spawn(async move { Engine::connect_inner(903, &url, "fixture-token", Arc::new(|_| {}), true, IceRouting::default(), Duration::from_millis(50)).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     add_track(&mut socket).await;
     let result = timeout(LIMIT, connect).await.unwrap().unwrap();
@@ -472,7 +472,7 @@ async fn publication_timeout_closes_socket_without_negotiation() {
 #[tokio::test]
 async fn cancelled_publication_wait_closes_socket() {
     let (url, accept) = fixture().await;
-    let connect = tokio::spawn(async move { Engine::connect_inner(904, &url, "fixture-token", Arc::new(|_| {}), true, false, LIMIT).await });
+    let connect = tokio::spawn(async move { Engine::connect_inner(904, &url, "fixture-token", Arc::new(|_| {}), true, IceRouting::default(), LIMIT).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     add_track(&mut socket).await;
     connect.abort();
@@ -484,7 +484,7 @@ async fn cancelled_publication_wait_closes_socket() {
 async fn legacy_mode_negotiates_without_publication_ack() {
     assert!(!crate::security::TunnelOptions::default().wait_for_track_published);
     let (url, accept) = fixture().await;
-    let connect = tokio::spawn(async move { Engine::connect_inner(905, &url, "fixture-token", Arc::new(|_| {}), false, false, LIMIT).await });
+    let connect = tokio::spawn(async move { Engine::connect_inner(905, &url, "fixture-token", Arc::new(|_| {}), false, IceRouting::default(), LIMIT).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     add_track(&mut socket).await;
     let offer=timeout(LIMIT, async {
@@ -604,7 +604,7 @@ async fn cancelling_before_join_aborts_the_already_running_signal_stream() {
         accept_async(stream).await.unwrap()
     });
     let connect = tokio::spawn(async move {
-        Engine::connect_inner(906, &url, "fixture-token", Arc::new(|_| {}), true, false, LIMIT).await
+        Engine::connect_inner(906, &url, "fixture-token", Arc::new(|_| {}), true, IceRouting::default(), LIMIT).await
     });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     // Do not send JoinResponse. A successful ping/pong proves both stream I/O

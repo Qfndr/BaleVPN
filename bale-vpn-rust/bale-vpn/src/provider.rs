@@ -468,6 +468,7 @@ impl Backend {
             .map_err(|_| Failure("invalid_provider_trust"))?;
         options.wait_for_track_published = true;
         options.diagnostic_relay_only = diagnostic_relay_only;
+        options.relay_only = config.relay_only;
         let tunnel = LkTunnel::connect_with_options(
             session.url,
             session.token,

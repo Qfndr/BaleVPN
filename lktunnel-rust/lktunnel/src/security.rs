@@ -15,6 +15,8 @@ pub struct TunnelOptions {
     /// Diagnostic opt-in to use only the SFU-provided TURN candidates.
     /// This restricts ICE routing without changing peer authentication.
     pub diagnostic_relay_only: bool,
+    /// Persisted per-connection preference for SFU-provided TURN routes.
+    pub relay_only: bool,
 }
 
 pub struct Identity {
@@ -110,11 +112,13 @@ mod tests {
     #[test]
     fn default_and_paired_options_do_not_enable_diagnostic_relay() {
         assert!(!TunnelOptions::default().diagnostic_relay_only);
+        assert!(!TunnelOptions::default().relay_only);
         let local = Identity::generate().unwrap();
         let peer = Identity::generate().unwrap();
         for server in [false, true] {
             let options = local.options(&[peer.certificate.clone()], server, false).unwrap();
             assert!(!options.diagnostic_relay_only);
+            assert!(!options.relay_only);
             assert!(options.authenticated);
             assert_eq!(options.server.is_some(), server);
             assert_eq!(options.client.is_some(), !server);

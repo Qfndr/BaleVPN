@@ -119,6 +119,13 @@ impl RtpSender {
     }
 }
 
+/// Independent user and diagnostic requests for SFU-provided TURN routing.
+#[derive(Clone, Copy, Default)]
+pub struct IceRouting {
+    pub relay_only: bool,
+    pub diagnostic_relay_only: bool,
+}
+
 /// Connected WebRTC engine. Owns the two PeerConnections, the signal
 /// client, and the background signal-event task. Drop / [`close`] tears
 /// the lot down.
@@ -134,7 +141,7 @@ pub struct Engine {
     local_ice: Vec<Arc<LocalIceGate>>,
     force_relay_setting: &'static str,
     ice_policy: &'static str,
-    diagnostic_relay_only: bool,
+    ice_routing: IceRouting,
     terminal_ice_stats: Mutex<serde_json::Value>,
     /// Remote participants currently present (identities). Updated by the
     /// signal task from `ParticipantUpdate`.
@@ -296,15 +303,15 @@ impl Engine {
         token: &str,
         on_packet: Arc<dyn Fn(bytes::Bytes) + Send + Sync>,
         wait_for_track_published: bool,
-        diagnostic_relay_only: bool,
+        ice_routing: IceRouting,
     ) -> Result<(Arc<Engine>, Vec<Arc<RtpSender>>, tokio::sync::mpsc::UnboundedReceiver<EngineEvent>), String>
     {
-        Self::connect_inner(id,url,token,on_packet,wait_for_track_published,diagnostic_relay_only,Duration::from_secs(10)).await
+        Self::connect_inner(id,url,token,on_packet,wait_for_track_published,ice_routing,Duration::from_secs(10)).await
     }
     async fn connect_inner(
         id: u64, url: &str, token: &str,
         on_packet: Arc<dyn Fn(bytes::Bytes) + Send + Sync>,
-        wait_for_track_published: bool, diagnostic_relay_only: bool, publication_timeout: Duration,
+        wait_for_track_published: bool, ice_routing: IceRouting, publication_timeout: Duration,
     ) -> Result<(Arc<Engine>, Vec<Arc<RtpSender>>, tokio::sync::mpsc::UnboundedReceiver<EngineEvent>), String> {
         // ── Signal join (impersonate the JS SDK) ──────────────────────
         let mut sdk_options = SignalSdkOptions::default();
@@ -329,7 +336,7 @@ impl Engine {
         // ── Build the two PeerConnections ─────────────────────────────
         let api = make_api()?;
         let ice_servers = map_ice_servers(&join.ice_servers);
-        let (ice_transport_policy,force_relay_setting)=effective_ice_policy(join.client_configuration.as_ref(), diagnostic_relay_only);
+        let (ice_transport_policy,force_relay_setting)=effective_ice_policy(join.client_configuration.as_ref(), ice_routing);
         let mk_config = || RTCConfiguration { ice_servers: ice_servers.clone(), ice_transport_policy, ..Default::default() };
 
         let publisher = Arc::new(
@@ -494,7 +501,7 @@ impl Engine {
             initial_roster_unknown_states,
             local_ice:vec![local_publisher_ice,local_subscriber_ice],
             force_relay_setting,
-            diagnostic_relay_only,
+            ice_routing,
             ice_policy:if ice_transport_policy==RTCIceTransportPolicy::Relay {"relay"}else{"default"},
             terminal_ice_stats:Mutex::new(serde_json::Value::Null),
             peers,
@@ -521,7 +528,8 @@ impl Engine {
             "peerCount": self.peers.lock().len(),
             "serverForceRelay": self.force_relay_setting,
             "iceTransportPolicy": self.ice_policy,
-            "diagnosticRelayOnly": self.diagnostic_relay_only,
+            "diagnosticRelayOnly": self.ice_routing.diagnostic_relay_only,
+            "relayOnlyRequested": self.ice_routing.relay_only,
             "candidateStats": self.terminal_ice_stats.lock().clone(),
         })
     }
@@ -704,10 +712,10 @@ fn map_ice_servers(servers: &[proto::IceServer]) -> Vec<RTCIceServer> {
 }
 fn effective_ice_policy(
     config: Option<&proto::ClientConfiguration>,
-    diagnostic_relay_only: bool,
+    routing: IceRouting,
 ) -> (RTCIceTransportPolicy, &'static str) {
     let (advertised, setting) = advertised_ice_policy(config);
-    let policy = if diagnostic_relay_only {
+    let policy = if routing.relay_only || routing.diagnostic_relay_only {
         RTCIceTransportPolicy::Relay
     } else {
         advertised
@@ -1104,10 +1112,16 @@ mod remote_ice_tests {
                 force_relay, ..Default::default()
             });
             let advertised = advertised_ice_policy(config.as_ref());
-            assert_eq!(effective_ice_policy(config.as_ref(), false), advertised);
-            let forced = effective_ice_policy(config.as_ref(), true);
-            assert_eq!(forced.0, RTCIceTransportPolicy::Relay);
-            assert_eq!(forced.1, advertised.1);
+            assert_eq!(effective_ice_policy(config.as_ref(), IceRouting::default()), advertised);
+            for routing in [
+                IceRouting { relay_only: true, diagnostic_relay_only: false },
+                IceRouting { relay_only: false, diagnostic_relay_only: true },
+                IceRouting { relay_only: true, diagnostic_relay_only: true },
+            ] {
+                let forced = effective_ice_policy(config.as_ref(), routing);
+                assert_eq!(forced.0, RTCIceTransportPolicy::Relay);
+                assert_eq!(forced.1, advertised.1);
+            }
         }
     }
     #[test]
