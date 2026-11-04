@@ -489,3 +489,17 @@ $env:TEMP='E:\CodexTemp'; $env:TMP=$env:TEMP; $env:TMPDIR=$env:TEMP
 $env:NODE_COMPILE_CACHE='E:\CodexBuilds\BaleVPN\cache\node'
 node --test scripts/test-rubika-client-profile.cjs
 ```
+
+The Android notification socket now uses the separately reviewed native Gson
+handshake: string API version `4`, retained raw auth, native client fields and
+a JSON-string `data` value containing handshake version `2`. Web retains its
+v5 handshake. Native transport readiness follows the APK's WebSocket-open
+behavior; it is not an authentication acknowledgement.
+
+Native messenger notifications must decrypt into a direct account-matching
+`MessengerUpdateObject`. Only validated call fields enter the bounded queue.
+Their delivery ACKs follow the native envelope, with a bounded duplicate cache;
+unrelated chat/history notifications are discarded without ACK. No accounts or
+saved profiles change. These paths have offline tests, not live interoperability
+verification; they do not establish the cause or repair of HTTP `NOT_REGISTERED`.
+See [notification evidence](android-websocket-evidence-2026-11-04.json).

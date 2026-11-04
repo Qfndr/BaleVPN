@@ -1,0 +1,36 @@
+{
+  "date":"2026-11-04",
+  "scope":"Explicit Android4.1.1 notification profile only; Web v5 preserved",
+  "apkSha256":"193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "outbound":{
+    "source":"AsemanNotificationService.sendMessage instantiates MessangerInput2(raw auth,currentAccount), assigns method and Gson.toJson(payload) to String data, then serializes the model with default Gson",
+    "api_version":"4",
+    "auth":"raw retained auth; no V6 character transformation",
+    "client":{"app_name":"Main","app_version":"4.1.1","platform":"Android","package":"app.rbmain.a","lang_code":"selected fa/en"},
+    "is_background":false,
+    "handshake":{"method":"handShake","data":"JSON string of {version:'2'}"},
+    "fieldEvidence":"MessangerInput2$ClientInfo.packageName has @SerializedName(value='package'); default Gson omits null store/temp_code/data_enc/tmp_session/dataJson. NotificationObject.currentAccount is transient.",
+    "readyMeaning":"APK onConnected sends the handshake and marks socket connected immediately. Transport-ready is not a server acknowledgement or a claim of account authentication.",
+    "heartbeat":"Web keeps existing JSON {} heartbeat. No invented JSON heartbeat is sent by native mode; bounded existing liveness timeout remains."
+  },
+  "inbound":{
+    "source":"AsemanNotificationService$1.onTextMessage -> Gson NotificationObject -> GcmPushListenerService.newNotif -> NotificationObject.makeData -> EncryptionHelper.decryptAuth -> Gson MessengerUpdateObject",
+    "type":"messenger",
+    "data_enc":"AES/CBC/PKCS7PADDING, auth-derived key, static IV and Base64.DEFAULT as the existing native wire profile",
+    "identity":"newNotif requires direct MessengerUpdateObject.user_guid equal to account getMyGuid before handleMessengerNotification; native mode therefore requires that direct field and does not assume the Web update_data wrapper",
+    "projection":"Only reviewed call_updates and call_signal_data retained; unrelated chats/history/social/notif content never acknowledged or returned by this implementation"
+  },
+  "ack":{
+    "source":"After newNotif, onTextMessage checks nonempty NotificationObject.ack_id then sendMessage('ack',new AckInputObject(ack_id))",
+    "scopeRestriction":"This lab sends ACK only after valid same-account call projection, not for unrelated notifications",
+    "data":"JSON string of {ack_id:<original>}; no encrypted payload, signature or transformed auth",
+    "bound":"256 UTF-8 bytes, valid text without controls; last128 ACK IDs plus hashes of projected call data retained privately. Exact duplicate data re-ACKed without duplicate queueing; reused ID with changed valid data is retained.",
+    "privacy":"No ACK IDs, auth, decrypted unrelated content or call data logged/exposed in public state"
+  },
+  "primaryResearchRoot":"E:/CodexBuilds/BaleVPN/messenger-research/rubika",
+  "primaryFiles":["android-websocket-handshake-references-2026-11-04.json","android-websocket-model-references-2026-11-04.json","android-websocket-field-annotations-2026-11-04.json","android-websocket-gson-references-2026-11-04.json","android-notification-routing-references-2026-11-04.json","android-notification-call-fields-2026-11-04.json"],
+  "tests":["scripts/test-rubika-socket-updates.cjs","scripts/test-rubika-client-profile.cjs","scripts/test-rubika-http.cjs","scripts/test-rubika-call-client.cjs"],
+  "liveVerified":false,
+  "httpNotRegisteredCauseResolved":false,
+  "accountsOrStoredProfilesModified":false
+}

@@ -1,0 +1,21 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "scope": "Read-only original local laboratory state; no provider request, end, dial or restart",
+  "observed": {
+    "vaultUnlocked": true,
+    "bothAccountsAuthenticated": true,
+    "pairPhase": "ready",
+    "bothCallPhases": "uncertain",
+    "bothReasons": "ice_failed",
+    "bothTerminalSignals": "media_failure",
+    "bothPhasesBeforeEnd": "negotiating",
+    "bothHaveCallId": false,
+    "bothHavePeerId": true,
+    "bothHaveRpcContext": false,
+    "bothEventPhases": "failed"
+  },
+  "sourceFinding": "CallSession.#finish retires and clears #call, clears #remote and disconnects/clears the pinned RPC. end() uses current #call and therefore cannot send an exact prior-call bye after this cleanup. Current local ended/uncertain state does not establish that a prior remote call ended.",
+  "result": "No new call attempted because exact prior-call cleanup could not be established from this state.",
+  "privacy": "No account IDs, call IDs, tokens, panel keys, network addresses, credentials or raw state included."
+}

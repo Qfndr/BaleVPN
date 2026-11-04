@@ -222,3 +222,17 @@ An opted-in direct private AccountClient caller receives the non-enumerable
 `SOCKET_RECOVERY_FRAME` on both successful replies and errors. It owns that
 buffer and must seal or acknowledge it, then zero it in `finally`. AuthSession
 performs this cleanup on healthy, rejected and failed-persistence paths.
+
+Native configuration discovery is isolated in `native-config-client.cjs`.
+`new NativeConfigClient({record}).getConfig()` performs one explicit read over
+the fixed verified HTTPS endpoint. It uses the retained Android HTTP identity,
+neutral desktop metadata and the APK's `unknown` signature fallback. The
+native configuration schema is separate from Web because its constructor and
+fields differ. See [configuration evidence](native-config-evidence-2026-11-04.json).
+
+The returned configuration is private: DC entries may include secret bytes.
+The operation does not follow any returned IP, URL or socket address, change
+the current route, or claim that a returned socket URL supports safe calls.
+One parent-controlled live response has now been parsed fully from its encrypted
+archive without repeating the request. This verifies configuration retrieval,
+not the safety or functionality of a native call transport.

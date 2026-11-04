@@ -1,0 +1,43 @@
+{
+  "date": "2026-11-04",
+  "scope": "Private explicit native Android HTTPS configuration discovery; no network execution by implementation agent",
+  "apk": {"version":"7.1.8","sha256":"9d3a82c70f8c7f9282886b2854b073925bb3cfe110a08c386903b4b4f1c563cb"},
+  "operation": {
+    "source":"ConnectionsManager.updateEitaaDcSettings: new TL_help_getConfig at18, retained user ID cast to int and assigned at34, ApplicationLoader.getAppInfo at36, sendRequest(req,delegate,25,1) at55",
+    "method":"help.getConfig",
+    "constructorId":-990308245,
+    "fieldOrder":["app_info:EitaaAppInfo","user_id:int"],
+    "transport":"Connection type1 uses HelperHttp; fixed verified https://armita.eitaa.com/eitaa/index.php; APK wrapper layer138/BuildVars2637",
+    "credential":"Original retained Android HTTP token and UUID; native socket credential is not substituted",
+    "automatic":false
+  },
+  "appInfo": {
+    "constructorId":1635347945,
+    "buildVersion":2637,
+    "device":"Actual retained neutral Desktop label; exact legacy branded label projected deterministically from retained UUID without altering saved identity",
+    "systemVersion":"Actual retained desktop OS string, no invented handset or Android SDK",
+    "appVersion":"App version unknown",
+    "signature":"unknown",
+    "fallbackEvidence":"ApplicationLoader.getAppInfo starts with App version unknown/unknown literals. PackageManager version/signature failure retains those fallbacks; raw offsets254 and266 assign unknown to sign. No official signing certificate copied."
+  },
+  "schema": {
+    "configConstructorId":856375399,
+    "dcOptionConstructorId":414687501,
+    "liveStreamConstructorId":26504181,
+    "configFlagBits":{"tmp_sessions":0,"phonecalls_enabled":1,"language_group":2,"update_available":6,"payEnabled":7,"liveStreamConfig":8,"gif_search_username":9,"venue_search_username":10,"img_search_username":11,"static_maps_provider":12,"pfs_enabled":13,"socketURL":14,"callOutEnabled":15,"exploreEnabled":16,"mxbEnabled":17,"reportVersion":18,"sentryRateLimit":19,"show_new_trend":20},
+    "dcOptionFlagBits":{"ipv6":0,"media_only":1,"tcpo_only":2,"cdn":3,"isStatic":4,"native_upload":5,"native_transport":6,"secret":10},
+    "dcOptionNativeRoutingFlags": {"native_upload":5,"native_transport":6,"payload":"none read by pinned Android dcOption.readParams","evidence":"DataCenter.addAddressAndPort masks32/64 select nativeAddressesIpv4Upload/nativeAddressesIpv4. Priority is mask4(upload),2(download),32(native upload),16(native download),64(native general),else general; preserve generic reader fields but do not infer route solely from their inherited names."},
+    "languageGroupOrder":["suggested_lang_code:string","lang_pack_version:int","base_lang_pack_version:int"],
+    "unconditionalStringFields":["dc_txt_domain_name","me_url_prefix"],
+    "featureStringBranches":{"appURL":"flags.6; readParams branch433 skips to441 when update_available is false","payHost":"flags.7; readParams branch491 skips to499 when payEnabled is false"},
+    "strictness":"Reject unknown flags, constructors, invalid vectors, incomplete shared-flag groups, noncanonical TL padding, tails, oversized frames and malformed DC IP/DNS/port; retain raw server dates without inferring expiry semantics. Current DC zero means unspecified and does not select a route."
+  },
+  "privacy":"Operation returns a PRIVATE typed config containing potential DC secret bytes and socket URL. No public route, log, automatic persistence, DNS lookup or connection to returned addresses. No claims that socketURL is an authenticated call route; Java field reference scan found it only in config construction/reading.",
+  "researchRoot":"E:/CodexBuilds/BaleVPN/messenger-research/eitaa",
+  "primaryFiles":["android-connections-references-2026-11-04.json","android-refresh-appinfo-references-2026-11-04.json","android-refresh-selected-code-2026-11-04.json","android-dc-config-references-2026-11-04.json","android-config-selected-code-2026-11-04.json","android-config-constructor-evidence-2026-11-04.json","android-live-config-references-2026-11-04.json","android-datacenter-routing-references-2026-11-04.json","android-datacenter-routing-code-2026-11-04.json"],
+  "tests":"scripts/test-eitaa-native-config.cjs; scripts/fixtures/eitaa-native-config.json is independent Python struct/TL fixture with every reviewed config flag enabled",
+  "liveVerified":true,
+  "liveVerificationMethod":"One parent-controlled HTTPS request; retained encrypted response decoded fully offline after matching payload-free dcOption native-route bits and conditional appURL/payHost branches. No repeat RPC.",
+  "safeLiveClassification":{"phonecalls_enabled":false,"dcCount":37,"ports":[443],"literalIpCount":2,"dnsCount":35,"mediaOnlyCount":15,"tcpOnlyCount":5,"eitaaComSuffixCount":15,"eitaaIrSuffixCount":20,"otherSuffixCount":2,"socketUrlPresent":true,"socketUrlAbsoluteParseable":false,"sourceAccurateRouting":{"generalDns":15,"downloadDns":15,"uploadDns":5,"nativeGeneralIp":2,"nativeDownload":0,"nativeUpload":0},"interpretation":"This response is not proof that official calls are unsupported, that a DNS host offers verified TLS, or that socketURL is usable. DNS entries are ordinary HTTP/upload/download routes under APK flag precedence, not native-64 routes. No endpoint followed."},
+  "nativeCallTransportEnabled":false
+}

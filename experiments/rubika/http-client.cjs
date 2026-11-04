@@ -138,7 +138,7 @@ class HttpClient {
   if(this.#closed)throw new ApiError('closed');if(this.#updates||this.#updatesAbort||this.#pending)throw new ApiError('account_busy');if(!this.#updatesFactory)return;
   try{if(credentials?.provider!=='rubika'||profiles.fromRecord(credentials)!==this.#profile)throw Error();}catch{throw new ApiError('invalid_credentials');}
   if(this.#dcBinding&&['userId','auth'].some(key=>credentials[key]!==this.#dcBinding[key]))throw new ApiError('invalid_credentials');
-  const binding={provider:credentials?.provider,userId:credentials?.userId,auth:credentials?.auth,...this.#profile===profiles.ANDROID?{profile:{protocolProfile:this.#profile}}:{}};this.#updatesAbort=new AbortController();try{const channel=await this.#updatesFactory(binding,{url:this.#socketServer,signal:this.#updatesAbort.signal});if(this.#closed){channel.close();throw new ApiError('closed');}this.#updates=channel;this.#updateBinding=binding;}catch(e){this.#updatesAbort=null;throw e;}
+  const binding={provider:credentials?.provider,userId:credentials?.userId,auth:credentials?.auth,...this.#profile===profiles.ANDROID?{profile:{protocolProfile:this.#profile}}:{}};this.#updatesAbort=new AbortController();try{const channel=await this.#updatesFactory(binding,{url:this.#socketServer,signal:this.#updatesAbort.signal,language:this.#lang});if(this.#closed){channel.close();throw new ApiError('closed');}this.#updates=channel;this.#updateBinding=binding;}catch(e){this.#updatesAbort=null;throw e;}
  }
  async request(method,value={}, {credentials,timeout}={}){
   if(this.#probingSessions)throw new ApiError('account_busy');
