@@ -1,0 +1,12 @@
+{
+  "fixture": "black16.h264",
+  "sha256": "42441e3e5fe20566a5e114eeccb108c00ad02629fbe84b8bbf51eaf38e373396",
+  "sizeBytes": 42,
+  "source": "Synthetic solid black 16x16 pixel frame; no user media",
+  "encoder": "Existing BlueStacks FFmpeg n4.4.4-6-gd5fa6e3a91 with libopenh264",
+  "commandArguments": ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=16x16:r=1", "-frames:v", "1", "-c:v", "libopenh264", "-f", "h264"],
+  "nalTypes": [7, 8, 5],
+  "independentlyDecoderVerified": true,
+  "decoder": "Installed Google Chrome WebCodecs VideoDecoder; one 16x16 output frame, every RGBA pixel checked black with opaque alpha",
+  "limitation": "Installed FFmpeg contains no H264 decoder; a separate installed Chrome decoder verified this fixture. Local decoding and RTP reconstruction do not establish live provider forwarding or performance."
+}

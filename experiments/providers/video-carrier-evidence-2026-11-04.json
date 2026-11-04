@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-04",
+  "scope": "Isolated local H264 video-carrier foundation; not a live provider or production tunnel test",
+  "sources": [
+    {"title": "RFC 6184: RTP Payload Format for H.264 Video", "url": "https://www.rfc-editor.org/rfc/rfc6184", "sections": ["5.1", "5.2", "5.3", "5.7.1", "5.8"]},
+    {"title": "ITU-T H.264, Annex D: user_data_unregistered", "url": "https://www.itu.int/rec/T-REC-H.264"},
+    {"title": "FFmpeg SEIRawUserDataUnregistered", "url": "https://ffmpeg.org/doxygen/trunk/structSEIRawUserDataUnregistered.html"}
+  ],
+  "carrier": {
+    "codec": "H264",
+    "clockRate": 90000,
+    "packetizationMode": 1,
+    "payload": "SEI payloadType 5, fixed 16-byte UUID and at most 16384 binary bytes",
+    "picture": "Real encoder-generated synthetic black 16x16 SPS/PPS/IDR fixture",
+    "framing": "RBSP payload length before emulation-prevention insertion; mandatory trailing bits; bounded strict decoder",
+    "rtp": "Single NAL, STAP-A and FU-A with bounded complete access-unit reconstruction, sequence gaps discard damaged units"
+  },
+  "validation": {
+    "unitTests": 9,
+    "unitTestsPassed": 9,
+    "localWebRtcPeers": 2,
+    "externalIceServers": 0,
+    "bidirectionalAccessUnitsPerSide": 24,
+    "bidirectionalPayloadBytesPerSide": 124422,
+    "fullAccessUnitEqualityAfterRtp": true,
+    "testedPayloadLengths": [1, 256, 4096, 16384],
+    "independentDecoder": "Existing installed Google Chrome WebCodecs VideoDecoder, isolated E-drive profile, loopback-only page",
+    "decodedActualReceivedAccessUnit": true,
+    "receivedAccessUnitSha256": "5485d4cdaa0993586792154b0d94c205cc20de3a702955b387ce404108f4c063",
+    "decodedFrames": 1,
+    "decodedWidth": 16,
+    "decodedHeight": 16,
+    "everyPixelBlackAndOpaque": true
+  },
+  "limits": {
+    "productionCarrierChanged": false,
+    "liveProviderVideoTested": false,
+    "providerForwardingOfSeiProven": false,
+    "internetThroughputMeasured": false,
+    "reliableDeliveryOrCongestionControlImplemented": false,
+    "providerMayDropSei": true,
+    "note": "This proves standards-framed synthetic video survives local WebRTC RTP and decodes. It does not establish that any provider retains SEI metadata, that video is faster than audio, or that a complete authenticated tunnel is implemented."
+  },
+  "storage": "All generated media, build outputs and browser profiles were on E:. Installed encoder/browser on C: were read without modification. Temporary browser profiles created by the test were closed and removed."
+}
