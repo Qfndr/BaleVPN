@@ -14,6 +14,7 @@ pub enum CandidateKind {
     Host,
     ServerReflexive,
     Relay,
+    PeerReflexive,
     Other,
 }
 
@@ -38,6 +39,59 @@ pub enum RouteProof {
     Unverified,
     ClientRelayServerPublic,
     Rejected,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RouteProofReason {
+    NoSelectedPair,
+    NoNomination,
+    MultipleNominations,
+    NominationNotSucceeded,
+    MissingCandidateStats,
+    StatsLimit,
+    AddressFamilyMismatch,
+    LocalCandidateRejected,
+    RemoteCandidateRejected,
+    Verified,
+}
+
+impl RouteProofReason {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::NoSelectedPair => "noSelectedPair",
+            Self::NoNomination => "noNomination",
+            Self::MultipleNominations => "multipleNominations",
+            Self::NominationNotSucceeded => "nominationNotSucceeded",
+            Self::MissingCandidateStats => "missingCandidateStats",
+            Self::StatsLimit => "statsLimit",
+            Self::AddressFamilyMismatch => "addressFamilyMismatch",
+            Self::LocalCandidateRejected => "localCandidateRejected",
+            Self::RemoteCandidateRejected => "remoteCandidateRejected",
+            Self::Verified => "verified",
+        }
+    }
+
+    pub(crate) fn proof(self) -> RouteProof {
+        match self {
+            Self::NoSelectedPair | Self::NoNomination | Self::MissingCandidateStats => {
+                RouteProof::Unverified
+            }
+            Self::Verified => RouteProof::ClientRelayServerPublic,
+            _ => RouteProof::Rejected,
+        }
+    }
+}
+
+impl CandidateKind {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            Self::Host => "host",
+            Self::ServerReflexive => "srflx",
+            Self::PeerReflexive => "prflx",
+            Self::Relay => "relay",
+            Self::Other => "unknown",
+        }
+    }
 }
 
 /// Candidate policy for the two authenticated Nasim call roles. The server
@@ -183,22 +237,37 @@ impl NasimRoutePolicy {
     /// publishing selection. More than one nomination is intentionally rejected.
     /// A missing first stats snapshot is Unverified so a bounded retry can run.
     pub fn prove(&self, selected_exists: bool, pairs: &[NominatedPair]) -> RouteProof {
+        self.proof_reason(selected_exists, pairs).proof()
+    }
+
+    pub(crate) fn proof_reason(
+        &self,
+        selected_exists: bool,
+        pairs: &[NominatedPair],
+    ) -> RouteProofReason {
         if !selected_exists {
-            return RouteProof::Unverified;
+            return RouteProofReason::NoSelectedPair;
         }
         let mut nominated = pairs.iter().filter(|pair| pair.nominated);
         let Some(pair) = nominated.next() else {
-            return RouteProof::Unverified;
+            return RouteProofReason::NoNomination;
         };
-        if nominated.next().is_some()
-            || !pair.succeeded
-            || pair.local.address.is_ipv4() != pair.remote.address.is_ipv4()
-            || !self.allows(pair.local, true)
-            || !self.allows(pair.remote, false)
-        {
-            return RouteProof::Rejected;
+        if nominated.next().is_some() {
+            return RouteProofReason::MultipleNominations;
         }
-        RouteProof::ClientRelayServerPublic
+        if !pair.succeeded {
+            return RouteProofReason::NominationNotSucceeded;
+        }
+        if pair.local.address.is_ipv4() != pair.remote.address.is_ipv4() {
+            return RouteProofReason::AddressFamilyMismatch;
+        }
+        if !self.allows(pair.local, true) {
+            return RouteProofReason::LocalCandidateRejected;
+        }
+        if !self.allows(pair.remote, false) {
+            return RouteProofReason::RemoteCandidateRejected;
+        }
+        RouteProofReason::Verified
     }
 }
 
@@ -313,6 +382,13 @@ mod tests {
         let mut bypass = pair();
         bypass.local = server();
         assert_eq!(policy.prove(true, &[bypass]), RouteProof::Rejected);
+        let mut peer_reflexive = pair();
+        peer_reflexive.remote.kind = CandidateKind::PeerReflexive;
+        let reason = policy.proof_reason(true, &[peer_reflexive]);
+        assert_eq!(reason, RouteProofReason::RemoteCandidateRejected);
+        assert_eq!(reason.proof(), RouteProof::Rejected);
+        assert_eq!(reason.code(), "remoteCandidateRejected");
+        assert_eq!(CandidateKind::PeerReflexive.code(), "prflx");
         let mut mixed = pair();
         mixed.local.address = "[2606:4700:4700::1111]:48000".parse().unwrap();
         assert_eq!(policy.prove(true, &[mixed]), RouteProof::Rejected);

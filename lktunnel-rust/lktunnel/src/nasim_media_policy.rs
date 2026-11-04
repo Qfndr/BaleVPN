@@ -1,6 +1,6 @@
 //! Private WebRTC adapters for the explicit Nasim asymmetric experiment.
 use crate::nasim_route_policy::{
-    Candidate, CandidateKind, NasimRoutePolicy, NominatedPair, RouteProof,
+    Candidate, CandidateKind, NasimRoutePolicy, NominatedPair, RouteProofReason,
 };
 use std::net::SocketAddr;
 use webrtc::{
@@ -17,6 +17,7 @@ fn kind(value: CandidateType) -> CandidateKind {
         CandidateType::Host => CandidateKind::Host,
         CandidateType::ServerReflexive => CandidateKind::ServerReflexive,
         CandidateType::Relay => CandidateKind::Relay,
+        CandidateType::PeerReflexive => CandidateKind::PeerReflexive,
         _ => CandidateKind::Other,
     }
 }
@@ -119,13 +120,30 @@ fn stats_candidate(value: &ICECandidateStats) -> Option<Candidate> {
     })
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ProofObservation {
+    pub reason: RouteProofReason,
+    pub local_kind: Option<CandidateKind>,
+    pub remote_kind: Option<CandidateKind>,
+}
+
+impl ProofObservation {
+    fn without_candidates(reason: RouteProofReason) -> Self {
+        Self {
+            reason,
+            local_kind: None,
+            remote_kind: None,
+        }
+    }
+}
+
 pub(crate) fn proof(
     policy: NasimRoutePolicy,
     selected_exists: bool,
     stats: &StatsReport,
-) -> RouteProof {
+) -> ProofObservation {
     if stats.reports.len() > 1024 {
-        return RouteProof::Rejected;
+        return ProofObservation::without_candidates(RouteProofReason::StatsLimit);
     }
     let mut pairs = Vec::new();
     for value in stats.reports.values() {
@@ -136,7 +154,7 @@ pub(crate) fn proof(
             continue;
         }
         if pairs.len() == 64 {
-            return RouteProof::Rejected;
+            return ProofObservation::without_candidates(RouteProofReason::StatsLimit);
         }
         let local = stats.reports.values().find_map(|value| match value {
             StatsReportType::LocalCandidate(candidate)
@@ -155,7 +173,11 @@ pub(crate) fn proof(
             _ => None,
         });
         let (Some(local), Some(remote)) = (local, remote) else {
-            return RouteProof::Unverified;
+            return ProofObservation {
+                reason: RouteProofReason::MissingCandidateStats,
+                local_kind: local.map(|candidate| candidate.kind),
+                remote_kind: remote.map(|candidate| candidate.kind),
+            };
         };
         pairs.push(NominatedPair {
             local,
@@ -164,7 +186,15 @@ pub(crate) fn proof(
             succeeded: pair.state == CandidatePairState::Succeeded,
         });
     }
-    policy.prove(selected_exists, &pairs)
+    let unique = match pairs.as_slice() {
+        [pair] => Some(pair),
+        _ => None,
+    };
+    ProofObservation {
+        reason: policy.proof_reason(selected_exists, &pairs),
+        local_kind: unique.map(|pair| pair.local.kind),
+        remote_kind: unique.map(|pair| pair.remote.kind),
+    }
 }
 
 #[cfg(test)]

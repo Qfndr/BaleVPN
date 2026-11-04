@@ -5,6 +5,7 @@
 //! TURN credentials must come from the authenticated provider call controller;
 //! relay-only ICE alone does not establish provider ownership or billing.
 use crate::carrier::{CarrierInput, CarrierOutput};
+use crate::nasim_media_policy::ProofObservation;
 use crate::nasim_route_policy::{NasimRoutePolicy, Role as NasimRole, RouteEpoch, RouteProof};
 use crate::rtp;
 use bytes::Bytes;
@@ -101,6 +102,17 @@ pub struct RelayMedia {
     nasim_policy: Option<NasimRoutePolicy>,
     route_epoch: Arc<RouteEpoch>,
     route_task: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+    route_observation: RouteObservationSlot,
+}
+
+type RouteObservationSlot = Arc<Mutex<Option<(u64, ProofObservation)>>>;
+
+/// Redacted evidence from the existing selected-route verifier.
+pub struct NasimRouteObservation {
+    pub reason: &'static str,
+    pub local_kind: Option<&'static str>,
+    pub remote_kind: Option<&'static str>,
+    pub current_generation: bool,
 }
 
 fn replace_route_verifier(
@@ -130,6 +142,7 @@ async fn verify_nasim_route(
     epoch: Arc<RouteEpoch>,
     generation: u64,
     rejected: Arc<AtomicBool>,
+    observation: RouteObservationSlot,
 ) {
     let finished = tokio::time::timeout(Duration::from_millis(250), async {
         for _ in 0..10 {
@@ -146,10 +159,16 @@ async fn verify_nasim_route(
                 .await
                 .is_some();
             let proof = crate::nasim_media_policy::proof(policy, selected, &pc.get_stats().await);
-            if !epoch.is_current(generation) {
-                return true;
+            {
+                let mut last = observation.lock();
+                if !epoch.is_current(generation) {
+                    return true;
+                }
+                *last = Some((generation, proof));
             }
-            if proof == RouteProof::ClientRelayServerPublic && epoch.verify(generation) {
+            if proof.reason.proof() == RouteProof::ClientRelayServerPublic
+                && epoch.verify(generation)
+            {
                 let _ = input.connected();
                 return true;
             }
@@ -472,6 +491,7 @@ impl RelayMedia {
         let route_rejected = Arc::new(AtomicBool::new(false));
         let route_epoch = Arc::new(RouteEpoch::default());
         let route_task = Arc::new(Mutex::new(None::<tokio::task::AbortHandle>));
+        let route_observation = RouteObservationSlot::default();
         let owner = Self {
             pc: pc.clone(),
             input: input.clone(),
@@ -483,17 +503,20 @@ impl RelayMedia {
             nasim_policy,
             route_epoch: route_epoch.clone(),
             route_task: route_task.clone(),
+            route_observation: route_observation.clone(),
         };
         let weak_pc = Arc::downgrade(&pc);
         let state_input = input.clone();
         let state_epoch = route_epoch.clone();
         let state_route_task = route_task.clone();
+        let state_observation = route_observation.clone();
         pc.on_peer_connection_state_change(Box::new(move |state| {
             let weak_pc = weak_pc.clone();
             let input = state_input.clone();
             let route_rejected = route_rejected.clone();
             let epoch = state_epoch.clone();
             let route_task = state_route_task.clone();
+            let observation = state_observation.clone();
             Box::pin(async move {
                 if state == RTCPeerConnectionState::Connected {
                     // Verify the nominated pair through typed stats before
@@ -506,7 +529,13 @@ impl RelayMedia {
                             &epoch,
                             generation,
                             verify_nasim_route(
-                                pc, input, policy, epoch.clone(), generation, route_rejected,
+                                pc,
+                                input,
+                                policy,
+                                epoch.clone(),
+                                generation,
+                                route_rejected,
+                                observation,
                             ),
                         );
                         return;
@@ -549,6 +578,7 @@ impl RelayMedia {
                     let epoch = epoch.clone();
                     let rejected = rejected.clone();
                     let route_task = selection_route_task.clone();
+                    let observation = route_observation.clone();
                     Box::pin(async move {
                         if let Some(pc) = weak_pc.upgrade() {
                             if pc.connection_state() == RTCPeerConnectionState::Connected {
@@ -557,7 +587,13 @@ impl RelayMedia {
                                     &epoch,
                                     generation,
                                     verify_nasim_route(
-                                        pc, input, policy, epoch.clone(), generation, rejected,
+                                        pc,
+                                        input,
+                                        policy,
+                                        epoch.clone(),
+                                        generation,
+                                        rejected,
+                                        observation,
                                     ),
                                 );
                             }
@@ -785,6 +821,18 @@ impl RelayMedia {
             .await
             .map_err(|_| MediaError::Negotiation)
     }
+
+    /// Returns the most recent bounded proof observation, even after teardown.
+    pub fn nasim_route_observation(&self) -> Option<NasimRouteObservation> {
+        let (generation, observation) = (*self.route_observation.lock())?;
+        Some(NasimRouteObservation {
+            reason: observation.reason.code(),
+            local_kind: observation.local_kind.map(|kind| kind.code()),
+            remote_kind: observation.remote_kind.map(|kind| kind.code()),
+            current_generation: self.route_epoch.is_current(generation),
+        })
+    }
+
     pub async fn selected_route(&self) -> RelayRoute {
         if self.closed.load(Ordering::Acquire)
             || self.pc.connection_state() != RTCPeerConnectionState::Connected
@@ -1099,6 +1147,14 @@ mod tests {
             server_media.selected_route().await,
             RelayRoute::ClientRelayServerPublic
         );
+        let client_observation = client_media.nasim_route_observation().unwrap();
+        assert_eq!(client_observation.reason, "verified");
+        assert_eq!(client_observation.local_kind, Some("relay"));
+        assert!(matches!(client_observation.remote_kind, Some("host" | "srflx")));
+        let server_observation = server_media.nasim_route_observation().unwrap();
+        assert_eq!(server_observation.reason, "verified");
+        assert!(matches!(server_observation.local_kind, Some("host" | "srflx")));
+        assert_eq!(server_observation.remote_kind, Some("relay"));
         assert_eq!(
             server_media.ice_diagnostics().await.local_relay_candidates,
             0
