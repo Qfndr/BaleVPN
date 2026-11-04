@@ -236,3 +236,36 @@ the current route, or claim that a returned socket URL supports safe calls.
 One parent-controlled live response has now been parsed fully from its encrypted
 archive without repeating the request. This verifies configuration retrieval,
 not the safety or functionality of a native call transport.
+
+### Empty-secret native socket security boundary (2026-11-04)
+
+The secure native call path remains **unavailable** for the returned direct-DC
+configuration with an empty `secret`. No real account token was sent through
+that socket during this investigation. HTTPS login/configuration support is
+separate and remains available; this finding does not characterize every Eitaa
+transport or every branch of its application.
+
+The pinned ARM64 binary provides a concrete reason to keep this path disabled:
+
+- `ConnectionSocket::openConnection` checks the secret length at offsets
+  744–796. A length below 18 reaches offset 1380 and sets the connection state
+  to zero. A sufficiently long secret beginning with `0xee` instead selects
+  the separate FakeTLS state at offsets 1312–1352.
+- In `ConnectionSocket::onEvent`, the ordinary write branch at offsets
+  2692–2700 and 2976–3004 sends the queued buffer directly. Inspected
+  `ByteStream::get` only copies buffer slices; it supplies no encryption.
+- `Datacenter::createRequestsData` and `TL_clientRequestSocket::serializeToStream`
+  serialize the wrapper and request fields without an AES/key/IV operation on
+  this branch. `Connection::sendData` at offsets 176–200 forwards that buffer.
+- The receive-state table routes state zero to `onEvent` offset 252. The
+  resulting buffer reaches `ConnectionsManager::onConnectionDataReceived`,
+  whose offsets 164–404 parse message ID, sequence and TL object without a
+  cryptographic authentication/decryption step. Replay bookkeeping does not
+  replace authentication.
+
+Thus an account socket token alone does not establish confidential,
+authenticated transport. AES/RSA code and FakeTLS support elsewhere in the APK
+do not prove they protect this specific branch. We will not treat it as a secure
+tunnel or send retained credentials through it to test that assumption. See the
+[scoped evidence](native-empty-secret-evidence-2026-11-04.json); full bounded
+disassembly references remain in the local E-drive research directory.
