@@ -13,6 +13,24 @@ workers, and returns a local 404 for notification audio. A deliberately attempte
 registration request verifies that the network gate blocks it before delivery.
 It does not test a real call or provide a live network allowlist.
 
+`official-call-gate.cjs` now implements a separate network-free admission
+policy. It reuses `CallCodec` and `CleanupIntent`, binds both account/device
+identities, persists the pre-request intent, permits one call request, retains
+the response UUID and both cleanup records before media admission, and requires
+matched terminal acknowledgements or a strictly matched peer `bye` SSE event.
+These two evidence types remain distinct in the journal. Restarted intents
+permit cleanup only.
+Its injected journal store must implement encrypted compare-and-swap writes
+against the supplied previous record, and honor the supplied account guard.
+The gate does not open that store or a network connection itself.
+
+Events returned as `defer: true` must be bounded and staged by the future
+transport adapter until the durable response UUID is known. The adapter must
+also seal the raw call response before decoding so a process crash cannot lose
+the only UUID-bearing response. Neither that transport adapter nor its encrypted
+journal namespace is implemented yet. Passing the gate's offline tests does
+not make live execution ready.
+
 The entry module exports account model `N`, account manager `M`, call manager
 `tt`, account repository `pt` and message API `nt`. `M.login(N.fromJson(record))`
 sets the in-memory account without going through OTP or device registration.
@@ -60,5 +78,4 @@ of the following conditions.
 
 An official default-ICE test and an adapter-forced relay-only test are different
 experiments. The latter changes `iceTransportPolicy` and must be labeled as
-such. Neither experiment is currently authorized or implemented by this offline
-adapter.
+such. Neither experiment is implemented or enabled by this offline adapter.

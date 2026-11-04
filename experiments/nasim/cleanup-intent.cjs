@@ -70,4 +70,4 @@ class CleanupIntent {
  forgetMemory(){this.#generation++;if(!this.#failed)this.#intent=null;}
  get state(){return {pending:!!this.#intent,saveFailed:this.#failed,busy:this.#busy};}
 }
-module.exports={CleanupIntent,validateIntent};
+module.exports={CleanupIntent,validateIntent,accountBinding:binding};
