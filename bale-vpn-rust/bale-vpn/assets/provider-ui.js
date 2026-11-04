@@ -23,13 +23,13 @@ Object.assign(copy.en,{
 });
 Object.assign(copy.fa,{
  copyPairingCard:'کپی کارت عمومی',pairingCard:'کارت عمومی طرف مقابل',reviewPairingCard:'بازبینی کارت',
- reviewPeer:'شناسهٔ حساب کارت',pairingCardInvalid:'کارت عمومی آی‌گپ معتبر نیست.',
+ reviewPeer:'شناسهٔ حساب کارت',pairingCardReplaces:'با ذخیرهٔ جفت‌سازی، کد این کارت جایگزین همهٔ کدهای مورد اعتماد فعلی می‌شود.',pairingCardInvalid:'کارت عمومی آی‌گپ معتبر نیست.',
  pairingCardReviewed:'شناسه و کد عمومی را بررسی کنید، سپس جفت‌سازی را ذخیره کنید.',
  pairingCardCopyFallback:'کارت انتخاب شد. آن را کپی کنید.'
 });
 Object.assign(copy.en,{
  copyPairingCard:'Copy public pairing card',pairingCard:'Peer public pairing card',reviewPairingCard:'Review card',
- reviewPeer:'Card account ID',pairingCardInvalid:'The iGap public pairing card is invalid.',
+ reviewPeer:'Card account ID',pairingCardReplaces:'Saving this pairing replaces all currently trusted codes with the code from this card.',pairingCardInvalid:'The iGap public pairing card is invalid.',
  pairingCardReviewed:'Review the account ID and public code, then save pairing.',
  pairingCardCopyFallback:'The card is selected. Copy it now.'
 });

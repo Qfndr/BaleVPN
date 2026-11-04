@@ -8,7 +8,8 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'test-provider-ui-'));
  const token='fixture-csrf',requests=[],errors=[],external=[];let browser;
  const state={provider:'igap',phase:'idle',authenticated:false,wsReady:false,hasSession:false,authStage:'idle',retryAfterSeconds:0,credentialsSaved:true,mode:null,peerAuthenticated:false,proxyReady:false,traffic:{receivedBytes:0,sentBytes:0},account:null,publicCode:'30'.repeat(200),error:null};
- let config={format:1,provider:'igap',mode:null,peerId:null,socks5Port:18080,trustedCertificates:[],throughput:false},appearance=null;
+ const originalPins=['32'.repeat(200),'33'.repeat(200)];
+ let config={format:1,provider:'igap',mode:null,peerId:null,socks5Port:18080,trustedCertificates:originalPins,throughput:false},appearance=null;
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1'),route=url.pathname.replace(/^\/providers\/igap/,'');
   const json=value=>{res.setHeader('content-type','application/json');res.end(JSON.stringify(value));};
@@ -65,7 +66,7 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
     await page.locator('#reviewPairingCard').click();
     assert.match(await page.locator('#securityNotice').innerText(),/معتبر نیست/);
     assert.equal(await page.locator('#peerId').inputValue(),'');
-    assert.equal(await page.locator('#trustedCodes').inputValue(),'');
+    assert.equal(await page.locator('#trustedCodes').inputValue(),originalPins.join('\n'));
   }
   await cardField.fill(JSON.stringify(peerCard));
   await page.locator('#reviewPairingCard').click();
@@ -73,6 +74,8 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
   assert.equal(await page.locator('#peerId').inputValue(),'1002');
   assert.equal(await page.locator('#trustedCodes').inputValue(),peerCard.publicCode);
   assert.equal(await page.locator('#connect').isDisabled(),true);
+  assert.match(await page.locator('#pairingReview').innerText(),/جایگزین همهٔ کدهای مورد اعتماد/);
+  assert.deepEqual(config.trustedCertificates,originalPins);
   assert.equal(requests.filter(r=>r.route==='/config').length,previousWrites);
   await page.locator('#saveTrust').click();
   await page.waitForFunction(()=>document.getElementById('pairingReview').hidden);
