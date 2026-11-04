@@ -42,5 +42,36 @@
   ],
   "limitation": "A verified TLS connection demonstrates endpoint TLS support only. It does not demonstrate acceptance of native RPC inside TLS. Timeout does not establish absence of TLS or endpoint availability.",
   "nativeSocketUrl": "Archived native config socketURL identifies 2.189.58.63:443; no alternate TLS hostname or WSS path was derived.",
-  "secureNativeRpcVerified": false
+  "secureNativeRpcVerified": false,
+  "credentialFreeNativePingFollowup": {
+    "date": "2026-11-04",
+    "host": "armita.eitaa.com",
+    "port": 443,
+    "method": "native TL_ping inside TL_clientRequestSocket",
+    "accountFieldsEmpty": true,
+    "userId": 0,
+    "tlsVerificationRequired": true,
+    "maximumResponseBytes": 65536,
+    "maximumElapsedMs": 8000,
+    "requestBytes": 68,
+    "requestSha256": "e7f7cdfebc64b2f7ec3db160d15b9ecdfd50bc58168ee87ad804e614c473aba3",
+    "source": {
+      "pingConstructor": 2059302892,
+      "socketConstructor": 2059302894,
+      "layer": 136,
+      "flags": 2048
+    },
+    "classification": "http_response",
+    "tlsVerified": true,
+    "tlsProtocol": "TLSv1.2",
+    "alpn": "http/1.1",
+    "httpStatus": 400,
+    "elapsedMs": 378,
+    "responseBytes": 295,
+    "responseSha256": "53479f40c69d39f20df1f296934d9022bce4d92b573dc9595869a0c4bb4155e2",
+    "attemptCount": 1,
+    "requestConstruction": "Pinned native TL_ping constructor0x7abe77ec and synthetic ping ID inside TL_clientRequestSocket constructor0x7abe77ee, empty token/IMEI strings, flags2048/layer136, with32-byte native frame header. No account store was read.",
+    "interpretation": "The tested verified TLS listener with ALPN http/1.1 returned HTTP400 for native framing. This is not a native RPC response and does not establish a supported authenticated native route.",
+    "limitations": "Only one fixed endpoint, protocol selection and synthetic request were tested. No inference that all routes or current official calls are unavailable. No credentials, redirect, verification bypass or retry."
+  }
 }
