@@ -185,5 +185,28 @@
     "bothAccountsStillSignedIn": true,
     "exitCode": 1
   },
-  "nextDiagnostic": "Capture the client terminal reason and candidate statistics. Use the separate Windows and Linux packages to test the same authenticated media path across two independent networks."
+  "asymmetricMediaTelemetryFollowup": {
+    "sourceCommit": "7565c67cbf80c77dbfbc173ad16cdab1ffb674a5",
+    "attempts": 1,
+    "topology": "Two retained accounts on one Windows host",
+    "clientSignalingNegotiated": true,
+    "clientTerminalReason": "relay_route_failed",
+    "clientIce": {
+      "localRelayCandidates": 1,
+      "remoteRelayCandidates": 0,
+      "pairFailed": 1,
+      "pairSucceeded": 1,
+      "nominatedPairs": 1
+    },
+    "serverRouteProof": "client-relay/server-public",
+    "peerAuthenticated": [false, false],
+    "payloadTransferVerified": false,
+    "exactCleanupAcknowledged": true,
+    "remainingEncryptedCleanupIntents": [false, false],
+    "labEventSubscriptionsRestored": [true, true],
+    "bothAccountsStillSignedIn": true,
+    "exitCode": 1,
+    "interpretation": "The client failed route verification even though one ICE pair succeeded and one was nominated. The saved diagnostics do not include the selected candidate type or which route verification stage rejected the path."
+  },
+  "nextDiagnostic": "Distinguish client selected-candidate validation from verifier scheduling and readiness races. Test across two independent networks with the separate Windows and Linux endpoints."
 }
