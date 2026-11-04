@@ -112,13 +112,18 @@ struct CallLease {
     owner: IgapSignaling,
     epoch: u64,
     room: String,
+    call_revision: u64,
     armed: bool,
 }
 impl Drop for CallLease {
     fn drop(&mut self) {
         if self.armed {
-            self.owner
-                .end_call_if(self.epoch, &self.room, EndReason::NetworkDrop);
+            self.owner.end_call_if(
+                self.epoch,
+                &self.room,
+                self.call_revision,
+                EndReason::NetworkDrop,
+            );
         }
     }
 }
@@ -710,11 +715,12 @@ impl IgapSignaling {
             });
         }
     }
-    fn end_call_if(&self, epoch: u64, room: &str, reason: EndReason) {
+    fn end_call_if(&self, epoch: u64, room: &str, call_revision: u64, reason: EndReason) {
         let mut current = self.inner.call.lock();
-        if !current
-            .as_ref()
-            .is_some_and(|c| c.epoch == epoch && c.room == room)
+        if self.inner.call_revision.load(Ordering::Acquire) != call_revision
+            || !current
+                .as_ref()
+                .is_some_and(|c| c.epoch == epoch && c.room == room)
         {
             return;
         }
@@ -745,12 +751,17 @@ impl IgapSignaling {
                         return Ok(());
                     };
                     let peer = self.peer(&peer)?;
-                    {
+                    let call_revision = {
                         let mut current = self.inner.call.lock();
+                        self.guard(epoch, &rpc)?;
                         if current.is_some() {
                             return Ok(());
                         }
-                        self.inner.call_revision.fetch_add(1, Ordering::AcqRel);
+                        let revision = self
+                            .inner
+                            .call_revision
+                            .fetch_add(1, Ordering::AcqRel)
+                            .wrapping_add(1);
                         *self.inner.last_service_leave.lock() = None;
                         *current = Some(Call {
                             epoch,
@@ -764,7 +775,8 @@ impl IgapSignaling {
                             receiver_join_order: None,
                             local_leave_confirmed: None,
                         });
-                    }
+                        revision
+                    };
                     let this = self.clone();
                     tokio::spawn(async move {
                         let decision = tokio::time::timeout(
@@ -774,11 +786,14 @@ impl IgapSignaling {
                         .await
                         .unwrap_or(CallDecision::SilentlyIgnore);
                         if this.guard_admission(epoch, &rpc, handler_revision).is_err() {
-                            this.end_call_if(epoch, &room, EndReason::Rejected);
+                            this.end_call_if(epoch, &room, call_revision, EndReason::Rejected);
                             return;
                         }
                         if !this.inner.call.lock().as_ref().is_some_and(|c| {
-                            c.epoch == epoch && c.room == room && c.phase == Phase::Incoming
+                            c.epoch == epoch
+                                && c.room == room
+                                && c.phase == Phase::Incoming
+                                && this.inner.call_revision.load(Ordering::Acquire) == call_revision
                         }) {
                             return;
                         }
@@ -786,19 +801,27 @@ impl IgapSignaling {
                             if decision == CallDecision::Reject {
                                 let _ = rpc.request(918, room::leave().unwrap_or_default()).await;
                             }
-                            this.end_call_if(epoch, &room, EndReason::Rejected);
+                            this.end_call_if(epoch, &room, call_revision, EndReason::Rejected);
                             return;
                         }
                         let result = this
-                            .accept(epoch, rpc, peer, room.clone(), handler_revision)
+                            .accept(
+                                epoch,
+                                rpc,
+                                peer,
+                                room.clone(),
+                                handler_revision,
+                                call_revision,
+                            )
                             .await;
                         if result.is_err() {
-                            this.end_call_if(epoch, &room, EndReason::NetworkDrop);
+                            this.end_call_if(epoch, &room, call_revision, EndReason::NetworkDrop);
                         }
                     });
                 }
                 30914 => {
                     let mut call = self.inner.call.lock();
+                    self.guard(epoch, &rpc)?;
                     if let Some(c) = call.as_mut() {
                         if c.phase == Phase::Outgoing && c.epoch == epoch {
                             if let Ok(token) = room::bound_token(&reply.fields, &self_id, &c.room) {
@@ -894,8 +917,20 @@ impl IgapSignaling {
         peer: PeerId,
         room: String,
         handler_revision: u64,
+        call_revision: u64,
     ) -> Result<(), Error> {
         self.guard_admission(epoch, &rpc, handler_revision)?;
+        {
+            let current = self.inner.call.lock();
+            self.guard(epoch, &rpc)?;
+            if self.inner.call_revision.load(Ordering::Acquire) != call_revision
+                || !current.as_ref().is_some_and(|c| {
+                    c.epoch == epoch && c.room == room && c.phase == Phase::Incoming
+                })
+            {
+                return Err(Error::Cancelled);
+            }
+        }
         let self_id = self.self_id()?;
         let ring = rpc.request(916, vec![]).await?;
         self.guard_admission(epoch, &rpc, handler_revision)?;
@@ -904,8 +939,12 @@ impl IgapSignaling {
         }
         {
             let mut call = self.inner.call.lock();
+            self.guard(epoch, &rpc)?;
             let c = call.as_mut().ok_or(Error::Cancelled)?;
-            if c.room != room || c.epoch != epoch {
+            if self.inner.call_revision.load(Ordering::Acquire) != call_revision
+                || c.room != room
+                || c.epoch != epoch
+            {
                 return Err(Error::Cancelled);
             }
             c.phase = Phase::Joining;
@@ -925,8 +964,13 @@ impl IgapSignaling {
         }
         {
             let mut call = self.inner.call.lock();
+            self.guard(epoch, &rpc)?;
             let c = call.as_mut().ok_or(Error::Cancelled)?;
-            if c.room != room || c.epoch != epoch || c.phase != Phase::Joining {
+            if self.inner.call_revision.load(Ordering::Acquire) != call_revision
+                || c.room != room
+                || c.epoch != epoch
+                || c.phase != Phase::Joining
+            {
                 return Err(Error::Cancelled);
             }
             c.transport_digest = Some(Sha256::digest(token.as_bytes()).into());
@@ -1076,12 +1120,17 @@ impl TunnelHooks for IgapSignaling {
             }
             let room = room::response_id(&created.fields, 2)?;
             let (tx, rx) = oneshot::channel();
-            {
+            let call_revision = {
                 let mut current = self.inner.call.lock();
+                self.guard(epoch, &rpc)?;
                 if current.is_some() {
                     return Err(Error::Busy);
                 }
-                self.inner.call_revision.fetch_add(1, Ordering::AcqRel);
+                let revision = self
+                    .inner
+                    .call_revision
+                    .fetch_add(1, Ordering::AcqRel)
+                    .wrapping_add(1);
                 *self.inner.last_service_leave.lock() = None;
                 *current = Some(Call {
                     epoch,
@@ -1095,11 +1144,13 @@ impl TunnelHooks for IgapSignaling {
                     receiver_join_order: None,
                     local_leave_confirmed: None,
                 });
-            }
+                revision
+            };
             let mut lease = CallLease {
                 owner: self.clone(),
                 epoch,
                 room: room.clone(),
+                call_revision,
                 armed: true,
             };
             let offered = rpc.request(915, room::offer(peer.id_str(), &room)?).await?;

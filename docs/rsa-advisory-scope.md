@@ -66,6 +66,10 @@ authenticated replies and pushes, with the call epoch and active RPC checked
 under the call lock. RSA encryption, keys and registration parameters retain
 their previously reviewed behavior.
 
+The subsequent adapter/lifecycle review binds acceptance and cleanup to the
+call revision and rechecks the authenticated RPC at call-state commits. Only
+those two source fingerprints were refreshed for this generation-safety change.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.

@@ -693,3 +693,74 @@ async fn receipt_order_is_scoped_to_the_physical_authenticated_connection() {
         app.disconnect().await;
     }
 }
+
+#[tokio::test]
+async fn old_accept_cleanup_cannot_end_same_room_on_replacement_connection() {
+    for delayed in [916, 914] {
+        let (first, old_rpc, store) = fixture_connector();
+        let (second, new_rpc, _) = fixture_connector();
+        let app = IgapSignaling::with_connector(
+            store,
+            RegistrationProfile::Independent,
+            Arc::new(RotatingFactory(Mutex::new([first, second].into()))),
+        );
+        app.restore(record()).await.unwrap();
+        app.set_allowed_peers(&["42".into()]).unwrap();
+        app.set_incoming_handler(Box::new(Accept));
+        let mut accepted = app.accepted_sessions();
+        let incoming = || {
+            response(
+                30915,
+                [w::uint_field(2, 42).unwrap(), w::uint_field(3, 99).unwrap()].concat(),
+            )
+        };
+        old_rpc.block_action.store(delayed, Ordering::Release);
+        old_rpc.push.send(incoming()).await.unwrap();
+        wait_call(&old_rpc, delayed).await;
+        old_rpc.close();
+        app.connect().await.unwrap();
+        // Wake the old push consumer so its stale context is fully released.
+        let _ = old_rpc
+            .push
+            .send(response(30916, w::uint_field(2, 41).unwrap()))
+            .await;
+        tokio::time::timeout(Duration::from_secs(2), old_rpc.push.closed())
+            .await
+            .unwrap();
+        new_rpc.push.send(incoming()).await.unwrap();
+        let (_, session) = tokio::time::timeout(Duration::from_secs(2), accepted.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let revision = app.joined_call_revision(&session).unwrap();
+        let mut events = app.events();
+        old_rpc.release_action.notify_one();
+        // The only surviving old-RPC owner should be this test once the
+        // suspended acceptance and its cleanup have both finished.
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while Arc::strong_count(&old_rpc) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            events.try_recv().is_err(),
+            "old cleanup ended the replacement call"
+        );
+        assert!(app.is_joined_call_revision(revision));
+        new_rpc
+            .push
+            .send(response(30918, w::uint_field(2, 42).unwrap()))
+            .await
+            .unwrap();
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap(),
+            Some(lk_signaling::SignalingEvent::CallEnded { .. })
+        ));
+        assert!(!app.is_joined_call_revision(revision));
+        app.disconnect().await;
+    }
+}
