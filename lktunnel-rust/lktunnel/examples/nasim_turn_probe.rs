@@ -208,9 +208,10 @@ async fn exchange(
     first_a.map_err(|_| ())?;
     first_b.map_err(|_| ())?;
     let (sent_a, sent_b) = tokio::join!(a.send_to(&nonce_a, addr_b), b.send_to(&nonce_b, addr_a));
-    if sent_a.map_err(|_| ())? != 32 || sent_b.map_err(|_| ())? != 32 {
-        return Err(());
-    }
+    // turn 0.8 returns the encoded SEND-INDICATION length until its channel
+    // bind completes. Validate payload length and integrity on receipt below.
+    sent_a.map_err(|_| ())?;
+    sent_b.map_err(|_| ())?;
     *stage = "receive_and_verify";
     let mut buffer_a = [0_u8; 64];
     let mut buffer_b = [0_u8; 64];
@@ -348,7 +349,7 @@ mod tests {
         let (server, endpoint) = server().await;
         let result = run(pair(&endpoint, "fixture-password"), Duration::from_secs(5)).await;
         server.close().await.unwrap();
-        assert_eq!(result["ok"], true);
+        assert_eq!(result["ok"], true, "safe diagnostic result: {result}");
         assert_eq!(result["allocated"], 2);
         assert_eq!(result["bidirectionalVerified"], true);
         assert_eq!(result["localCleanupComplete"], true);
