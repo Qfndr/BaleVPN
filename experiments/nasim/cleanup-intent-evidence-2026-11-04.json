@@ -3,8 +3,23 @@
   "scope": "Future-call cleanup preservation in the isolated laboratory; no live cleanup, call, account modification or restart",
   "vaultPurpose": "nasim-cleanup-intent-v1",
   "separateAuthenticatedData": "provider-lab-v1/cleanup/nasim/<slot>",
-  "savedFields": ["format", "provider", "accountBinding", "selfId", "selfClientId", "peerId", "callUUID", "capturedAt"],
-  "secretsExcluded": ["token", "OTP", "password", "SDP", "TURN credentials"],
+  "savedFields": [
+    "format",
+    "provider",
+    "accountBinding",
+    "selfId",
+    "selfClientId",
+    "peerId",
+    "callUUID",
+    "capturedAt"
+  ],
+  "secretsExcluded": [
+    "token",
+    "OTP",
+    "password",
+    "SDP",
+    "TURN credentials"
+  ],
   "capturePoint": "Matching config, before native media setup/SDP; encrypted readback verified",
   "newCallBlockedWhilePending": true,
   "noAutomaticDialOrCleanupOnRestore": true,
@@ -19,9 +34,39 @@
     "passed": 77,
     "failed": 0,
     "skipped": 0,
-    "scope": ["Nasim cleanup manager", "actual encrypted temporary vault", "HTTP laboratory fixtures", "Nasim signaling and call controller", "existing Rubika recovery-vault isolation"],
-    "cases": ["wrong call/peer acknowledgement", "timeout", "failed disk write blocks new calls", "account and connection changes", "initial media failure after capture", "reset/restart readback", "ciphertext slot swaps", "exact expected-record removal", "no network on restore"]
+    "scope": [
+      "Nasim cleanup manager",
+      "actual encrypted temporary vault",
+      "HTTP laboratory fixtures",
+      "Nasim signaling and call controller",
+      "existing Rubika recovery-vault isolation"
+    ],
+    "cases": [
+      "wrong call/peer acknowledgement",
+      "timeout",
+      "failed disk write blocks new calls",
+      "account and connection changes",
+      "initial media failure after capture",
+      "reset/restart readback",
+      "ciphertext slot swaps",
+      "exact expected-record removal",
+      "no network on restore"
+    ],
+    "supplementary": {
+      "passed": 1,
+      "scope": "HTTP cleanup without a native media helper; other media actions remain unavailable",
+      "run": "focused after the 77-case suite"
+    }
   },
-  "additionalFocusedRegression": {"passed": 1, "name": "Nasim cleanup does not need a native helper after a saved-intent restart", "nativeExecutableRequired": false},
-  "limitations": ["Cannot recover call identifiers discarded before this implementation", "No current-call read API or server-side timeout was established", "Service acceptance is not proof of peer receipt", "No live trial performed"]
+  "additionalFocusedRegression": {
+    "passed": 1,
+    "name": "Nasim cleanup does not need a native helper after a saved-intent restart",
+    "nativeExecutableRequired": false
+  },
+  "limitations": [
+    "Cannot recover call identifiers discarded before this implementation",
+    "No current-call read API or server-side timeout was established",
+    "Service acceptance is not proof of peer receipt",
+    "No live trial performed"
+  ]
 }
