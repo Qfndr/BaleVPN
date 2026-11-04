@@ -29,6 +29,7 @@ on:
       - 'scripts/test-nasim-native.cjs'
       - 'scripts/test-eitaa-native.cjs'
       - 'scripts/test-rubika-native.cjs'
+      - 'scripts/test-rubika-call-session.cjs'
   pull_request:
     branches: [main]
     paths:
@@ -51,6 +52,7 @@ on:
       - 'scripts/rubika-account-media-fixture.cjs'
       - 'scripts/relay-native-fixtures.cjs'
       - 'scripts/test-*-native.cjs'
+      - 'scripts/test-rubika-call-session.cjs'
 
 permissions:
   contents: read
@@ -82,6 +84,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify Rubika call update ordering
+        run: node --test scripts/test-rubika-call-session.cjs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'

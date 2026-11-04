@@ -99,6 +99,8 @@ class CallSession{
   // Refuse an ambiguous delta rather than overwrite retained state with every
   // default field emitted by a serializer. Null/absent values never invent data.
   if(!Array.isArray(fields))fail('missing_update_parameters');
+  // The embedded PhoneCall timestamp also bounds fields absent in the snapshot.
+  if(update.action==='Edit'&&update.timestamp<(this.#call.timestamp??0))return;
   const advancing=fields.includes('state')&&rank[update.call.state]>rank[this.#call.state]&&update.timestamp>=(this.#times.get('state')??-1);
   const next={...this.#call};let changed=false;
   for(const name of fields){

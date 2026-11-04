@@ -82,6 +82,16 @@ test('fields the official client ignores cannot advance the deletion watermark a
   {action:'Delete',call_id:call,timestamp:f.seconds()+1});
  await f.session.pollOnce();assert.equal(f.session.state.phase,'listening');assert.equal(f.session.state.callId,null);f.session.close();
 });
+test('a mixed Edit older than the embedded snapshot cannot suppress a terminal Delete',async()=>{
+ const f=fixture({hook:method=>{
+  if(method==='requestCall')return {call_type:'WebRtc',call_update:update(f.seconds(),
+   {call:{call_id:call,call_type:'Voice',state:'Waiting',timestamp:f.seconds()+10}})};
+ }});
+ await f.session.start();await f.session.dial(peer);
+ f.events.push(edit(f.seconds()+5,{protocol_layer:92,duration:4}),
+  {action:'Delete',call_id:call,timestamp:f.seconds()+3});
+ await f.session.pollOnce();assert.equal(f.session.state.phase,'listening');assert.equal(f.session.state.callId,null);f.session.close();
+});
 test('remote deletion wipes pending opaque signals and a retired call cannot ring or deliver into another call',async()=>{
  const f=fixture();await incoming(f);const source=Buffer.from('private-early-signal');f.signals.push({call_id:call,data:source});await f.session.pollOnce();
  assert.equal(source.every(x=>x===0),true);assert.equal(f.session.state.queuedSignals,1);
