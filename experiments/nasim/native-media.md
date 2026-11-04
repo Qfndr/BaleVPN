@@ -71,6 +71,12 @@ Each start prepares a single call with a 90-second call budget and a fresh
 certificate. This panel uses retained sessions and the experimental
 asymmetric transport.
 
+Two BaleVPN processes on one Windows host completed a live Nasim call in
+headless mode. Both endpoints verified the route and authenticated their
+peer. The client transferred and checked a 1,024-byte HTTPS download and an
+8,192-byte upload through SOCKS5. Both endpoints confirmed cleanup.
+[App trial evidence](app-live-evidence-2026-11-04.json)
+
 DTLS/SRTP protects the media transport. QUIC adds independent certificate-pinned
 mutual authentication between the tunnel endpoints; a connected media call
 does not make the SOCKS proxy ready by itself. No microphone, camera or data
