@@ -47,7 +47,16 @@
       "pendingIntentsRetained": 2,
       "mediaStarted": false,
       "otpRequests": 0,
-      "labSignalingRestored": true
+      "labSignalingRestored": true,
+      "failureCause": "The private test runner omitted the required JSON line terminator. The worker rejected the input before opening the vault.",
+      "afterRunnerFramingFix": {
+        "endpointSourceCommit": "a4be6f7",
+        "confirmedReceipts": 2,
+        "pendingIntents": 0,
+        "mediaStarted": false,
+        "otpRequests": 0,
+        "labSignalingRestored": true
+      }
     }
   },
   "longCallFollowup": {
