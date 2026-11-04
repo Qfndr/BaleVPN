@@ -62,7 +62,8 @@ class AuthSession {
    const deviceHash=crypto.randomBytes(16).toString('hex');
    this.#profile={protocolProfile,deviceHash,deviceModel:'Desktop '+deviceHash.slice(0,12),systemVersion:clean(os.platform()+' '+os.release()+' '+os.arch(),128)};
    await this.#transport(guard);guard();this.#retryAt=Date.now()+60000;
-   return this.#result(await this.#request('sendCode',{phone_number:this.#pending.phone,send_type:'SMS'},guard));
+   const response=await this.#request('sendCode',{phone_number:this.#pending.phone,send_type:'SMS'},guard);
+   guard();return this.#result(response);
   });
  }
  async password(value){
@@ -70,7 +71,7 @@ class AuthSession {
    if(this.#stage!=='password'||!this.#pending)throw new ApiError('no_pending_password');
    if(typeof value!=='string'||!value||value.length>64)throw new ApiError('invalid_password_format');
    const response=await this.#request('sendCode',{phone_number:this.#pending.phone,send_type:'SMS',pass_key:digits(value)},guard);
-   return this.#result(response);
+   guard();return this.#result(response);
   });
  }
  async verify(code){
@@ -79,6 +80,7 @@ class AuthSession {
    if(typeof code!=='string'||!/^\d{4,10}$/.test(code)||code.length!==this.#count)throw new ApiError('invalid_code_format');
    if(!this.#identity){const identity=await this.#createIdentity();guard();this.#identity=identity;}
    const response=await this.#request('signIn',{phone_number:this.#pending.phone,phone_code_hash:this.#pending.hash,phone_code:code,public_key:wire.publicKeyField(this.#identity.publicKey,profiles.mode(this.#profile.protocolProfile))},guard);
+   guard();
    if(response?.status!=='OK'){
     if(['CodeIsExpired','CodeIsUsed'].includes(response?.status)){this.#pending.hash=null;this.#stage='expired';throw new ApiError(response.status==='CodeIsExpired'?'code_expired':'code_used');}
     throw new ApiError(response?.status==='CodeIsInvalid'?'invalid_code':'invalid_auth_response');
@@ -94,16 +96,20 @@ class AuthSession {
   });
  }
  async #register(guard){
+  guard();
   if(!this.#record)throw new ApiError('no_saved_session');
   this.#signed=false;this.#selfConfirmed=false;this.#record.registration='uncertain';this.#stage='registration_uncertain';await this.#persist(guard);
-  const p=this.#record.profile;
+  guard();const p=this.#record.profile;
   try{await this.#request('registerDevice',profiles.registration(profiles.fromRecord(this.#record),p,this.#language),guard,true);}
-  catch(e){if(e instanceof ApiError&&e.reason==='registration_required'){this.#record.registration='required';this.#stage='device_required';await this.#persist(guard);}throw e;}
+  catch(e){guard();if(e instanceof ApiError&&e.reason==='registration_required'){this.#record.registration='required';this.#stage='device_required';await this.#persist(guard);}throw e;}
+  guard();
   this.#record.registration='confirmed';this.#stage='restoring';await this.#persist(guard);
  }
  async #confirm(guard){
+  guard();
   let result;try{result=await this.#request('getUserInfo',{user_guid:this.#record.userId},guard,true);}
-  catch(e){if(e instanceof ApiError&&e.reason==='registration_required'){this.#record.registration='required';this.#stage='device_required';await this.#persist(guard);}throw e;}
+  catch(e){guard();if(e instanceof ApiError&&e.reason==='registration_required'){this.#record.registration='required';this.#stage='device_required';await this.#persist(guard);}throw e;}
+  guard();
   if(result?.user?.user_guid!==this.#record.userId)throw new ApiError('login_account_mismatch');
   this.#signed=true;this.#selfConfirmed=true;this.#stage='authenticated';return {authenticated:true,selfConfirmed:true};
  }
@@ -126,7 +132,7 @@ class AuthSession {
   });
  }
  async resume(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');this.#signed=false;this.#selfConfirmed=false;this.#stage='restoring';await this.#persist(guard);return this.#confirm(guard);});}
- async logout(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');await this.#request('logout',{},guard,true);this.#clear();return {loggedOut:true};});}
+ async logout(){return this.#run(async guard=>{if(!this.#record)throw new ApiError('no_saved_session');await this.#request('logout',{},guard,true);guard();this.#clear();return {loggedOut:true};});}
  exportSession(){if(!this.#record)throw new ApiError('session_not_ready');return {...this.#record,profile:{...this.#record.profile}};}
  #clear(){this.#client?.close();this.#client=null;this.#discovered=false;this.#record=null;this.#identity=null;this.#pending=null;this.#phone='';this.#hint='';this.#count=0;this.#delivery=null;this.#signed=false;this.#selfConfirmed=false;this.#profile=null;this.#error=null;this.#stage='idle';}
  stop(){this.#epoch++;this.#busy=false;this.#client?.close();this.#client=null;this.#discovered=false;this.#signed=false;this.#selfConfirmed=false;this.#stage=this.#record?'stopped':'idle';this.#pending=null;this.#identity=null;this.#error=null;}

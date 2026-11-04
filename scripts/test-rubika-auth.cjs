@@ -52,6 +52,23 @@ test('restoring an encrypted record reuses auth, RSA key and device hash without
  assert.deepEqual(restored.calls.map(c=>c.method),['getDCs','getUserInfo']);assert.equal(restored.generated(),0);assert.equal(restored.session.state.signedIn,true);
  assert.equal(restored.session.exportSession().privateKey,record.privateKey);assert.equal(restored.session.exportSession().profile.deviceHash,record.profile.deviceHash);restored.session.close();
 });
+test('stop between a protected response and confirmation cannot restore signed-in state',async()=>{
+ const original=fixture();await login(original);const record=original.session.exportSession();original.session.close();
+ let stopRan=false;
+ const session=new AuthSession({createClient:()=>({async discover(){},async request(method){
+  assert.equal(method,'getUserInfo');
+  // The second microtask runs after the inner request guard, before its caller resumes.
+  queueMicrotask(()=>queueMicrotask(()=>{session.stop();stopRan=true;}));
+  return {user:{user_guid:guid}};
+ },close(){}})});
+ try{
+  await assert.rejects(session.restore(record),{reason:'closed'});
+  assert.equal(stopRan,true);
+  assert.equal(session.state.stage,'stopped');
+  assert.equal(session.state.signedIn,false);assert.equal(session.state.selfConfirmed,false);
+  assert.deepEqual(session.exportSession(),record);
+ }finally{session.close();}
+});
 test('uncertain registration retains auth and a later protected read does not automatically register again',async()=>{
  const f=fixture({hook:async(method)=>{if(method==='registerDevice')throw new ApiError('timeout');}});await f.session.start(phone);
  await assert.rejects(f.session.verify('123456'),/timeout/);assert.equal(f.session.state.hasSession,true);assert.equal(f.session.state.registration,'uncertain');assert.equal(f.saved.at(-1).auth,auth);
