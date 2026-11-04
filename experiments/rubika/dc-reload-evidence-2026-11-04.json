@@ -70,5 +70,17 @@
     "localMapping": "Unknown top-level INVALID_AUTH statuses and Android NOT_REGISTERED without ERROR_ACTION retain the recognized service detail as service_rejected. The known Web and Android invalid-auth variants retain their existing typed results.",
     "limitation": "This is request and error-state parity. It does not establish why retained sessions were rejected, change any saved session, enable retries or reinterpret historical probes that did not retain the top-level status. No new live request was made."
   },
+  "liveAnonymousDiscoveryParityCheck": {
+    "sourceCommit": "2c193484736b403f3b0b61ecc4a3edc721791441",
+    "profile": "android-4.1.1-compat",
+    "apiVersion": 4,
+    "method": "getDCs",
+    "requests": 1,
+    "redirectsAllowed": false,
+    "requestFields": ["api_version", "client", "method"],
+    "apiServerSelected": true,
+    "authenticated": false,
+    "interpretation": "The official discovery endpoint accepted the numeric-version anonymous request and the existing validator selected an API server. This did not attempt login, registration, a protected read, or media."
+  },
   "privacy": "No account IDs, credentials, discovered URLs, phone numbers, RSA keys or private responses"
 }
