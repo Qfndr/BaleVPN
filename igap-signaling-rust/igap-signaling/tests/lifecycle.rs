@@ -646,7 +646,9 @@ async fn receipt_order_is_scoped_to_the_physical_authenticated_connection() {
         app.restore(record()).await.unwrap();
         if new_epoch {
             app.disconnect().await;
-            app.restore(record()).await.unwrap();
+            // Disconnect retains the saved account. Reconnect through its
+            // normal entry point instead of importing a second record.
+            app.connect().await.unwrap();
         } else {
             // Replacing a closed channel can preserve the authentication epoch.
             // Old receive-order numbers must still remain scoped to that channel.

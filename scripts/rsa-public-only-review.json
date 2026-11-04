@@ -20,6 +20,6 @@
     "igap-signaling-rust/igap-signaling/src/security.rs": "1d814172974dc5bdb161f41f5a3e4f95be0954b2374dd60653128e13694edd61",
     "igap-signaling-rust/igap-signaling/src/wire.rs": "cb62f98ca61d4b7d5c8726884ac43664873d3cdb5bd482692456783b0576fc71",
     "igap-signaling-rust/igap-signaling/tests/auth_privacy.rs": "ea419f1a9dd28a72172b8c35d845589270fc754a9fc8e2e7ec7ac9e2339e84c6",
-    "igap-signaling-rust/igap-signaling/tests/lifecycle.rs": "3fa9cbfc96cc7298ab3bf13eaa2470809f6b6b12797116b50efff05be2668600"
+    "igap-signaling-rust/igap-signaling/tests/lifecycle.rs": "2fd5e96109402445cec6be1748fed8e80999e5e72fe01af737d8dc17f9cd43ad"
   }
 }

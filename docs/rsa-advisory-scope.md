@@ -70,6 +70,11 @@ The subsequent adapter/lifecycle review binds acceptance and cleanup to the
 call revision and rechecks the authenticated RPC at call-state commits. Only
 those two source fingerprints were refreshed for this generation-safety change.
 
+The retained-account reconnect fixture now uses `connect()` after
+`disconnect()`, matching the existing SDK contract. Only the
+`tests/lifecycle.rs` fingerprint was refreshed for this test correction.
+Production authentication and RSA behavior are unchanged.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.
