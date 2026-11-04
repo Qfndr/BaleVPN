@@ -14,7 +14,7 @@ async function fixture(t){
  t.after(async()=>{
   vault.lock();
   assert.equal(path.dirname(directory),root);assert.match(path.basename(directory),/^eitaa-call-journal-/);
-  await fs.rm(directory,{recursive:true,force:true});
+  await fs.rm(directory,{recursive:true,force:true,maxRetries:3,retryDelay:50});
  });
  await vault.unlock(password);
  return {vault,directory,file:path.join(directory,'eitaa-call','pair.json')};

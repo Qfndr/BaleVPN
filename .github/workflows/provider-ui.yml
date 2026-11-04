@@ -10,6 +10,8 @@ on:
       - 'scripts/test-nasim-provider-ui.cjs'
       - 'scripts/test-provider-lab-browser.cjs'
       - 'scripts/test-provider-billing.cjs'
+      - 'scripts/test-eitaa-call-journal.cjs'
+      - 'scripts/test-eitaa-call-pair.cjs'
       - 'scripts/eitaa-*-fixture*.cjs'
       - 'scripts/provider-*-fixture.cjs'
       - 'experiments/providers/**'
@@ -24,6 +26,8 @@ on:
       - 'scripts/test-nasim-provider-ui.cjs'
       - 'scripts/test-provider-lab-browser.cjs'
       - 'scripts/test-provider-billing.cjs'
+      - 'scripts/test-eitaa-call-journal.cjs'
+      - 'scripts/test-eitaa-call-pair.cjs'
       - 'scripts/eitaa-*-fixture*.cjs'
       - 'scripts/provider-*-fixture.cjs'
       - 'experiments/providers/**'
@@ -79,6 +83,8 @@ jobs:
         run: node scripts/test-production-provider-ui.cjs
       - name: Check the opt-in Nasim endpoint controls
         run: node scripts/test-nasim-provider-ui.cjs
+      - name: Verify durable Eitaa call recovery
+        run: node --test scripts/test-eitaa-call-journal.cjs scripts/test-eitaa-call-pair.cjs
       - name: Check the isolated messenger lab and Eitaa call recovery
         run: node scripts/test-provider-lab-browser.cjs
       - name: Check operator counter comparison with synthetic measurements
