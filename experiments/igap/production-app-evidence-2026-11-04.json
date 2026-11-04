@@ -594,5 +594,38 @@
       "Single-host short functional test, not a speed benchmark.",
       "Remote VPS, sustained operation, operator billing and international-outage behavior remain unverified."
     ]
+  },
+  "automaticReconnectTrial": {
+    "sourceCommit": "cfc462139743bb1e4e52265706869befca04a7c3",
+    "binarySha256": "e1fb04e951a549af44a5b14811e9da45533e51a7840172b70eeac50cca85a4ae",
+    "scope": "Production app on one Windows host with saved relayOnly enabled on both profiles. First call manually started; second call automatically started after manual disconnect.",
+    "manualConnectRequests": 1,
+    "mutuallyAuthenticatedCycles": 2,
+    "automaticRetryCountdownObservedSeconds": 5,
+    "automaticCycleReadyElapsedMs": 16778,
+    "downloadBytesPerCycle": 352240,
+    "downloadSha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+    "uploadBytesPerCycle": 71680,
+    "uploadSha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+    "uploadEchoMatches": true,
+    "stableAfterTransferSecondsPerCycle": 20,
+    "disableWhileConnectedPreservedAuthentication": true,
+    "quietAfterDisabledDisconnectSeconds": 6,
+    "bothOriginalConfigurationsRestoredAndReadBack": true,
+    "cleanupBothLocallyStopped": true,
+    "unitCi": {
+      "sourceCommit": "31de523",
+      "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41776670747",
+      "headlessAppSuitePassed": [
+        "Linux x64",
+        "macOS Apple Silicon"
+      ],
+      "exactLiveBuildUnitSuiteVerified": false
+    },
+    "limitations": [
+      "This verifies manual disconnect recovery and disabling the preference on the tested relay route.",
+      "No physical network outage, remote VPS, sustained operation or throughput benchmark was tested.",
+      "The unit CI cited here predates the last pre-auth media retry policy refinement."
+    ]
   }
 }
