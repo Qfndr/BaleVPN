@@ -121,6 +121,25 @@
     "labSignalingRestored": true,
     "otpRequests": 0
   },
+  "peerExpiryRegression": {
+    "sourceCommit": "bdafb3c33f299784715ab50dcc68c1c32b7bcb0f",
+    "appSha256": "6ba83055b56d081af5698044b19b5fd30d2db2224316965bb44b8ea11b910c0b",
+    "kitArchiveSha256": "b9932e41d552b4c2f929d664cde559c2fb016a23e842db6776508ac8758caa5c",
+    "scope": "Two isolated headless endpoints on one Windows host using live Nasim signaling",
+    "bothRoutesVerified": true,
+    "bothPeersAuthenticated": true,
+    "downloadBytesVerified": 1024,
+    "uploadBytesVerified": 8192,
+    "callLimitSeconds": 90,
+    "firstTerminalSinceDialMs": 90711,
+    "bothCleanSinceAcceptMs": 90485,
+    "client": {"phase": "ended", "termination": "call_duration_elapsed"},
+    "server": {"phase": "ended", "termination": "bye"},
+    "bothEndpointsConfirmedCleanup": true,
+    "bothWorkerProcessesExited": true,
+    "labSignalingRestored": true,
+    "otpRequests": 0
+  },
   "carrierMetricsFollowup": {
     "sourceCommit": "f4ee1492b37946607ca1567bb865fb011fd2058f",
     "appSha256": "a089b21178afd9552a1bae0bde9744031a5a6a2ac7cc8c7d6840a859aca09ac8",
