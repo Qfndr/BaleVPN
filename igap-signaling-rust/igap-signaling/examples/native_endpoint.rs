@@ -336,9 +336,12 @@ async fn run(
     }
     let (config, role, certs) = configuration(&line, &identity.certificate)?;
     drop(line);
-    let options = identity
+    let mut options = identity
         .options(&certs, role == TunnelRole::Server, config.throughput)
         .map_err(|_| "invalid_pairing")?;
+    // Use the pinned SDK's ACK-first publication path. This waits for our
+    // exact local-track response, not an inferred remote-peer readiness event.
+    options.wait_for_track_published = true;
     identity.private_key.fill(0);
     let Config {
         session_record,

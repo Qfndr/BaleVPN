@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-04",
+  "scope": "Native iGap laboratory publication ordering; offline lifecycle tests followed by one bounded parent-run real default-start trial",
+  "primarySource": {
+    "url": "https://web.igap.net/assets/CallEngine-D5ybhatj.js",
+    "sha256": "0f42455443331cd85db95adb3adfaea7d186f00f0db12c1f3c6db1890b71bdbf",
+    "facts": [
+      "engine.addTrack registers an exact-CID resolver before sendAddTrack and rejects it after 10000 ms without TrackPublished",
+      "onLocalTrackPublished resolves only the matching pending CID with the returned TrackInfo",
+      "The empty enabledPublishVideoCodecs branch awaits addTrack before sender creation and negotiation",
+      "The nonempty enabledPublishVideoCodecs branch can negotiate concurrently with addTrack; ACK-before-offer is therefore supported SDK ordering, not a universal LiveKit requirement"
+    ]
+  },
+  "priorLiveEvidence": {
+    "independentImmediateStartup": "Failed; one publisher remained unobserved, and service reported ConnectionTimeout",
+    "sharedControllerDeferredStartup": "Previously succeeded with mutual authentication and exact HTTPS transfer bytes",
+    "thisPatchProvenToFixThatFailure": false
+  },
+  "implementation": {
+    "flag": "TunnelOptions.wait_for_track_published",
+    "default": false,
+    "enabledBy": "igap-signaling native_endpoint laboratory example only",
+    "publicationDeadlineMs": 10000,
+    "deadlineCovers": ["local AddTrack setup", "AddTrack signaling write", "exact-CID publication acknowledgement", "publisher offer creation and local SDP", "publisher Offer signaling write"],
+    "signalLoop": "Consumes events while publication waits, including real subscriber Offer/Answer and early ICE",
+    "ackValidation": "Exact pending local CID, TrackInfo present, nonempty bounded track SID, Audio type",
+    "cleanup": "Cancelled or failed startup closes both PCs concurrently and uses an explicit local I/O abort hook; a pending-stream guard also aborts I/O if cancellation occurs before Join/Reconnect response adoption. Normal graceful SignalClient.close behavior is unchanged",
+    "noAddedPeerReadinessOrAdmissionClaim": true
+  },
+  "validation": {
+    "newLocalTests": 9,
+    "newTestsPassed": 9,
+    "fullLibraryTestsPassed": 76,
+    "ignoredTests": 0,
+    "cases": ["withheld ACK prevents publisher offer", "wrong CID cannot release publication", "real subscriber SDP answer while publisher waits", "missing TrackInfo fails closed", "publication timeout and cancellation close socket", "default false path negotiates without ACK", "silent WebSocket peer cannot prevent local task abort", "abort interrupts an already waiting graceful close", "both actual PCs close on abandoned startup", "cancellation before Join adoption aborts already active I/O tasks"],
+    "includesExistingLocalEitaaRubikaMediaFixtures": true,
+    "providerLiveTestPerformedForThisPatch": true,
+    "parentLiveTest": "One ordinary independent native-start trial without --defer-media succeeded: both peers authenticated; HTTPS download352240B and upload71680B had exact expected hashes. Details in native-endpoint-live-evidence-2026-11-04.json.",
+    "nativeEndpointUnitTestsPassed": 6,
+    "vendorSignalClientTestsPassed": 16,
+    "vendorSignalClientTestMode": "Exact vendor src/lib.rs via E-only temporary manifest with the same active Tokio/TLS dependencies; direct standalone offline manifest was blocked by uncached disabled async-tungstenite metadata. No dependency downloads or source copies.",
+    "finalNativeBinarySha256": "7752e2296bda608406ff8bd45db0b14ee86b731675120ce9759a4793fecf4150"
+  },
+  "limits": "One single-host ordinary independent iGap startup and authenticated transfer succeeded after this correction. It does not establish the unique cause of prior failures, sustained performance, long-running reconnect, foreign VPS operation, billing or production integration."
+}

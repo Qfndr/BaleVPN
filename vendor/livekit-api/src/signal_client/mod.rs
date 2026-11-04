@@ -29,6 +29,7 @@ use livekit_runtime::{interval, sleep, Instant, JoinHandle};
 use parking_lot::Mutex;
 use prost::Message;
 use thiserror::Error;
+use futures_util::future::AbortHandle;
 use tokio::sync::{mpsc, Mutex as AsyncMutex, RwLock as AsyncRwLock};
 
 #[cfg(feature = "signal-client-tokio")]
@@ -139,6 +140,9 @@ pub enum SignalEvent {
 
 struct SignalInner {
     stream: AsyncRwLock<Option<SignalStream>>,
+    // Separate from the stream lock so a graceful close waiting for a silent
+    // remote cannot prevent cancellation of its read/write tasks.
+    stream_abort: Mutex<Option<(AbortHandle, AbortHandle)>>,
     token: Mutex<String>, // Token can be refreshed
     reconnecting: AtomicBool,
     queue: AsyncMutex<Vec<proto::signal_request::Message>>,
@@ -154,6 +158,18 @@ pub struct SignalClient {
     inner: Arc<SignalInner>,
     emitter: SignalEmitter,
     handle: Mutex<Option<JoinHandle<()>>>,
+}
+
+// A WebSocket already owns I/O tasks while Join/Reconnect is still pending.
+// Cancellation at that stage has no SignalClient owner to close those tasks.
+struct PendingStreamGuard(Option<(AbortHandle, AbortHandle)>);
+impl Drop for PendingStreamGuard {
+    fn drop(&mut self) {
+        if let Some((read, write)) = &self.0 {
+            read.abort();
+            write.abort();
+        }
+    }
 }
 
 impl Debug for SignalClient {
@@ -253,6 +269,18 @@ impl SignalClient {
         if let Some(signal_task) = handle {
             let _ = signal_task.await;
         }
+    }
+
+    /// Cancel the local I/O tasks without relying on a remote close response.
+    /// Intended for an abandoned startup; ordinary graceful close is unchanged.
+    pub async fn abort(&self) {
+        if let Some((read, write)) = self.inner.stream_abort.lock().as_ref() {
+            read.abort();
+            write.abort();
+        }
+        self.inner.close(false).await;
+        let handle = self.handle.lock().take();
+        if let Some(task) = handle { let _ = task.await; }
     }
 
     /// Returns Initial JoinResponse
@@ -369,10 +397,12 @@ impl SignalInner {
                 }
             };
 
+        let mut pending = PendingStreamGuard(Some(stream.abort_handles()));
         let join_response = get_join_response(&mut events).await?;
 
         // Successfully connected to the SignalClient
         let inner = Arc::new(SignalInner {
+            stream_abort: Mutex::new(Some(stream.abort_handles())),
             stream: AsyncRwLock::new(Some(stream)),
             token: Mutex::new(token.to_owned()),
             reconnecting: AtomicBool::new(false),
@@ -383,6 +413,7 @@ impl SignalInner {
             request_id: AtomicU32::new(1),
             single_pc_mode_active,
         });
+        pending.0.take();
 
         Ok((inner, join_response, events))
     }
@@ -458,13 +489,16 @@ impl SignalInner {
         let result = async {
             let (new_stream, mut events) =
                 SignalStream::connect(lk_url, &token, self.options.connect_timeout).await?;
+            let mut pending = PendingStreamGuard(Some(new_stream.abort_handles()));
             let reconnect_response = get_reconnect_response(&mut events).await?;
+            pending.0.take();
             SignalResult::Ok((new_stream, reconnect_response, events))
         }
         .await;
 
         match result {
             Ok((new_stream, reconnect_response, events)) => {
+                *self.stream_abort.lock() = Some(new_stream.abort_handles());
                 *stream_guard = Some(new_stream);
                 drop(stream_guard);
                 // Note: NOT clearing `reconnecting` here. Caller must invoke
@@ -927,6 +961,7 @@ mod tests {
     fn make_stub_inner() -> Arc<SignalInner> {
         Arc::new(SignalInner {
             stream: AsyncRwLock::new(None),
+            stream_abort: Mutex::new(None),
             token: Mutex::new(String::new()),
             reconnecting: AtomicBool::new(false),
             queue: Default::default(),

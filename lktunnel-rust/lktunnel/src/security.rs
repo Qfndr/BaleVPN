@@ -9,6 +9,9 @@ pub struct TunnelOptions {
     pub server: Option<quinn::ServerConfig>,
     pub(crate) authenticated: bool,
     pub(crate) throughput: bool,
+    /// Opt-in SFU publication ordering used by the native iGap laboratory.
+    /// Default transports keep their existing startup behavior.
+    pub wait_for_track_published: bool,
 }
 
 pub struct Identity {

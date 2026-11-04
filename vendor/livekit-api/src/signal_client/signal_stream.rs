@@ -14,6 +14,7 @@
 
 use bytes::Bytes;
 use futures_util::{
+    future::{AbortHandle, Abortable},
     stream::{SplitSink, SplitStream},
     SinkExt, StreamExt,
 };
@@ -78,6 +79,8 @@ pub(super) struct SignalStream {
     internal_tx: mpsc::Sender<InternalMessage>,
     read_handle: JoinHandle<()>,
     write_handle: JoinHandle<()>,
+    read_abort: AbortHandle,
+    write_abort: AbortHandle,
 }
 
 impl SignalStream {
@@ -322,11 +325,23 @@ impl SignalStream {
 
         let (emitter, events) = mpsc::unbounded_channel();
         let (internal_tx, internal_rx) = mpsc::channel::<InternalMessage>(8);
-        let write_handle = livekit_runtime::spawn(Self::write_task(internal_rx, ws_writer));
-        let read_handle =
-            livekit_runtime::spawn(Self::read_task(internal_tx.clone(), ws_reader, emitter));
+        let (write_abort, write_registration) = AbortHandle::new_pair();
+        let write_handle = livekit_runtime::spawn(async move {
+            let _ = Abortable::new(Self::write_task(internal_rx, ws_writer), write_registration).await;
+        });
+        let (read_abort, read_registration) = AbortHandle::new_pair();
+        let reader_tx = internal_tx.clone();
+        let read_handle = livekit_runtime::spawn(async move {
+            let _ = Abortable::new(Self::read_task(reader_tx, ws_reader, emitter), read_registration).await;
+        });
 
-        Ok((Self { internal_tx, read_handle, write_handle }, events))
+        Ok((Self { internal_tx, read_handle, write_handle, read_abort, write_abort }, events))
+    }
+
+    /// Emergency local teardown for a cancelled startup, without waiting for
+    /// the remote WebSocket close handshake. Graceful `close` is unchanged.
+    pub(super) fn abort_handles(&self) -> (AbortHandle, AbortHandle) {
+        (self.read_abort.clone(), self.write_abort.clone())
     }
 
     /// Close the websocket

@@ -1557,12 +1557,14 @@ dependencies = [
  "mio",
  "once_cell",
  "parking_lot",
+ "prost",
  "quinn",
  "rcgen",
  "rustls",
  "serde_json",
  "socket2 0.5.10",
  "tokio",
+ "tokio-tungstenite",
  "webrtc",
 ]
 

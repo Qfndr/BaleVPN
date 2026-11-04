@@ -75,6 +75,16 @@
     "buildVersionUsed": 26379,
     "limitation": "This earlier trial used AndroidManifest versionCode26379; later primaryBuildVars inspection corrected the actual wrapper buildVersion to2637. It does not test the corrected APKframe."
   },
+  "correctedApkEnvelopeDhTrialReportedByParent": {
+    "requests": 1,
+    "buildVersionUsed": 2637,
+    "credential": "Retained main HTTP credential from the explicit Android profile",
+    "result": "service_rejected",
+    "statusCode": 404,
+    "serviceCode": "INVALID_CONSTRUCTOR",
+    "callIssued": false,
+    "otpRequested": false
+  },
   "nativeCallRoute": "DEX sendRequestInternal tests connectionType & 64; VoIP getDhConfig uses 64 and goes through native_sendRequest with raw TL, bypassing HelperHttp. The APK HTTP wrapper is therefore not established as the working voice-call route.",
   "nativeSocketEnvelopeSymbolObserved": "TL_clientRequestSocket",
   "nativeSocketEnvelope": {
@@ -134,7 +144,7 @@
     "reason": "timeout",
     "interpretation": "Timeout does not establish lack of TLS, endpoint availability, expected hostname or transport confidentiality"
   },
-  "currentConclusion": "Official account-to-account voice calls work according to the user. Historical APK probe build26379 and exact native socket envelope over HTTPS rejected getDhConfig. Corrected APK BuildVars2637 was not live-probed; native VoIP route and its server authentication/encryption remain unverified. Changing method IDs or skipping DH validation is not justified.",
+  "currentConclusion": "Official account-to-account voice calls work according to the user. Both historical APK26379 and corrected APK2637 HTTPS trials with main HTTP credentials rejected getDhConfig. The earlier native socket envelope over HTTPS also used the main HTTP credential; it does not settle behavior with the subsequently obtained typed socket credential. That later probe's observation was not retained. Native VoIP routing and its server authentication/encryption remain unverified. Changing method IDs or skipping DH validation is not justified.",
   "liveTunnelVerified": false,
   "offlineValidation": "Four tests including independent Python TL byte fixtures, fixed read-only method/URL, malformed responses, oversized frames and cancellation; no account used"
 }

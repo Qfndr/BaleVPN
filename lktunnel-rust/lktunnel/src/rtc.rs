@@ -21,7 +21,7 @@
 //! [`Engine::connect`] returns the engine, the published [`RtpSender`]s,
 //! and an [`EngineEvent`] stream; [`Engine::close`] tears it down.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -48,6 +48,10 @@ use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSampl
 use webrtc::track::track_local::TrackLocal;
 
 use crate::rtp;
+
+#[cfg(test)]
+#[path = "rtc_publication_tests.rs"]
+mod publication_tests;
 
 /// The SDK identity we impersonate on the signaling URL + join. Bale's
 /// SFU keys some behaviour off this; the LiveKit JS SDK is what its web
@@ -118,6 +122,59 @@ pub struct Engine {
     event_task: Mutex<Option<tokio::task::AbortHandle>>,
 }
 
+/// Register before AddTrack so an immediate acknowledgement cannot be lost.
+/// Only the exact locally requested CID can release publication; unknown
+/// responses consume no queue space. This is sequencing, not peer admission.
+#[derive(Default)]
+struct PublicationGate(Mutex<(bool, HashMap<String, tokio::sync::oneshot::Sender<Result<(), &'static str>>>)>);
+impl PublicationGate {
+    fn register(&self, cid: String) -> Result<tokio::sync::oneshot::Receiver<Result<(), &'static str>>, String> {
+        let mut state=self.0.lock();
+        if state.0 || state.1.len() >= rtp::TRACK_COUNT || state.1.contains_key(&cid) {
+            return Err("track publication unavailable".into());
+        }
+        let (tx,rx)=tokio::sync::oneshot::channel();state.1.insert(cid,tx);Ok(rx)
+    }
+    fn published(&self, response: &proto::TrackPublishedResponse) {
+        let Some(tx)=self.0.lock().1.remove(&response.cid) else {return};
+        let valid=response.track.as_ref().is_some_and(|track| !track.sid.is_empty() && track.sid.len() <= 128 && track.r#type == proto::TrackType::Audio as i32);
+        let _=tx.send(if valid {Ok(())} else {Err("track publication response invalid")});
+    }
+    fn close(&self) {
+        let mut state=self.0.lock();state.0=true;
+        for (_,tx) in state.1.drain(){let _=tx.send(Err("signaling ended before track publication"));}
+    }
+}
+struct PublicationScope(Option<Arc<PublicationGate>>);
+impl Drop for PublicationScope {fn drop(&mut self){if let Some(gate)=&self.0{gate.close();}}}
+
+/// Also runs when the connecting future is cancelled before Engine is returned.
+/// It never retains tokens or logs remote descriptions.
+struct StartupResources {
+    signal: Arc<SignalClient>,
+    publisher: Option<Arc<RTCPeerConnection>>,
+    subscriber: Option<Arc<RTCPeerConnection>>,
+    task: Option<tokio::task::AbortHandle>,
+    armed: bool,
+}
+impl Drop for StartupResources {
+    fn drop(&mut self) {
+        if !self.armed {return;}
+        if let Some(task)=self.task.take(){task.abort();}
+        let signal=self.signal.clone();let publisher=self.publisher.take();let subscriber=self.subscriber.take();
+        crate::runtime().spawn(async move {
+            tokio::join!(
+                async {
+                    let _=tokio::time::timeout(Duration::from_secs(1),signal.send(proto::signal_request::Message::Leave(proto::LeaveRequest::default()))).await;
+                    signal.abort().await;
+                },
+                async {if let Some(pc)=publisher{let _=pc.close().await;}},
+                async {if let Some(pc)=subscriber{let _=pc.close().await;}},
+            );
+        });
+    }
+}
+
 impl Engine {
     /// Join the SFU and bring up both PeerConnections. `on_packet` is
     /// invoked once per received (unpacked) carrier packet — i.e. the
@@ -130,8 +187,16 @@ impl Engine {
         url: &str,
         token: &str,
         on_packet: Arc<dyn Fn(bytes::Bytes) + Send + Sync>,
+        wait_for_track_published: bool,
     ) -> Result<(Arc<Engine>, Vec<Arc<RtpSender>>, tokio::sync::mpsc::UnboundedReceiver<EngineEvent>), String>
     {
+        Self::connect_inner(id,url,token,on_packet,wait_for_track_published,Duration::from_secs(10)).await
+    }
+    async fn connect_inner(
+        id: u64, url: &str, token: &str,
+        on_packet: Arc<dyn Fn(bytes::Bytes) + Send + Sync>,
+        wait_for_track_published: bool, publication_timeout: Duration,
+    ) -> Result<(Arc<Engine>, Vec<Arc<RtpSender>>, tokio::sync::mpsc::UnboundedReceiver<EngineEvent>), String> {
         // ── Signal join (impersonate the JS SDK) ──────────────────────
         let mut sdk_options = SignalSdkOptions::default();
         sdk_options.sdk = IMPERSONATE_SDK.to_string();
@@ -144,6 +209,7 @@ impl Engine {
             .await
             .map_err(|e| format!("signal connect: {e}"))?;
         let signal = Arc::new(signal);
+        let mut startup=StartupResources {signal:signal.clone(),publisher:None,subscriber:None,task:None,armed:true};
         log::info!(
             "rtc[{id}]: joined subscriber_primary={} ice_servers={} peers={}",
             join.subscriber_primary,
@@ -161,11 +227,13 @@ impl Engine {
                 .await
                 .map_err(|e| format!("publisher pc: {e}"))?,
         );
+        startup.publisher=Some(publisher.clone());
         let subscriber = Arc::new(
             api.new_peer_connection(mk_config())
                 .await
                 .map_err(|e| format!("subscriber pc: {e}"))?,
         );
+        startup.subscriber=Some(subscriber.clone());
 
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<EngineEvent>();
 
@@ -204,7 +272,20 @@ impl Engine {
             }));
         }
 
+        let local_identity=join.participant.as_ref().map(|p|p.identity.clone()).unwrap_or_default();
+        let peers=Arc::new(Mutex::new(HashSet::new()));
+        seed_peers(&peers,&join.other_participants,&local_identity,&event_tx);
+        let gate=wait_for_track_published.then(||Arc::new(PublicationGate::default()));
+        let mut events=Some(events);
+        if wait_for_track_published {
+            let task=crate::runtime().spawn(signal_loop(id,events.take().expect("signal events owned"),signal.clone(),publisher.clone(),subscriber.clone(),peers.clone(),local_identity.clone(),event_tx.clone(),gate.clone()));
+            startup.task=Some(task.abort_handle());
+        }
+        let publication_deadline=tokio::time::Instant::now()+publication_timeout;
         // ── Publish the outgoing carrier track(s) ─────────────────────
+        // One deadline covers AddTrack setup, signaling writes, ACK wait and
+        // the initial offer, rather than only the acknowledgement receiver.
+        let publish=async {
         let mut senders = Vec::with_capacity(rtp::TRACK_COUNT);
         for index in 0..rtp::TRACK_COUNT {
             let track = Arc::new(TrackLocalStaticSample::new(
@@ -221,6 +302,7 @@ impl Engine {
                 .add_track(track.clone())
                 .await
                 .map_err(|e| format!("add_track {index}: {e}"))?;
+            let publication=gate.as_ref().map(|gate|gate.register(track.id().to_string())).transpose()?;
             signal
                 .send(proto::signal_request::Message::AddTrack(proto::AddTrackRequest {
                     cid: track.id().to_string(),
@@ -234,6 +316,11 @@ impl Engine {
                     ..Default::default()
                 }))
                 .await;
+            if let Some(publication)=publication {
+                publication.await
+                    .map_err(|_|"track publication cancelled".to_string())?
+                    .map_err(str::to_owned)?;
+            }
             senders.push(Arc::new(make_sender(id, index, track)));
         }
 
@@ -254,19 +341,16 @@ impl Engine {
             }))
             .await;
         log::info!("rtc[{id}]: publisher offer sent ({} track[s])", senders.len());
+        Ok::<_,String>(senders)
+        };
+        let senders=if wait_for_track_published {
+            tokio::time::timeout_at(publication_deadline,publish).await
+                .map_err(|_|"track publication timed out".to_string())??
+        } else {publish.await?};
 
-        // ── Peer roster seed + signal-event task ──────────────────────
-        // Our own identity, so participant updates about ourselves aren't
-        // mistaken for a remote peer (the LiveKit SDK skips the local
-        // participant the same way).
-        let local_identity = join
-            .participant
-            .as_ref()
-            .map(|p| p.identity.clone())
-            .unwrap_or_default();
-        let peers = Arc::new(Mutex::new(HashSet::new()));
-        seed_peers(&peers, &join.other_participants, &local_identity, &event_tx);
-
+        // Default transports retain their previous post-offer event startup.
+        // The opted-in path is already consuming events to await publication.
+        if let Some(events)=events {
         let task = crate::runtime().spawn(signal_loop(
             id,
             events,
@@ -276,7 +360,10 @@ impl Engine {
             peers.clone(),
             local_identity,
             event_tx,
+            gate,
         ));
+        startup.task=Some(task.abort_handle());
+        }
 
         let engine = Arc::new(Engine {
             id,
@@ -284,8 +371,9 @@ impl Engine {
             publisher,
             subscriber,
             peers,
-            event_task: Mutex::new(Some(task.abort_handle())),
+            event_task: Mutex::new(startup.task.take()),
         });
+        startup.armed=false;
         Ok((engine, senders, event_rx))
     }
 
@@ -529,7 +617,9 @@ async fn signal_loop(
     peers: Arc<Mutex<HashSet<String>>>,
     local_identity: String,
     event_tx: tokio::sync::mpsc::UnboundedSender<EngineEvent>,
+    publication: Option<Arc<PublicationGate>>,
 ) {
+    let _publication_scope=PublicationScope(publication.clone());
     let mut publisher_ice = PendingRemoteIce::default();
     let mut subscriber_ice = PendingRemoteIce::default();
     while let Some(ev) = events.recv().await {
@@ -540,6 +630,9 @@ async fn signal_loop(
                 return;
             }
             SignalEvent::Message(msg) => match *msg {
+                proto::signal_response::Message::TrackPublished(response)=>{
+                    if let Some(gate)=&publication{gate.published(&response);}
+                },
                 // SFU subscriber offer — answer it.
                 proto::signal_response::Message::Offer(sd) => {
                     match RTCSessionDescription::offer(sd.sdp) {

@@ -79,6 +79,8 @@ futures-util = "0.3"
 bytes       = "1"
 
 [dev-dependencies]
+prost = "0.12"
+tokio-tungstenite = "0.29"
 tokio = { version = "1", features = ["test-util"] }
 # Integration tests want a logger so failures are diagnosable.
 env_logger  = "0.11"
