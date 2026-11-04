@@ -40,7 +40,7 @@ function fixture({base='https://stream.gaplication.com',onEvent,onCallMessage,ap
   }
   throw new Error('Unexpected external destination in offline test');
  };
- return {seen,events,clockReads:()=>clockReads,open:()=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event)),onCallMessage,...clockNow?{clockNow}:{}}),
+ return {seen,events,clockReads:()=>clockReads,open:(cursor='0')=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event)),onCallMessage,cursor,...clockNow?{clockNow}:{}}),
   push:bytes=>stream.enqueue(bytes),end:()=>stream.close(),cancelled:()=>cancelled};
 }
 
@@ -167,6 +167,41 @@ test('cleanSession resets old call state and continues receiving fresh events wi
   assert.deepEqual(f.events.map(event=>event.type),['streamReset','config']);
   assert.equal(connection.state.callEvents,1);assert.equal(connection.state.awaitingFreshEvent,false);assert.equal(f.seen.length,3);
  }finally{connection.close();}
+});
+
+test('reopening at the processed cursor proves fixture continuity only for an exact peer bye without a history gap',async()=>{
+ const terminal={type:'msgGroupCall',from:{id:42},senderClientID:'client-42',time:1000,
+  data:{type:'bye',callUUID:'fixture-call-1',callData:null}};
+ for(const historyGap of [false,true]){
+  const before=fixture(),original=await before.open();
+  let checkpoint;
+  try{
+   before.push(frame(5,[config()]));
+   await waitFor(()=>original.state.lastEventId==='5');
+   checkpoint=original.state.lastEventId;
+   before.end();
+   await waitFor(()=>original.state.reason==='stream_ended');
+  }finally{original.close();}
+
+  const after=fixture(),resumed=await after.open(checkpoint);
+  try{
+   assert.equal(after.seen.some(request=>request.url.includes('/groupList')),false);
+   assert.equal(after.seen.at(-1).options.headers.lastEventTime,checkpoint);
+   if(historyGap)after.push(Buffer.from('id: 0\nevent: cleanSession\n\n'));
+   after.push(frame(5,[terminal]));
+   after.push(frame(6,[terminal]));
+   await waitFor(()=>resumed.state.lastEventId==='6');
+   assert.equal(resumed.state.replayedFrames,1);
+   const byes=after.events.filter(event=>event.type==='bye');
+   assert.equal(byes.length,1);
+   const exactPeerBye=byes[0].callUUID==='fixture-call-1'&&byes[0].senderId==='42'&&byes[0].senderClientId==='client-42';
+   assert.equal(exactPeerBye,true);
+   assert.equal(resumed.state.historyGaps,Number(historyGap));
+   assert.equal(after.events.some(event=>event.type==='streamReset'),historyGap);
+   assert.equal(resumed.state.awaitingFreshEvent,false);
+   assert.equal(exactPeerBye&&resumed.state.historyGaps===0,!historyGap);
+  }finally{resumed.close();}
+ }
 });
 
 test('verified service clock discards expired incoming configs while preserving fresh and caller configs',async()=>{
