@@ -19,6 +19,13 @@ const labels = {
     carrierRx:'دریافت حامل', carrierTx:'ارسال حامل', carrierRtt:'زمان رفت‌وبرگشت',
     carrierLoss:'افت تجمعی بسته‌های QUIC', carrierHint:'حجم و نرخ در حامل QUIC اندازه‌گیری می‌شوند.',
     cleanup:'پاک‌سازی تماس قبلی هنوز تأیید نشده است.',
+    termination:{
+      bye:'طرف مقابل تماس را پایان داد.',reject:'تماس رد شد.',busy:'حساب طرف مقابل مشغول بود.',
+      other_device:'تماس در دستگاه دیگری پاسخ داده شد.',media_failure:'مسیر رسانه از دسترس خارج شد.',
+      stream_reset:'جریان رویداد تماس بازنشانی شد.',event_stream_not_connected:'ارتباط با جریان رویداد نسیم قطع شد.',
+      call_connection_changed:'ارتباط نشست در حین تماس تغییر کرد.',cleanup_save_failed:'ثبت اطلاعات پاک‌سازی تماس انجام نشد.',
+      call_timeout:'مهلت برقراری تماس پایان یافت.',transport_closed:'مسیر انتقال تماس بسته شد.'
+    },
     copied:'گواهی کپی شد.', selectCopy:'گواهی انتخاب شد. آن را کپی کنید.',
     invalidCertificate:'گواهی عمومی طرف مقابل را بررسی کنید.',
     requestFailed:'عملیات انجام نشد. وضعیت نشست و تنظیمات ابزار نسیم را بررسی کنید.',
@@ -42,6 +49,13 @@ const labels = {
     carrierRx:'Carrier received', carrierTx:'Carrier sent', carrierRtt:'Round-trip time',
     carrierLoss:'Cumulative QUIC packet loss', carrierHint:'Traffic totals and rates are measured at the QUIC carrier.',
     cleanup:'Cleanup of the previous call is still unconfirmed.',
+    termination:{
+      bye:'The peer ended the call.',reject:'The call was declined.',busy:'The peer account was busy.',
+      other_device:'The call was answered on another device.',media_failure:'The media path became unavailable.',
+      stream_reset:'The call event stream was reset.',event_stream_not_connected:'The connection to the Nasim event stream was lost.',
+      call_connection_changed:'The session connection changed during the call.',cleanup_save_failed:'Call cleanup information could not be saved.',
+      call_timeout:'The call setup timed out.',transport_closed:'The call transport closed.'
+    },
     copied:'Certificate copied.', selectCopy:'Certificate selected. Copy it now.',
     invalidCertificate:'Check the peer’s public certificate.',
     requestFailed:'The operation failed. Check the session and the Nasim kit settings.',
@@ -55,6 +69,7 @@ const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const activePhases = new Set(['starting','prepared','ready','incoming','outgoing','dialing','negotiating','connected','uncertain','ended']);
 const liveCallPhases = new Set(['incoming','outgoing','dialing','negotiating','connected']);
 const badPhases = new Set(['failed','uncertain']);
+const terminalPhases = new Set([...badPhases,'ended']);
 const hexCertificate = /^(?:[a-f0-9]{2}){64,8192}$/;
 let prefs = {language:'fa',theme:'system'};
 let lang = 'fa', csrf = '', configured = false, busy = false, pollTask = null;
@@ -174,7 +189,10 @@ function render() {
   $('status').textContent = tr(state.phase === 'connected' && !authenticated ? 'negotiating' : state.phase);
   $('status').dataset.tone = authenticated ? 'good' : badPhases.has(state.phase) ? 'bad' : active ? 'wait' : '';
   const cleanupUnconfirmed = state.cleanupPending === true && !liveCallPhases.has(state.phase);
-  $('detail').textContent = tr(cleanupUnconfirmed ? 'cleanup' : authenticated ? 'route' : 'limits');
+  const reasons = labels[lang].termination;
+  const termination = terminalPhases.has(state.phase) && typeof state.termination === 'string' &&
+    Object.hasOwn(reasons,state.termination) ? reasons[state.termination] : null;
+  $('detail').textContent = cleanupUnconfirmed ? tr('cleanup') : termination ?? tr(authenticated ? 'route' : 'limits');
   const proxyReady = authenticated && state.proxyReady === true && role === 'client' &&
     Number.isInteger(state.proxyPort) && state.proxyPort >= 1024 && state.proxyPort <= 65535;
   $('proxy').hidden = !proxyReady;

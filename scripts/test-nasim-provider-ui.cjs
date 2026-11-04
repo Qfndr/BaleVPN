@@ -130,7 +130,15 @@ async function main() {
     assert.equal(await page.locator('#carrierRttField').isHidden(),true);
     assert.equal(await page.locator('#carrierLossField').isHidden(),true);
     assert.equal(Object.hasOwn(fixture.posts[4].input,'socksPort'),false);
-    fixture.patchState({phase:'uncertain',cleanupPending:true});
+    fixture.patchState({phase:'uncertain',cleanupPending:false,termination:'event_stream_not_connected'});
+    await page.waitForFunction(() => document.getElementById('detail').textContent === 'ارتباط با جریان رویداد نسیم قطع شد.');
+    await page.locator('#language').click();
+    assert.equal(await page.locator('#detail').textContent(),'The connection to the Nasim event stream was lost.');
+    await page.locator('#language').click();
+    fixture.patchState({termination:'<script>fixture provider private text</script>'});
+    await page.waitForFunction(() => document.getElementById('detail').textContent.includes('۹۰ ثانیه'));
+    assert.equal((await page.locator('body').innerText()).includes('fixture provider private text'),false);
+    fixture.patchState({phase:'uncertain',cleanupPending:true,termination:'event_stream_not_connected'});
     await page.waitForFunction(() => document.getElementById('detail').textContent.includes('پاک‌سازی تماس قبلی'));
     await page.locator('#stop').click();
     await page.locator('#pairing').waitFor({state:'hidden'});
