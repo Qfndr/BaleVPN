@@ -103,6 +103,26 @@ pub struct RelayMedia {
     route_task: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
 }
 
+fn replace_route_verifier(
+    route_task: &Mutex<Option<tokio::task::AbortHandle>>,
+    epoch: &RouteEpoch,
+    generation: u64,
+    verification: impl std::future::Future<Output = ()> + Send + 'static,
+) -> bool {
+    let mut active = route_task.lock();
+    // The callbacks can be polled out of order after obtaining their epochs.
+    // A stale callback must not abort the verifier already installed by a
+    // newer selection. Check while owning the task slot.
+    if !epoch.is_current(generation) {
+        return false;
+    }
+    if let Some(previous) = active.take() {
+        previous.abort();
+    }
+    *active = Some(tokio::spawn(verification).abort_handle());
+    true
+}
+
 async fn verify_nasim_route(
     pc: Arc<RTCPeerConnection>,
     input: CarrierInput,
@@ -481,20 +501,13 @@ impl RelayMedia {
                     let Some(pc) = weak_pc.upgrade() else { return };
                     if let Some(policy) = nasim_policy {
                         let generation = epoch.revoke();
-                        let mut active = route_task.lock();
-                        if let Some(previous) = active.take() {
-                            previous.abort();
-                        }
-                        *active = Some(
-                            tokio::spawn(verify_nasim_route(
-                                pc,
-                                input,
-                                policy,
-                                epoch,
-                                generation,
-                                route_rejected,
-                            ))
-                            .abort_handle(),
+                        replace_route_verifier(
+                            &route_task,
+                            &epoch,
+                            generation,
+                            verify_nasim_route(
+                                pc, input, policy, epoch.clone(), generation, route_rejected,
+                            ),
                         );
                         return;
                     }
@@ -539,15 +552,13 @@ impl RelayMedia {
                     Box::pin(async move {
                         if let Some(pc) = weak_pc.upgrade() {
                             if pc.connection_state() == RTCPeerConnectionState::Connected {
-                                let mut active = route_task.lock();
-                                if let Some(previous) = active.take() {
-                                    previous.abort();
-                                }
-                                *active = Some(
-                                    tokio::spawn(verify_nasim_route(
-                                        pc, input, policy, epoch, generation, rejected,
-                                    ))
-                                    .abort_handle(),
+                                replace_route_verifier(
+                                    &route_task,
+                                    &epoch,
+                                    generation,
+                                    verify_nasim_route(
+                                        pc, input, policy, epoch.clone(), generation, rejected,
+                                    ),
                                 );
                             }
                         }
@@ -1008,6 +1019,31 @@ mod tests {
             "candidate:1 1 udp 1 127.0.0.1 33333 typ relay"
         ));
     }
+    #[tokio::test]
+    async fn nasim_stale_verifier_cannot_cancel_new_selection_task() {
+        let epoch = RouteEpoch::default();
+        let stale = epoch.revoke();
+        let current = epoch.revoke();
+        let route_task = Mutex::new(None);
+        let (release, released) = tokio::sync::oneshot::channel();
+        let (complete, completed) = tokio::sync::oneshot::channel();
+        assert!(replace_route_verifier(&route_task, &epoch, current, async move {
+            released.await.unwrap();
+            complete.send(()).unwrap();
+        }));
+        assert!(!replace_route_verifier(
+            &route_task,
+            &epoch,
+            stale,
+            std::future::pending(),
+        ));
+        release.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), completed)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn asymmetric_nasim_route_keeps_client_on_turn_and_authenticates_quic() {
         let (relay, turn_server) = relay().await;
