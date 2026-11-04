@@ -112,6 +112,35 @@ test('authenticated signaling has account ownership, delivers early events only 
   session.stop();assert.equal(channel.closed,1);assert.throws(()=>session.signalConnection,/event_stream_not_connected/);
 });
 
+test('explicit signaling recovery after EOF reuses the session and rejects stale events',async()=>{
+  const f=fixture();await f.session.start(phone);await f.session.verify('12345');const record=f.session.exportSession();
+  const channels=[],received=[];
+  const session=new AuthSession({createClient:()=>({request:async()=>({active:false}),close(){}}),
+    createSignaling:async(saved,options)=>{
+      assert.equal(saved.token,record.token);
+      const channel={state:{phase:'connected'},...options,close(){this.state.phase='closed';}};
+      channels.push(channel);return channel;
+    }});
+  try{
+    await session.restore(record);
+    const onEvent=event=>received.push(event);
+    await session.connectSignals({onEvent});
+    const old=channels[0];
+    old.state={phase:'failed',reason:'stream_ended'};
+    assert.equal(session.state.signedIn,true);
+    assert.throws(()=>session.signalConnection,/event_stream_not_connected/);
+    assert.equal(channels.length,1);
+    assert.deepEqual(await session.connectSignals({onEvent}),{eventsConnected:true});
+    assert.equal(old.signal.aborted,true);
+    assert.throws(()=>old.onEvent({type:'config'}),/closed/);
+    const fresh=channels[1],event={type:'config',callUUID:'fresh-fixture-call'};
+    await fresh.onEvent(event);
+    assert.deepEqual(received,[event]);
+    assert.equal(session.signalConnection,fresh);
+    assert.deepEqual(session.exportSession(),record);
+  }finally{session.close();}
+});
+
 test('closing an account during signal setup disposes a late connection and cannot deliver or resurrect old events',async()=>{
   const f=fixture();await f.session.start(phone);await f.session.verify('12345');const record=f.session.exportSession();
   let finish,wrapped;const pending=new Promise(resolve=>{finish=resolve;});
