@@ -10,7 +10,7 @@ use lk_signaling::{CallDecision, IncomingHandler, PeerId, Signaling, TokenStore,
 use parking_lot::Mutex;
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -34,6 +34,7 @@ struct Mock {
     calls: Mutex<Vec<u16>>,
     push: mpsc::Sender<Response>,
     defer_self: AtomicBool,
+    join_order: AtomicU64,
     leave_timeout: AtomicBool,
     leave_rejected: AtomicBool,
     release_leave: Notify,
@@ -42,6 +43,7 @@ struct Mock {
 }
 fn response(action: u16, b: Vec<u8>) -> Response {
     Response {
+        received_order: None,
         action,
         fields: w::parse(&b).unwrap(),
     }
@@ -111,7 +113,12 @@ impl Rpc for Mock {
                         tokio::task::yield_now().await;
                     }
                 }
-                return Ok(joined("99"));
+                let mut reply = joined("99");
+                reply.received_order = match self.join_order.load(Ordering::Acquire) {
+                    0 => None,
+                    order => Some(order),
+                };
+                return Ok(reply);
             }
             _ => return Err(Error::NotSupported),
         };
@@ -141,13 +148,14 @@ impl Connector for Factory {
         ))
     }
 }
-fn fixture() -> (IgapSignaling, Arc<Mock>, Arc<Store>) {
+fn fixture_connector() -> (Arc<Factory>, Arc<Mock>, Arc<Store>) {
     let (tx, rx) = mpsc::channel(64);
     let rpc = Arc::new(Mock {
         ready: AtomicBool::new(true),
         calls: Mutex::new(vec![]),
         push: tx,
         defer_self: AtomicBool::new(false),
+        join_order: AtomicU64::new(0),
         leave_timeout: AtomicBool::new(false),
         leave_rejected: AtomicBool::new(false),
         release_leave: Notify::new(),
@@ -155,14 +163,16 @@ fn fixture() -> (IgapSignaling, Arc<Mock>, Arc<Store>) {
         release_action: Notify::new(),
     });
     let store = Arc::new(Store::default());
-    let app = IgapSignaling::with_connector(
-        store.clone(),
-        RegistrationProfile::Independent,
-        Arc::new(Factory {
-            rpc: rpc.clone(),
-            rx: Mutex::new(Some(rx)),
-        }),
-    );
+    let factory = Arc::new(Factory {
+        rpc: rpc.clone(),
+        rx: Mutex::new(Some(rx)),
+    });
+    (factory, rpc, store)
+}
+fn fixture() -> (IgapSignaling, Arc<Mock>, Arc<Store>) {
+    let (factory, rpc, store) = fixture_connector();
+    let app =
+        IgapSignaling::with_connector(store.clone(), RegistrationProfile::Independent, factory);
     (app, rpc, store)
 }
 fn record() -> SessionRecord {
@@ -552,4 +562,134 @@ async fn transport_revision_rejects_stale_same_peer_session_and_real_end() {
     assert!(!app.is_joined_call_revision(revision));
     assert!(app.joined_call_revision(&session).is_none());
     app.disconnect().await;
+}
+
+#[tokio::test]
+async fn delayed_pre_join_self_leave_preserves_only_the_matching_receiver_join() {
+    for (actor, receipt, deferred) in [
+        (41, Some(19), true),
+        (41, Some(20), false),
+        (41, Some(21), false),
+        (41, None, false),
+        (42, Some(19), false),
+    ] {
+        let (app, rpc, _) = fixture();
+        app.restore(record()).await.unwrap();
+        app.set_allowed_peers(&["42".into()]).unwrap();
+        app.set_incoming_handler(Box::new(Accept));
+        rpc.join_order.store(20, Ordering::Release);
+        let mut accepted = app.accepted_sessions();
+        let mut events = app.events();
+        // Capture the earlier wire receipt now, but deliberately withhold its
+        // delivery until the join reply continuation has published the session.
+        let mut queued_leave = response(30918, w::uint_field(2, actor).unwrap());
+        queued_leave.received_order = receipt;
+        rpc.push
+            .send(response(
+                30915,
+                [w::uint_field(2, 42).unwrap(), w::uint_field(3, 99).unwrap()].concat(),
+            ))
+            .await
+            .unwrap();
+        let (_, session) = tokio::time::timeout(Duration::from_secs(2), accepted.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let revision = app.joined_call_revision(&session).unwrap();
+        rpc.push.send(queued_leave).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while app.service_leave_diagnostic().is_none() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(app.service_leave_diagnostic().unwrap().deferred, deferred);
+        assert_eq!(app.is_joined_call_revision(revision), deferred);
+        if deferred {
+            assert!(events.try_recv().is_err());
+            // A later real self-hangup must still terminate the same call.
+            let mut later = response(30918, w::uint_field(2, 41).unwrap());
+            later.received_order = Some(21);
+            rpc.push.send(later).await.unwrap();
+        }
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap(),
+            Some(lk_signaling::SignalingEvent::CallEnded { .. })
+        ));
+        assert!(!app.is_joined_call_revision(revision));
+        app.disconnect().await;
+    }
+}
+
+struct RotatingFactory(Mutex<std::collections::VecDeque<Arc<Factory>>>);
+#[async_trait]
+impl Connector for RotatingFactory {
+    async fn open(&self) -> Result<(Arc<dyn Rpc>, mpsc::Receiver<Response>), Error> {
+        let factory = self.0.lock().pop_front().ok_or(Error::Closed)?;
+        factory.open().await
+    }
+}
+#[tokio::test]
+async fn receipt_order_is_scoped_to_the_physical_authenticated_connection() {
+    for new_epoch in [true, false] {
+        let (first, old_rpc, store) = fixture_connector();
+        let (second, new_rpc, _) = fixture_connector();
+        new_rpc.join_order.store(2, Ordering::Release);
+        let app = IgapSignaling::with_connector(
+            store,
+            RegistrationProfile::Independent,
+            Arc::new(RotatingFactory(Mutex::new([first, second].into()))),
+        );
+        app.restore(record()).await.unwrap();
+        if new_epoch {
+            app.disconnect().await;
+            app.restore(record()).await.unwrap();
+        } else {
+            // Replacing a closed channel can preserve the authentication epoch.
+            // Old receive-order numbers must still remain scoped to that channel.
+            old_rpc.close();
+            app.connect().await.unwrap();
+        }
+        app.set_allowed_peers(&["42".into()]).unwrap();
+        app.set_incoming_handler(Box::new(Accept));
+        let mut accepted = app.accepted_sessions();
+        new_rpc
+            .push
+            .send(response(
+                30915,
+                [w::uint_field(2, 42).unwrap(), w::uint_field(3, 99).unwrap()].concat(),
+            ))
+            .await
+            .unwrap();
+        let (_, session) = tokio::time::timeout(Duration::from_secs(2), accepted.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let revision = app.joined_call_revision(&session).unwrap();
+        let mut old_leave = response(30918, w::uint_field(2, 41).unwrap());
+        old_leave.received_order = Some(100);
+        let _ = old_rpc.push.send(old_leave).await;
+        // Closing the old receiver proves its queued event passed the old-context
+        // guard, rather than depending on a scheduler delay to inspect new state.
+        tokio::time::timeout(Duration::from_secs(2), old_rpc.push.closed())
+            .await
+            .unwrap();
+        assert!(app.is_joined_call_revision(revision));
+        assert!(app.service_leave_diagnostic().is_none());
+        let mut current_leave = response(30918, w::uint_field(2, 41).unwrap());
+        current_leave.received_order = Some(3);
+        let mut events = app.events();
+        new_rpc.push.send(current_leave).await.unwrap();
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(2), events.recv())
+                .await
+                .unwrap(),
+            Some(lk_signaling::SignalingEvent::CallEnded { .. })
+        ));
+        assert!(!app.is_joined_call_revision(revision));
+        app.disconnect().await;
+    }
 }

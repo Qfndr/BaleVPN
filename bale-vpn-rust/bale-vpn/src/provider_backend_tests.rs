@@ -58,6 +58,7 @@ impl Rpc for MockRpc {
             _ => panic!("unexpected non-auth RPC"),
         };
         Ok(RpcResponse {
+            received_order: None,
             action: action + 30000,
             fields: w::parse(&response).unwrap(),
         })
@@ -73,6 +74,7 @@ impl Rpc for MockRpc {
         );
         let fields = [w::uint_field(2, 0).unwrap(), w::uint_field(14, 41).unwrap()].concat();
         Ok(RpcResponse {
+            received_order: None,
             action: 30102,
             fields: w::parse(&fields).unwrap(),
         })
@@ -202,6 +204,7 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
     let old_handler = backend.set_admission(Some(peer.clone()));
     let sender = connector.senders.lock().last().unwrap().clone();
     let incoming = || RpcResponse {
+        received_order: None,
         action: 30915,
         fields: w::parse(
             &[
@@ -231,6 +234,7 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
     );
     sender
         .send(RpcResponse {
+            received_order: None,
             action: 30918,
             fields: w::parse(
                 &[

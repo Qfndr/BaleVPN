@@ -48,7 +48,11 @@ fn correlated_response(expected: u16, action: u16, fields: w::Fields) -> Result<
             wait_seconds: w::number(&fields, 4, 86400)? as u32,
         });
     }
-    Ok(Response { action, fields })
+    Ok(Response {
+        action,
+        fields,
+        received_order: None,
+    })
 }
 fn fatal_response(expected: u16, response: &Result<Response, Error>) -> Option<Error> {
     match response {
@@ -79,6 +83,9 @@ fn validate_request(action: u16, fields: &[u8]) -> Result<(), Error> {
 pub struct Response {
     pub action: u16,
     pub fields: w::Fields,
+    /// Monotonic receipt order within this physical RPC connection. This is
+    /// assigned before splitting pushes and replies onto separate task queues.
+    pub received_order: Option<u64>,
 }
 #[async_trait]
 pub trait Rpc: Send + Sync {
@@ -171,6 +178,7 @@ impl Connection {
                 tokio::time::interval(Duration::from_millis(heartbeat as u64 * 500));
             heartbeat_tick.tick().await;
             let mut sweep = tokio::time::interval(Duration::from_millis(100));
+            let mut received_order = 0u64;
             let result:Result<(),Error>=async{loop{tokio::select!{
     _=&mut stop=>break Err(Error::Closed),
     Some(mut c)=commands.recv()=>{if c.reply.is_closed(){continue;}if pending.len()>=32{let _=c.reply.send(Err(Error::Busy));continue;}
@@ -179,9 +187,29 @@ impl Connection {
      bounded_io(ws.send(Message::Binary(encrypted)),Duration::from_secs(5)).await?;pending.insert(id,(c.action,c.reply,tokio::time::Instant::now()+Duration::from_secs(8)));
     },
     message=ws.next()=>{let message=message.ok_or(Error::Closed)?.map_err(|_|Error::Closed)?;match message{
-     Message::Binary(bytes)=>{let plain=s::decrypt(&bytes,&key,cipher).map_err(|_|Error::InvalidPacket)?;let (action,fields)=w::packet(&plain)?;let meta=w::parse(w::bytes(&fields,1,1024)?)?;let id=w::text(&meta,1,128)?;
-      if let Some((expected,reply,_))=pending.remove(id){let response=correlated_response(expected,action,fields);let fatal=fatal_response(expected,&response);let _=reply.send(response);if let Some(error)=fatal{return Err(error);}
-      }else if id.is_empty()&&[30914,30915,30916,30917,30918].contains(&action){push.try_send(Response{action,fields}).map_err(|_|Error::Busy)?;}
+     Message::Binary(bytes) => {
+      let plain = s::decrypt(&bytes, &key, cipher).map_err(|_| Error::InvalidPacket)?;
+      let (action, fields) = w::packet(&plain)?;
+      received_order = received_order.checked_add(1).ok_or(Error::InvalidPacket)?;
+      let meta = w::parse(w::bytes(&fields, 1, 1024)?)?;
+      let id = w::text(&meta, 1, 128)?;
+      if let Some((expected, reply, _)) = pending.remove(id) {
+       let response = correlated_response(expected, action, fields).map(|mut response| {
+        response.received_order = Some(received_order);
+        response
+       });
+       let fatal = fatal_response(expected, &response);
+       let _ = reply.send(response);
+       if let Some(error) = fatal {
+        return Err(error);
+       }
+      } else if id.is_empty() && [30914, 30915, 30916, 30917, 30918].contains(&action) {
+       push.try_send(Response {
+        action,
+        fields,
+        received_order: Some(received_order),
+       }).map_err(|_| Error::Busy)?;
+      }
      },Message::Ping(bytes)=>bounded_io(ws.send(Message::Pong(bytes)),Duration::from_secs(5)).await?,Message::Pong(_)=>{},Message::Close(_)=>return Err(Error::Closed),_=>return Err(Error::InvalidPacket)}
     },
     _=heartbeat_tick.tick()=>{if pending.len()>=32{return Err(Error::Busy)}let id=uuid::Uuid::new_v4().to_string();let fields=w::bytes_field(1,&w::string_field(1,&id,128)?)?;let packet=s::encrypt(&w::frame(502,&fields)?,&key,cipher).map_err(|_|Error::InvalidPacket)?;bounded_io(ws.send(Message::Binary(packet)),Duration::from_secs(5)).await?;let (reply,_rx)=oneshot::channel();pending.insert(id,(502,reply,tokio::time::Instant::now()+Duration::from_secs(8)));},

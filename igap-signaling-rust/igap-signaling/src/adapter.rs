@@ -57,6 +57,7 @@ struct Call {
     deferred_self_leave: bool,
     transport_digest: Option<[u8; 32]>,
     incoming_timestamp: Option<u32>,
+    receiver_join_order: Option<u64>,
     local_leave_confirmed: Option<Arc<AtomicBool>>,
 }
 struct Auth {
@@ -760,6 +761,7 @@ impl IgapSignaling {
                             deferred_self_leave: false,
                             transport_digest: None,
                             incoming_timestamp: room::response_timestamp(&reply.fields),
+                            receiver_join_order: None,
                             local_leave_confirmed: None,
                         });
                     }
@@ -819,9 +821,24 @@ impl IgapSignaling {
                     let Some(call) = current.as_mut() else {
                         return Ok(());
                     };
+                    // Authentication/channel replacement may race the outer
+                    // check while this handler waits for the call lock.
+                    if call.epoch != epoch || self.guard(epoch, &rpc).is_err() {
+                        return Ok(());
+                    }
                     if actor != self_id && actor != call.peer.id_str() {
                         return Ok(());
                     }
+                    // The reader can enqueue this push before resolving the
+                    // join reply, while task scheduling delivers it afterward.
+                    // Preserve wire causality only for the exact receiver join.
+                    let earlier_than_join = match (reply.received_order, call.receiver_join_order) {
+                        (Some(leave), Some(join)) => leave < join,
+                        _ => false,
+                    };
+                    let defer_self_leave = actor == self_id
+                        && (call.phase == Phase::Joining
+                            || (call.phase == Phase::Joined && earlier_than_join));
                     *self.inner.last_service_leave.lock() = Some(ServiceLeaveDiagnostic {
                         actor: if actor == self_id { "self" } else { "peer" },
                         phase: match call.phase {
@@ -830,13 +847,13 @@ impl IgapSignaling {
                             Phase::Joining => "joining",
                             Phase::Joined => "joined",
                         },
-                        deferred: actor == self_id && call.phase == Phase::Joining,
+                        deferred: defer_self_leave,
                         metadata_timestamp_order: room::timestamp_order(
                             call.incoming_timestamp,
                             room::response_timestamp(&reply.fields),
                         ),
                     });
-                    if actor == self_id && call.phase == Phase::Joining {
+                    if defer_self_leave {
                         call.deferred_self_leave = true;
                         return Ok(());
                     }
@@ -913,6 +930,7 @@ impl IgapSignaling {
                 return Err(Error::Cancelled);
             }
             c.transport_digest = Some(Sha256::digest(token.as_bytes()).into());
+            c.receiver_join_order = response.received_order;
             c.phase = Phase::Joined;
         }
         self.inner
@@ -1074,6 +1092,7 @@ impl TunnelHooks for IgapSignaling {
                     deferred_self_leave: false,
                     transport_digest: None,
                     incoming_timestamp: None,
+                    receiver_join_order: None,
                     local_leave_confirmed: None,
                 });
             }

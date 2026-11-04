@@ -92,6 +92,7 @@ fn t(field: u32, value: &str) -> Vec<u8> {
 }
 fn response(action: u16, fields: Vec<u8>) -> Result<Response, Error> {
     Ok(Response {
+        received_order: None,
         action,
         fields: w::parse(&fields).unwrap(),
     })

@@ -60,6 +60,12 @@ The later service-leave diagnostic review refreshed `src/adapter.rs` and
 These metadata changes leave RSA operations and call admission decisions
 unchanged.
 
+The receive-order review refreshed `src/adapter.rs`, `src/rpc.rs`, and the
+lifecycle/authentication fixtures. It covers reader-assigned ordering of
+authenticated replies and pushes, with the call epoch and active RPC checked
+under the call lock. RSA encryption, keys and registration parameters retain
+their previously reviewed behavior.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.
