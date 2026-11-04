@@ -8,6 +8,9 @@ on:
       - 'scripts/test-ui-*.cjs'
       - 'scripts/test-production-provider-ui.cjs'
       - 'scripts/test-nasim-provider-ui.cjs'
+      - 'scripts/test-provider-lab-browser.cjs'
+      - 'experiments/providers/**'
+      - 'experiments/eitaa/**'
       - '.github/workflows/provider-ui.yml'
   pull_request:
     branches: [main]
@@ -16,6 +19,9 @@ on:
       - 'scripts/test-ui-*.cjs'
       - 'scripts/test-production-provider-ui.cjs'
       - 'scripts/test-nasim-provider-ui.cjs'
+      - 'scripts/test-provider-lab-browser.cjs'
+      - 'experiments/providers/**'
+      - 'experiments/eitaa/**'
       - '.github/workflows/provider-ui.yml'
   workflow_dispatch:
 
@@ -67,6 +73,8 @@ jobs:
         run: node scripts/test-production-provider-ui.cjs
       - name: Check the opt-in Nasim endpoint controls
         run: node scripts/test-nasim-provider-ui.cjs
+      - name: Check the isolated messenger lab and Eitaa call recovery
+        run: node scripts/test-provider-lab-browser.cjs
       - name: Retain fixture-only UI screenshots
         if: always()
         uses: actions/upload-artifact@v4

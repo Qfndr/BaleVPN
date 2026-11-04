@@ -117,7 +117,21 @@ const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');co
  for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Active Eitaa panel overflows at '+width);if(width===320&&process.env.BALEVPN_SCREENSHOTS)await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,'eitaa-call-fixture-fa-mobile.png'),fullPage:true});}
  await page.setViewportSize({width:1440,height:1000});if(process.env.BALEVPN_SCREENSHOTS)await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,'eitaa-accounts-fixture-fa.png'),fullPage:true});
  await page.locator('#language').click();await page.locator('#theme').click();assert.ok((await page.locator('#eitaaCallStatus').innerText()).includes('authenticated'));if(process.env.BALEVPN_SCREENSHOTS)await page.screenshot({path:path.join(process.env.BALEVPN_SCREENSHOTS,'eitaa-accounts-fixture-en-light.png'),fullPage:true});await page.locator('#language').click();await page.locator('#theme').click();
- await page.locator('[data-eitaa-call-slot="1"] [data-eitaa-action=end]').click();await page.waitForFunction(()=>[...document.querySelectorAll('[data-eitaa-state]')].every(e=>e.dataset.phase==='ended'));assert.ok(eitaaHarness.natives.every(n=>n.state.phase==='closed'));
+ const eitaaCallId=eitaaHarness.api.call.base.id;
+ eitaaHarness.api.override=({method})=>{if(method==='phone.discardCall')throw Object.assign(Error('fixture reply lost'),{reason:'network_error'});};
+ await page.locator('[data-eitaa-call-slot="1"] [data-eitaa-action=end]').click();
+ const checkEitaaEnd=page.locator('#eitaaRecover');
+ await checkEitaaEnd.waitFor();assert.equal(await checkEitaaEnd.innerText(),'بررسی پایان تماس');
+ assert.equal(await page.locator('#eitaaPrepare').isDisabled(),true);
+ await page.locator('#language').click();assert.equal(await checkEitaaEnd.innerText(),'Check call end');
+ await checkEitaaEnd.click();await page.waitForFunction(()=>!document.querySelector('#eitaaRecover').disabled);
+ assert.equal(await page.locator('#eitaaPrepare').isDisabled(),true);
+ eitaaHarness.api.queues.get(8000001).push({_:'updatePhoneCall',phone_call:{_:'phoneCallDiscarded',id:eitaaCallId}});
+ await checkEitaaEnd.click();await checkEitaaEnd.waitFor({state:'hidden'});
+ await page.waitForFunction(()=>!document.querySelector('#eitaaPrepare').disabled);
+ assert.equal(calls.filter(c=>c.action==='eitaa-call-phone.discardCall').length,1);
+ assert.ok(eitaaHarness.natives.every(n=>n.state.phase==='closed'));
+ await page.locator('#language').click();
  const visible=await page.locator('body').innerText();assert.ok(!visible.includes('fixture-secret-token'));const storage=await page.evaluate(()=>JSON.stringify(localStorage));assert.ok(!storage.includes('browser-vault-passphrase'));assert.ok(!storage.includes('9120000001'));
  for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:900});for(const provider of ['eitaa','igap','nasim','rubika']){await page.locator('#providers [data-provider='+provider+']').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Horizontal overflow at '+width+' '+provider);}}
  await page.locator('#language').click();assert.equal(await page.locator('html').getAttribute('dir'),'ltr');await page.locator('#theme').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'light');await page.reload();await page.waitForFunction(()=>document.documentElement.lang==='en');assert.equal(await page.locator('html').getAttribute('data-theme'),'light');assert.equal(await page.locator('#providers [data-provider=rubika]').getAttribute('aria-selected'),'true');
