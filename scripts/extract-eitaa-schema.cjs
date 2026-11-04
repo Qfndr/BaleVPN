@@ -40,8 +40,8 @@ function authSchema(source){
  if(constructors.size>100)throw Error('Unexpected dependency growth');
  return {provider:'eitaa',sourceSha256:SHA,layer:all.layer,methods,constructors:[...constructors.values()],responseAliases,liveLoginVerified:false};
 }
-function callSchema(source){
- const all=table(source),names=['messages.getDhConfig','phone.getCallConfig','phone.requestCall','phone.acceptCall','phone.confirmCall','phone.receivedCall','phone.discardCall','phone.sendSignalingData','updates.getState','updates.getDifference','contacts.getContacts','contacts.resolveUsername'];
+function projectCallSchema(source,names){
+ const all=table(source);
  const methods=names.map(name=>{const matches=all.API.methods.filter(m=>m.method===name);if(matches.length!==1)throw Error('Invalid call method');return matches[0];});
  const primitive=new Set(['#','int','long','double','string','bytes','true','int128','int256','int512','!X','Object']);
  const types=new Set(['Error','Pong','EitaaUpdatesExpireToken','EitaaTokenUpdating']),constructors=new Map();
@@ -51,5 +51,7 @@ function callSchema(source){
  if(constructors.size>1500)throw Error('Unexpected dependency growth');
  return {provider:'eitaa',sourceSha256:SHA,layer:all.layer,methods,constructors:[...constructors.values()],responseAliases:{},liveCallVerified:false};
 }
+function callSchema(source){return projectCallSchema(source,['messages.getDhConfig','phone.getCallConfig','phone.requestCall','phone.acceptCall','phone.confirmCall','phone.receivedCall','phone.discardCall','phone.sendSignalingData','updates.getState','updates.getDifference','contacts.getContacts','contacts.resolveUsername']);}
+function groupStatusSchema(source){return projectCallSchema(source,['messages.getFullChat','channels.getFullChannel','phone.getGroupCall']);}
 if(require.main===module){try{const args=process.argv.slice(2);if(args.length!==2&&(args.length!==3||!['--auth','--calls'].includes(args[2])))throw Error('Expected worker and output paths');const out=(args[2]==='--auth'?authSchema:args[2]==='--calls'?callSchema:extract)(fs.readFileSync(args[0],'utf8'));fs.writeFileSync(args[1],JSON.stringify(out,null,2)+'\n');console.log('Extracted '+out.methods.length+' methods and '+out.constructors.length+' constructors; worker not executed');}catch{console.error('Could not extract the reviewed Eitaa schema');process.exitCode=1;}}
-module.exports={extract,definition,SHA,authSchema,callSchema};
+module.exports={extract,definition,SHA,authSchema,callSchema,groupStatusSchema};

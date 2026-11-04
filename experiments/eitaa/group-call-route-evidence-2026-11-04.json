@@ -45,6 +45,20 @@
     "fixtureValidation": "Pinned Web serializer and existing generic codec match for both requests and complete synthetic metadata replies with/without the optional call reference. Missing reference stops before any group-read fixture. Mismatched or truncated metadata fails closed. Output reports only two booleans, without group, call or participant identifiers or names.",
     "scope": "Test-only, bounded selected group metadata. No production RPC enablement, provider read, session access or group creation."
   },
+  "privateStatusRunner": {
+    "module": "scripts/eitaa-group-status.cjs",
+    "entryPoint": "readGroupStatus(session, selected, {workerSource, fetchImpl, timeout})",
+    "accountEndpoint": "https://hasan.eitaa.ir/eitaa/",
+    "endpointBinding": "The endpoint is pinned to the previously used default Web account endpoint, and the runner refuses a future default change. No server override, redirect, automatic endpoint selection or plaintext route.",
+    "scope": "Explicit self-confirmed Web session and one locally selected consented group. The selector takes kind chat or channel and its local entity ID, with the channel's local access hash only when applicable. The call reference comes from the matching metadata reply in memory.",
+    "methods": ["messages.getFullChat", "channels.getFullChannel", "phone.getGroupCall"],
+    "sourceDerivedConstructors": 108,
+    "bounds": "One metadata request plus at most one matching group read with limit0. A shared deadline up to15 seconds, existing 64KiB response limit, strict TL bounds and exact account/group/call checks. A missing reference completes without the second request.",
+    "publicResultFields": ["referencePresent", "groupReadSucceeded", "groupState"],
+    "groupStateValues": ["absent", "available", "discarded"],
+    "privacy": "No ID, access hash, token, profile, chat, participant, title, or raw provider error is returned or logged. available means matching group status was decoded, not that a call or media path worked.",
+    "validation": "Injected synthetic fetch only. No CLI, production route, vault access, real account, or live request in the dry run."
+  },
   "nextSafeProtocolAction": "With a known consented existing test group call, compare a single read-only phone.getGroupCall on its previously verified Web HTTPS session endpoint. This cannot establish secure create/join/termination by itself. No new group call, join, or termination attempt is justified until exact cleanup acknowledgement is verified for that route.",
   "liveGroupCallVerified": false,
   "liveGroupCleanupVerified": false,
