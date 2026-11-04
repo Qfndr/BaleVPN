@@ -30,6 +30,16 @@
       "sendRequestOffset": 71
     }
   ],
+  "additionalDirectCallSites": {
+    "source": "Pinned APK VoIPService DEX instructions. Offsets are method-relative DEX code units.",
+    "connectionType": 64,
+    "calls": [
+      {"method":"VoIPService.lambda$startOutgoingCall$11","request":"phone.requestCall","requestTypeOffset":135,"connectionTypeOffset":221,"sendRequestOffset":223},
+      {"method":"VoIPService.lambda$acceptIncomingCall$103","request":"phone.acceptCall","requestTypeOffset":166,"connectionTypeOffset":235,"sendRequestOffset":237},
+      {"method":"VoIPService.lambda$startOutgoingCall$8","request":"phone.discardCall","requestTypeOffset":3,"connectionTypeOffset":67,"sendRequestOffset":69}
+    ],
+    "interpretation": "The direct-call request, acceptance and inspected early outgoing cleanup select the same native connection type as DH. These callsites establish the Android routing choice for these operations. Endpoint selection, transport confidentiality and live acceptance require separate evidence."
+  },
   "constructorSerializer": {
     "class": "TL_messages_getDhConfig",
     "constructorLiteralOffset": 0,
