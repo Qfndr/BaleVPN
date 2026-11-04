@@ -230,5 +230,45 @@
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true,
     "interpretation": "This attempt confirms the configured subscriber role, but failed before peer admission. It does not test the pending ICE backport or prove the source of the server call-ended event."
+  },
+  "patchedNominationTrial": {
+    "sourceCommit": "3e5e53f63ee82d50e2518bff0294b5536150671c",
+    "binarySha256": "ef671fbf3c068bfb912859a4b85024a0dbf30f26365ca4e000fcc969a9249a10",
+    "success": false,
+    "failedStage": "initialConnection",
+    "payloadTransferVerified": false,
+    "mutualAuthenticationVerified": false,
+    "bothPeerCount": 1,
+    "clientPublisherState": "connected",
+    "clientSubscriberBeforeTerminal": {
+      "state": "new",
+      "iceState": "checking"
+    },
+    "clientSubscriberTerminal": {
+      "state": "disconnected",
+      "iceState": "disconnected",
+      "configuredRole": "controlled",
+      "candidatePairs": 18,
+      "pairsSucceeded": 3,
+      "pairsFailed": 9,
+      "nominatedPairs": 1
+    },
+    "clientServiceLeave": {
+      "reason": 14,
+      "action": 1,
+      "reconnect": false
+    },
+    "serverPublisherState": "connected",
+    "serverSubscriberState": "connected",
+    "bothQuicStarted": true,
+    "elapsedMsToFailure": 13671,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "preflightCleanup": {
+      "trackedIncomingPeerMatchedOtherTestAccount": true,
+      "singleExactContextLeaveAcknowledged": true,
+      "newOtpRequested": false
+    },
+    "interpretation": "A nominated pair count is not proof of a fully connected subscriber transport. The upstream nomination fix and stale-local-event fix did not make this real trial succeed."
   }
 }
