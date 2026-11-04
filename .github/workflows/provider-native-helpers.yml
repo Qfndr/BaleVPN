@@ -99,6 +99,24 @@ jobs:
           key: provider-helpers-${{ matrix.os }}-${{ hashFiles('lktunnel-rust/Cargo.lock', 'lktunnel-rust/**/Cargo.toml', 'vendor/webrtc-*/Cargo.toml') }}
           restore-keys: |
             provider-helpers-${{ matrix.os }}-
+      - name: Gate new Nasim routing and SDP policy regressions
+        run: |
+          mkdir -p "$PROVIDER_ARTIFACT_DIR"
+          cargo test --manifest-path lktunnel-rust/Cargo.toml --locked -p lktunnel --lib nasim_ -- --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-nasim-policy.txt"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          report = (Path(os.environ['PROVIDER_ARTIFACT_DIR']) / 'rust-nasim-policy.txt').read_text(encoding='utf-8')
+          summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', report, re.MULTILINE)
+          if summaries != [('11', '0', '0', '0')]:
+              raise SystemExit('Nasim policy gate requires all 11 tests without failures or skipped cases')
+          for module, expected in (('nasim_route_policy', 8), ('nasim_media_policy', 2)):
+              if len(re.findall(r'^test ' + module + r'::tests::[^ ]+ \.\.\. ok\s*$', report, re.MULTILINE)) != expected:
+                  raise SystemExit('Nasim policy module coverage is incomplete')
+          if not re.search(r'^test peer_media::tests::asymmetric_nasim_route_keeps_client_on_turn_and_authenticates_quic \.\.\. ok\s*$', report, re.MULTILINE):
+              raise SystemExit('Actual asymmetric TURN/QUIC test did not execute')
+          PY
       - name: Build the three real native helpers
         run: >-
           cargo build --manifest-path lktunnel-rust/Cargo.toml -p lktunnel
@@ -205,6 +223,12 @@ jobs:
                   raise SystemExit('TURN diagnostic regression did not execute')
           manifest['diagnosticTests'] = {'turnProbe': {'passed': 6, 'failed': 0, 'ignored': 0,
                                         'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}}
+          policy_path = directory / 'rust-nasim-policy.txt'
+          policy_report = policy_path.read_text(encoding='utf-8')
+          if re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', policy_report, re.MULTILINE) != [('11', '0', '0', '0')]:
+              raise SystemExit('Nasim policy gate evidence is incomplete')
+          manifest['diagnosticTests']['nasimPolicy'] = {'passed': 11, 'failed': 0, 'ignored': 0,
+              'report': policy_path.name, 'reportSha256': hashlib.sha256(policy_path.read_bytes()).hexdigest()}
           manifest['nativeTests'] = {'passed': int(total.group(1)), 'skipped': 0,
                                      'report': report_path.name,
                                      'reportSha256': hashlib.sha256(report_path.read_bytes()).hexdigest()}
