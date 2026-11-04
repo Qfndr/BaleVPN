@@ -476,5 +476,74 @@
     "newOtpRequested": false,
     "newRegistrationRequested": false,
     "interpretation": "The second client never recorded an accepted incoming nomination and did not select an ICE pair. This separates the failure from a pending nomination whose triggered check is incomplete, but does not determine whether nomination packets were absent or rejected before the controlled selector. No additional transport fix is validated by this trial."
+  },
+  "rtpCounterTrial": {
+    "sourceCommit": "d652fa9",
+    "binarySha256": "bc83c548e91f77f72fbcb168414c4d3797f04e76849d969b36ab89b225c93f6c",
+    "result": "first_connection_failed",
+    "payloadTransferVerified": false,
+    "client": {
+      "publisherPacketWrites": 6,
+      "publisherPayloadBytes": 7218,
+      "publisherMeasurement": "downstream_writer_returned_ok",
+      "subscriberInboundStreams": 0,
+      "subscriberInboundPackets": null,
+      "subscriberSelectedPairPresent": true,
+      "subscriberTransportState": "disconnected",
+      "subscriberDtlsState": "connecting",
+      "subscriberOfferCount": 1,
+      "subscriberAudioSections": 0,
+      "remoteIceApplied": 4,
+      "remoteIceErrors": 0
+    },
+    "server": {
+      "publisherState": "connected",
+      "subscriberState": "connected",
+      "subscriberOfferCount": 2,
+      "subscriberAudioSections": 1,
+      "terminalRtpCountersAvailable": false
+    },
+    "limitations": [
+      "Successful RTP writer calls do not establish remote delivery.",
+      "The first failure snapshot preceded server cleanup and contains no server RTP counters.",
+      "This attempt does not establish a sender activation or network root cause."
+    ],
+    "liveTunnelReady": false
+  },
+  "rtpCleanupTrial": {
+    "sourceCommit": "d652fa9",
+    "binarySha256": "bc83c548e91f77f72fbcb168414c4d3797f04e76849d969b36ab89b225c93f6c",
+    "result": "single_connection_failed",
+    "payloadTransferVerified": false,
+    "client": {
+      "publisherPacketWrites": 6,
+      "publisherPayloadBytes": 7218,
+      "subscriberInboundStreams": 0,
+      "subscriberInboundPackets": null,
+      "subscriberSelectedPairPresent": true,
+      "subscriberTransportState": "disconnected",
+      "subscriberDtlsState": "connecting",
+      "subscriberOfferCount": 1
+    },
+    "serverAfterControlledStop": {
+      "publisherPacketWrites": 10,
+      "publisherPayloadBytes": 7794,
+      "subscriberInboundPackets": 4,
+      "subscriberInboundPayloadBytes": 4812,
+      "publisherDtlsState": "connected",
+      "subscriberDtlsState": "connected",
+      "subscriberOfferCount": 2,
+      "localStopped": true
+    },
+    "findings": [
+      "Client-to-server RTP delivery is measured by server inbound counters.",
+      "The server produces RTP writes after receiving client traffic.",
+      "The failed client subscriber never establishes DTLS and receives no measured RTP stream."
+    ],
+    "limitations": [
+      "Successful server RTP writes do not prove SFU forwarding or client delivery.",
+      "This measurement does not identify the cause of the client subscriber handshake failure."
+    ],
+    "liveTunnelReady": false
   }
 }
