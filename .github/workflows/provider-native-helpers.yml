@@ -145,6 +145,7 @@ jobs:
       - name: Test existing real-media and helper interoperability cases
         run: |
           cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --lib peer_media::tests:: -- --ignored --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-peer-media.txt"
+          cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --lib peer_media::tests::real_relay_only_webrtc_carries_mutually_authenticated_quic_without_byte_changes -- --exact --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-retained-candidates.txt"
           for provider in nasim eitaa rubika; do
             cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --example "${provider}_relay_bridge" two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection -- --ignored --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-${provider}-helpers.txt"
           done
@@ -165,16 +166,19 @@ jobs:
                   raise SystemExit('Actual native helper tests require zero ' + field)
           total = re.search(r'^# tests (\d+)\s*$', report, re.MULTILINE)
           passed = re.search(r'^# pass (\d+)\s*$', report, re.MULTILINE)
-          if total is None or passed is None or int(total.group(1)) != 45 or total.group(1) != passed.group(1):
+          if total is None or passed is None or int(total.group(1)) != 48 or total.group(1) != passed.group(1):
               raise SystemExit('Actual native helper test report is incomplete')
           manifest_path = directory / 'manifest.json'
           manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
           rust_tests = {}
-          for name, expected in (('peer-media', 4), ('nasim-helpers', 1), ('eitaa-helpers', 1), ('rubika-helpers', 1)):
+          for name, expected in (('peer-media', 4), ('retained-candidates', 1), ('nasim-helpers', 1), ('eitaa-helpers', 1), ('rubika-helpers', 1)):
               path = directory / ('rust-' + name + '.txt')
-              summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', path.read_text(encoding='utf-8'), re.MULTILINE)
+              report_text = path.read_text(encoding='utf-8')
+              summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', report_text, re.MULTILINE)
               if summaries != [(str(expected), '0', '0', '0')]:
                   raise SystemExit('Unexpected interoperability result for ' + name)
+              if name == 'retained-candidates' and not re.search(r'^test peer_media::tests::real_relay_only_webrtc_carries_mutually_authenticated_quic_without_byte_changes \.\.\. ok\s*$', report_text, re.MULTILINE):
+                  raise SystemExit('Retained candidate regression did not execute')
               rust_tests[name] = {'passed': expected, 'failed': 0, 'ignored': 0,
                                   'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}
           manifest['nativeTestsPassed'] = True
