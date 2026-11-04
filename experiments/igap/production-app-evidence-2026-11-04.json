@@ -343,5 +343,27 @@
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true,
     "interpretation": "This run requires investigating server call termination before media admission. Repeated ClientHello alone does not establish a DTLS cryptographic incompatibility."
+  },
+  "signalingOrderProbe": {
+    "implementation": "existing Node AuthSession and CallSession with a bounded private observer",
+    "mediaStarted": false,
+    "newOtpRequested": false,
+    "newRegistrationRequested": false,
+    "cyclesAttempted": 1,
+    "secondCycleAttempted": false,
+    "receiverEvents": {
+      "incomingOfferMs": 1618,
+      "ringReplyMs": 2024,
+      "unsolicitedLeaveMs": 2227,
+      "joinReplyMs": 2228,
+      "leaveMetadataRelativeToIncoming": "equal",
+      "bothJoined": true
+    },
+    "callerLeaveAcknowledged": true,
+    "receiverLeavePushObservedWithinEightSeconds": false,
+    "receiverKnownContextCleanupAcknowledged": true,
+    "originalLabAccountsRestored": true,
+    "remainingTrackedCalls": false,
+    "limits": "The absence of a peer leave notification is not classified as a protocol defect. The observed pre-join leave can be processed after the correlated reply by independent native task queues; the receive-order regression checks that scheduling case."
   }
 }

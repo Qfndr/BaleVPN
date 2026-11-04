@@ -360,7 +360,19 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     assert_eq!(next_answer.id,74);
     remote.set_remote_description(RTCSessionDescription::answer(next_answer.sdp).unwrap()).await.unwrap();
     assert!(engine.publisher.remote_description().await.is_none(),"stale nonzero publisher answer was applied");
-    let diagnostic=engine.media_diagnostic()["negotiation"].clone();
+    // The peer can receive the answer before the sending task publishes its
+    // post-write diagnostics. Wait for that completion before reading them.
+    let diagnostic = timeout(LIMIT, async {
+        loop {
+            let diagnostic = engine.media_diagnostic()["negotiation"].clone();
+            if diagnostic["subscriberAnswerId"] == 74 {
+                break diagnostic;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
     for (key,value) in [("publisherOfferId",1),("subscriberOfferId",74),("subscriberAnswerId",74),("subscriberOfferCount",2),("stalePublisherAnswers",1)] {
         assert_eq!(diagnostic[key],value);
     }
