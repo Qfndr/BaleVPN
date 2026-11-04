@@ -53,6 +53,7 @@ const $ = id => document.getElementById(id);
 const base = '/providers/nasim';
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 const activePhases = new Set(['starting','prepared','ready','incoming','outgoing','dialing','negotiating','connected','uncertain','ended']);
+const liveCallPhases = new Set(['incoming','outgoing','dialing','negotiating','connected']);
 const badPhases = new Set(['failed','uncertain']);
 const hexCertificate = /^(?:[a-f0-9]{2}){64,8192}$/;
 let prefs = {language:'fa',theme:'system'};
@@ -172,7 +173,8 @@ function render() {
   $('trust').disabled = busy || state.phase !== 'prepared';
   $('status').textContent = tr(state.phase === 'connected' && !authenticated ? 'negotiating' : state.phase);
   $('status').dataset.tone = authenticated ? 'good' : badPhases.has(state.phase) ? 'bad' : active ? 'wait' : '';
-  $('detail').textContent = tr(state.cleanupPending === true ? 'cleanup' : authenticated ? 'route' : 'limits');
+  const cleanupUnconfirmed = state.cleanupPending === true && !liveCallPhases.has(state.phase);
+  $('detail').textContent = tr(cleanupUnconfirmed ? 'cleanup' : authenticated ? 'route' : 'limits');
   const proxyReady = authenticated && state.proxyReady === true && role === 'client' &&
     Number.isInteger(state.proxyPort) && state.proxyPort >= 1024 && state.proxyPort <= 65535;
   $('proxy').hidden = !proxyReady;

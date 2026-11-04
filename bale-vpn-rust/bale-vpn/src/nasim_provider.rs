@@ -321,6 +321,8 @@ struct Snapshot {
     proxy_ready: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     metrics: Option<CarrierMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    termination: Option<&'static str>,
     cleanup_pending: bool,
     error: Option<&'static str>,
 }
@@ -335,6 +337,7 @@ impl Default for Snapshot {
             peer_authenticated: false,
             proxy_ready: false,
             metrics: None,
+            termination: None,
             cleanup_pending: false,
             error: None,
         }
@@ -539,6 +542,7 @@ impl Runtime {
             Some("negotiating") => "negotiating",
             Some("connected") => "connected",
             Some("ended") => "ended",
+            Some("uncertain") => "uncertain",
             Some("idle") => "idle",
             Some("failed") => "failed",
             _ => return Err(()),
@@ -565,7 +569,23 @@ impl Runtime {
             _ => None,
         };
         self.snapshot.cleanup_pending = event["cleanupPending"] == true;
-        self.snapshot.error = (phase == "failed").then_some("endpoint_failed");
+        self.snapshot.termination = if matches!(phase, "ended" | "uncertain" | "failed") {
+            match event["termination"].as_str() {
+                Some("bye") => Some("bye"),
+                Some("reject") => Some("reject"),
+                Some("busy") => Some("busy"),
+                Some("other_device") => Some("other_device"),
+                Some("media_failure") => Some("media_failure"),
+                Some("call_connection_changed") => Some("call_connection_changed"),
+                Some("cleanup_save_failed") => Some("cleanup_save_failed"),
+                Some("call_timeout") => Some("call_timeout"),
+                Some("transport_closed") => Some("transport_closed"),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        self.snapshot.error = matches!(phase, "failed" | "uncertain").then_some("endpoint_failed");
         Ok(self.snapshot.clone())
     }
 }
@@ -897,6 +917,20 @@ mod tests {
             .contains("fixture-secret"));
         event["phase"] = json!("fixture-secret");
         assert!(runtime.update(&event).is_err());
+    }
+
+    #[test]
+    fn terminal_state_preserves_only_fixed_diagnostic_codes() {
+        let mut runtime = Runtime::default();
+        let mut event = json!({"phase": "uncertain", "termination": "call_timeout"});
+        let state = runtime.update(&event).unwrap();
+        assert_eq!(state.phase, "uncertain");
+        assert_eq!(state.termination, Some("call_timeout"));
+        event["termination"] = json!("private provider response");
+        assert!(runtime.update(&event).unwrap().termination.is_none());
+        event["phase"] = json!("ready");
+        event["termination"] = json!("busy");
+        assert!(runtime.update(&event).unwrap().termination.is_none());
     }
 
     #[test]

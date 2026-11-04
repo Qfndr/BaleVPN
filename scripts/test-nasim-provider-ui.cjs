@@ -51,7 +51,7 @@ async function installFixture(page,available) {
         break;
       case '/dial':
       case '/accept':
-        state = {...state,phase:'connected',peerAuthenticated:true,routeProof:'client-relay/server-public',proxyReady:state.role === 'client'};
+        state = {...state,phase:'connected',peerAuthenticated:true,routeProof:'client-relay/server-public',proxyReady:state.role === 'client',cleanupPending:true};
         if (state.role === 'client') state.metrics = {receivedBytes:1024,sentBytes:512,quic:{rttMs:25,lostPackets:1,sentPackets:20}};
         break;
       case '/stop':
@@ -97,6 +97,7 @@ async function main() {
     await page.locator('#proxy').waitFor();
     assert.equal(await page.locator('#proxy').textContent(),'SOCKS5 · 127.0.0.1:1098');
     await page.locator('#carrierMetrics').waitFor();
+    assert.match(await page.locator('#detail').textContent(),/احراز هویت/);
     assert.equal(await page.locator('#carrierRttField').isVisible(),true);
     assert.equal(await page.locator('#carrierLossField').isVisible(),true);
     await page.waitForFunction(() => document.getElementById('carrierRxRate').textContent.endsWith('/s'));
@@ -129,6 +130,8 @@ async function main() {
     assert.equal(await page.locator('#carrierRttField').isHidden(),true);
     assert.equal(await page.locator('#carrierLossField').isHidden(),true);
     assert.equal(Object.hasOwn(fixture.posts[4].input,'socksPort'),false);
+    fixture.patchState({phase:'uncertain',cleanupPending:true});
+    await page.waitForFunction(() => document.getElementById('detail').textContent.includes('پاک‌سازی تماس قبلی'));
     await page.locator('#stop').click();
     await page.locator('#pairing').waitFor({state:'hidden'});
     await page.locator('#language').click();

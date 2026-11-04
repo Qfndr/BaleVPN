@@ -56,13 +56,19 @@ function safeMetrics(call,role){
     ?{rttMs:q.rttMs,sentPackets:q.sentPackets,lostPackets:q.lostPackets}:null;
  return {receivedBytes:media.receivedBytes,sentBytes:media.sentBytes,quic};
 }
+function safeTermination(call){
+ if(!['ended','uncertain','failed'].includes(call.phase))return null;
+ const signal=call.terminal?.signal;
+ if(['bye','reject','busy','other_device','media_failure'].includes(signal))return signal;
+ return ['call_connection_changed','cleanup_save_failed','call_timeout','transport_closed'].includes(call.reason)?call.reason:null;
+}
 function safeState(controller,role){
  const call=controller.state,media=call.media;
  return {event:'state',phase:call.phase,busy:call.busy===true,localAccepted:call.localAccepted===true,remoteAccepted:call.remoteAccepted===true,
   configured:call.signaling?.configured===true,negotiated:call.signaling?.negotiated===true,
   routeProof:[proof,'unverified'].includes(media?.routeProof)?media.routeProof:null,
   peerAuthenticated:media?.peerAuthenticated===true,proxyReady:media?.proxyReady===true,
-  cleanupPending:call.cleanup?.pending===true,metrics:safeMetrics(call,role)};
+  cleanupPending:call.cleanup?.pending===true,metrics:safeMetrics(call,role),termination:safeTermination(call)};
 }
 
 async function runEndpoint(read,write,dependencies){
@@ -181,6 +187,9 @@ async function selfTest(){
  assert.deepEqual(safeMetrics(connected,'client'),{...totals,quic:null});
  connected.media.routeProof='unverified';
  assert.equal(safeMetrics(connected,'client'),undefined);
+ assert.equal(safeTermination({phase:'uncertain',reason:'call_timeout'}),'call_timeout');
+ assert.equal(safeTermination({phase:'ended',terminal:{signal:'busy',peerId:'fixture-private-id'}}),'busy');
+ assert.equal(safeTermination({phase:'ended',reason:'fixture-private-id'}),null);
  emit({event:'selfTest',passed:true,networkRequests:0,liveCalls:0});
 }
 
