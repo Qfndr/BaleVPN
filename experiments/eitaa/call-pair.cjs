@@ -18,6 +18,11 @@ class CallPair{
  #pending(confirmedId){return [...this.#calls.values()].some(call=>call.remotePending&&(!confirmedId||call.state.callId!==confirmedId));}
  #clear(phase,reason=null,confirmedId){
   const uncertain=this.#phase==='uncertain'||this.#pending(confirmedId);
+  if(this.#recovery){
+   const {slot,checkpoint}=this.#recovery,other=this.#calls.get(3-slot);
+   if(!uncertain||confirmedId===String(checkpoint.callId)||other?.remotePending&&other.state.callId!==String(checkpoint.callId))
+    this.#recovery=null;
+  }
   this.#recoveryClient?.close();this.#recoveryClient=null;
   this.#epoch++;this.#resolver.close();for(const call of this.#calls.values())call.close();for(const media of this.#media.values())media.close();this.#calls.clear();this.#media.clear();this.#targets=null;this.#records=null;this.#busy=false;
   this.#phase=uncertain?'uncertain':phase;this.#reason=uncertain?'call_end_uncertain':reason;
@@ -56,16 +61,11 @@ class CallPair{
   const call=this.#calls.get(slot),callId=call?.state.callId;
   if(!callId){if(this.#pending()||this.#phase==='uncertain')fail('call_end_uncertain');this.#clear('ended');return {ended:true,remoteConfirmed:false};}
   const checkpoint=call.terminalCheckpoint(),bindings=[1,2].map(target=>fingerprint(this.#records.get(target)));
+  // Invalidation may close both sessions before the discard promise settles.
+  if(checkpoint)this.#recovery={slot,checkpoint,bindings};
   const epoch=this.#epoch;this.#busy=true;for(const media of this.#media.values())media.close();
   try{await call.hangUp();this.#guard(epoch);this.#clear('ended',null,callId);return {ended:true,remoteConfirmed:true};}
-  catch(e){
-   if(epoch===this.#epoch){
-    const other=this.#calls.get(3-slot);
-    if(checkpoint&&(!other?.remotePending||other.state.callId===callId))this.#recovery={slot,checkpoint,bindings};
-    this.#clear('uncertain','call_end_uncertain');
-   }
-   throw e instanceof CallError?e:new CallError('call_end_uncertain');
-  }
+  catch(e){if(epoch===this.#epoch)this.#clear('uncertain','call_end_uncertain');throw e instanceof CallError?e:new CallError('call_end_uncertain');}
  }
  async recover(){
   if(this.#busy)fail('call_busy');

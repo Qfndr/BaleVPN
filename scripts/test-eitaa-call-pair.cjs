@@ -65,6 +65,28 @@ test('in-flight dial rejects end and reset, and a lost request response fences a
  await assert.rejects(f.pair.prepare(),{reason:'call_end_uncertain'});
  assert.equal(f.api.calls.filter(call=>call.method==='phone.requestCall').length,1);
 });
+test('invalidation during discard retains the known checkpoint without trusting the late reply',async t=>{
+ const f=create(t);await f.pair.prepare();await f.pair.dial(1);
+ const id=f.api.call.base.id,terminal={_:'updatePhoneCall',phone_call:{_:'phoneCallDiscarded',id}};
+ let release,entered;const sent=new Promise(resolve=>{entered=resolve;});
+ f.api.override=async({method})=>{
+  if(method!=='phone.discardCall')return;
+  await new Promise(resolve=>{release=resolve;entered();});
+  return {_:'updates',updates:[terminal]};
+ };
+ const ending=f.pair.end(1);
+ await sent;
+ try{
+  f.pair.invalidate();
+  assert.equal(f.pair.state.canRecover,true);assert.equal(f.pair.state.canPrepare,false);
+ }finally{release();}
+ await assert.rejects(ending,{reason:'call_cancelled'});
+ assert.equal(f.pair.state.canRecover,true);assert.equal(f.pair.state.canPrepare,false);
+ await assert.rejects(f.pair.recover(),{reason:'call_end_uncertain'});
+ f.api.queues.get(8000001).push(terminal);
+ assert.deepEqual(await f.pair.recover(),{ended:true,remoteConfirmed:true});
+ assert.equal(f.api.calls.filter(call=>call.method==='phone.discardCall').length,1);
+});
 test('failure before phone.requestCall does not fence a new preparation',async t=>{
  const f=create(t);await f.pair.prepare();
  f.api.override=({method})=>{if(method==='messages.getDhConfig')throw Object.assign(Error('fixture DH rejected'),{reason:'service_rejected'});};
