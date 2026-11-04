@@ -66,3 +66,16 @@ certificate example endpoint flags, required arguments, help output and errors.
 The packaged upstream example programs also reference an absent upstream
 `hub` helper, so this test covers their CLI definitions independently. Runtime
 DTLS dependencies and protocol behavior are unchanged.
+
+### PHF generator 0.8.0
+
+The desktop GTK dependency graph uses this crate to generate static lookup
+tables at build time. Its fixed-seed generator now calls the same PCG algorithms
+directly through `rand_pcg 0.2.1` and `rand_core 0.5.1`, removing the
+`rand 0.7.3` dependency affected by RUSTSEC-2026-0097. The key stream, table
+layout and library API are preserved. This patch does not supply randomness
+for any runtime cryptography.
+
+`phf_generator/UPSTREAM.json` identifies the exact registry archive, source
+revision and license. The vendored package contains the upstream library only.
+The upstream benchmark and benchmark-data generator are excluded.

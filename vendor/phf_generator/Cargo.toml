@@ -1,0 +1,13 @@
+[package]
+name = "phf_generator"
+version = "0.8.0"
+description = "PHF generation logic"
+license = "MIT"
+repository = "https://github.com/rust-phf/rust-phf"
+edition = "2018"
+publish = false
+
+[dependencies]
+phf_shared = "0.8.0"
+rand_core = "0.5.1"
+rand_pcg = "0.2.1"

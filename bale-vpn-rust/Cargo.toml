@@ -37,3 +37,6 @@ glib = { path = "../vendor/glib" }
 
 # Preserve controlled-agent early ICE nomination; see vendor/webrtc-ice/PATCH-NOTES.md.
 webrtc-ice = { path = "../vendor/webrtc-ice" }
+
+# Remove old rand from the GTK build-time table generator without changing output.
+phf_generator = { path = "../vendor/phf_generator" }

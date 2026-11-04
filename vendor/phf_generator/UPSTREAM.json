@@ -1,0 +1,10 @@
+{
+  "crate": "phf_generator",
+  "version": "0.8.0",
+  "registryArchiveSha256": "17367f0cc86f2d25802b2c26ee58a7b23faeccf78a396094c13dced0d0182526",
+  "revision": "81c7cc5b48649108428671d3b8ad151f6fbdb359",
+  "source": "https://crates.io/crates/phf_generator/0.8.0",
+  "upstreamLibSha256": "d3aa5204fe852c55361d589fe6eb843aebcf8a9d3254d5b6449cbd1678eae9c8",
+  "licenseSource": "https://raw.githubusercontent.com/rust-phf/rust-phf/81c7cc5b48649108428671d3b8ad151f6fbdb359/LICENSE",
+  "licenseSha256": "d8870d5e2ab20fc50915b711c5aa7588131c9abcc1bcb980da1efd7486522a46"
+}
