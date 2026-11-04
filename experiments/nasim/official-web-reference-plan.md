@@ -44,18 +44,52 @@ checked before creating a peer connection. The synthetic service fixture uses
 explicit loopback-only relay configuration and does not contact a provider.
 Both vendor browser peers have exchanged synthetic audio through that fixture,
 and one HTTP bye acknowledgement plus the matching peer event cleared the
-encrypted journal. Live provider SSE subscription and cleanup orchestration
-remain separate integration work.
+encrypted journal. The private reference runner uses the normal authenticated
+SSE parser and cursor setup. A full synthetic service fixture exercises that
+runner, including protected session reads, clock verification and terminal
+cleanup. Real provider interoperability remains unverified.
 
 The entry module exports account model `N`, account manager `M`, call manager
 `tt`, account repository `pt` and message API `nt`. `M.login(N.fromJson(record))`
 sets the in-memory account without going through OTP or device registration.
 The normal Auth screen must not be mounted for a retained-session experiment.
 
-## Required live gate
+## Private runner invocation
 
-Live operation remains disabled until a separate reviewed runner implements all
-of the following conditions.
+Use `runOfficialReference` from `official-reference-runner.cjs`. It requires
+an already-unlocked `SessionVault`, a `Map` of the two retained account
+controllers, the installed Playwright `chromium` and executable, the absolute
+pinned source directory, an `OfficialMediaGuard`, a verified-TLS `fetchImpl`,
+and an asynchronous `checkIdle` callback. `callerSlot` defaults to 1 and
+`mediaTimeoutMs` defaults to 20 seconds. The runner has no CLI or public route.
+
+Keep the vault password and local Lab key inside the existing private helpers.
+The runner verifies the supplied account records against the encrypted Nasim
+slots, performs one normal protected session restore per slot, and requires
+both server clocks to be verified before dialing. It compares browser and saved
+session identities after the run. It only writes the separate call journal and
+matching cleanup intents.
+
+Before invoking it, pause the original Lab's Nasim signaling consumers through
+its existing reset operation when both calls are idle or ended. Keep the Lab
+idle through the reference. `checkIdle` should privately verify the Lab's
+`/api/state` shows both expected retained slots, no busy operations, no pending
+cleanup and no active Nasim event consumers. The callback runs twice. The owner
+marker fences other reference processes, so Lab coordination remains necessary.
+
+Supply only exact, previously vetted STUN and TURN URLs from the official call
+configuration. For a hostname, supply its vetted public IP in `hostPins` so
+Chromium uses a pinned resolution. A changed or unapproved relay URL is rejected
+before creating a peer connection. Browser permission for camera is never granted.
+
+An existing journal blocks a fresh attempt. An archived successful response can
+be decoded locally to recover its UUID. Pending cleanup is surfaced as a typed
+result and requires the retained matching call context. No fresh dial or
+registration is used to recover it.
+
+## Live safeguards
+
+The private runner and its operator use the following conditions.
 
 1. Stop the Lab's signaling consumers for both selected accounts. Verify their
    pending-call and cleanup records are clear. Do not restart or overwrite the
@@ -94,4 +128,5 @@ of the following conditions.
 
 An official default-ICE test and an adapter-forced relay-only test are different
 experiments. The latter changes `iceTransportPolicy` and must be labeled as
-such. Neither experiment is implemented or enabled by this offline adapter.
+such. The offline fixture covers the default-policy runner. It does not establish
+live provider routing or forced-relay behavior.

@@ -49,6 +49,7 @@ async function openOfficialBrowserPair({chromium,executablePath,directory,accoun
     if(url.href!==ENDPOINT||request.method()!=='POST'){blocked++;return route.abort();}
     let response;
     try{
+     if(request.frame()!==page.mainFrame())throw fail('request_denied');
      response=await transport.forward(slot,{url:url.href,method:request.method(),headers:request.headers(),body:request.postDataBuffer()});
      if(response.iceServers)await page.evaluate(servers=>{window.referenceIceServers=servers;},response.iceServers);
      await route.fulfill({status:response.status,contentType:'application/octet-stream',body:response.body,
@@ -126,6 +127,7 @@ async function openOfficialBrowserPair({chromium,executablePath,directory,accoun
     });
    },
    diagnostics:()=>({blocked,callFailures,denials:Object.fromEntries(denials),fakeAudio:true,icePolicy:'all',mdnsHostMaskDisabled:true}),
+   verifyBindings:async()=>{await Promise.all([pageFor(1),pageFor(2)]);},
    close:async()=>{snapshots.clear();await browser.close();}
   });
  }catch(error){await browser.close();throw error;}

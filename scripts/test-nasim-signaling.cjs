@@ -16,7 +16,7 @@ function frame(id,messages,ending='\r\n'){
 }
 function reply(value){return new Response(wire.encrypt({status:'success',data:value},token),{status:200});}
 async function waitFor(predicate){const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('Fixture state timed out');await new Promise(resolve=>setTimeout(resolve,5));}}
-function fixture({base='https://stream.gaplication.com',onEvent,apiResponse,clockSeconds=1,clockNow}={}){
+function fixture({base='https://stream.gaplication.com',onEvent,onCallMessage,apiResponse,clockSeconds=1,clockNow}={}){
  const seen=[],events=[];let stream,cancelled=false,clockReads=0;
  const fetchImpl=async(url,options)=>{
   if(url==='https://core.gap.im/utils/getTime.json'){clockReads++;return Response.json({status:'success',data:{time:typeof clockSeconds==='function'?clockSeconds():clockSeconds}});}
@@ -40,9 +40,20 @@ function fixture({base='https://stream.gaplication.com',onEvent,apiResponse,cloc
   }
   throw new Error('Unexpected external destination in offline test');
  };
- return {seen,events,clockReads:()=>clockReads,open:()=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event)),...clockNow?{clockNow}:{}}),
+ return {seen,events,clockReads:()=>clockReads,open:()=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event)),onCallMessage,...clockNow?{clockNow}:{}}),
   push:bytes=>stream.enqueue(bytes),end:()=>stream.close(),cancelled:()=>cancelled};
 }
+
+test('private raw-message hook receives only validated non-replayed call packets',async()=>{
+ const raw=[],f=fixture({onCallMessage:message=>raw.push(message)}),connection=await f.open();
+ try{
+  const valid=config(),invalid=config();invalid.data.callData.method='video';
+  f.push(frame(1,[{type:'msgText',data:'private non-call fixture'},invalid,valid]));
+  await waitFor(()=>connection.state.lastEventId==='1');f.push(frame(1,[valid]));
+  await waitFor(()=>connection.state.replayedFrames===1);
+  assert.deepEqual(raw,[valid]);assert.equal(f.events.length,1);
+ }finally{connection.close();}
+});
 
 test('SSE parser preserves every byte boundary, CRLF/LF frames and split UTF-8 comments before authenticated JSON delivery',()=>{
  const bytes=Buffer.concat([Buffer.from(': آزمایش\r\n\r\n'),frame(1,[config()]),frame(2,[], '\n')]);

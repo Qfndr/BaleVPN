@@ -28,6 +28,7 @@ class SignalingConnection{
  #api;
  #fetch;
  #onEvent;
+ #onCallMessage;
  #abort=new AbortController();
  #reader;
  #parser;
@@ -46,17 +47,17 @@ class SignalingConnection{
  #expiredIncomingConfigs=0;
  #pending=new Set();
  #unbind;
- static async open(session,{fetchImpl=globalThis.fetch,onEvent=()=>{},cursor='0',signal,clockNow=()=>performance.now()}={}){
+ static async open(session,{fetchImpl=globalThis.fetch,onEvent=()=>{},onCallMessage,cursor='0',signal,clockNow=()=>performance.now()}={}){
   if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new ApiError('tls_verification_disabled');
   if(session?.provider!=='nasim'||typeof session.token!=='string'||! /^[\x21-\x7e]{16,16384}$/.test(session.token)||
    typeof session.deviceId!=='string'||! /^web\.[a-z0-9.-]{12,80}$/.test(session.deviceId)||
-   typeof onEvent!=='function'||typeof clockNow!=='function'||typeof cursor!=='string'||! /^(?:0|[1-9]\d{0,19})$/.test(cursor))throw new ApiError('invalid_saved_session');
+   typeof onEvent!=='function'||onCallMessage!==undefined&&typeof onCallMessage!=='function'||typeof clockNow!=='function'||typeof cursor!=='string'||! /^(?:0|[1-9]\d{0,19})$/.test(cursor))throw new ApiError('invalid_saved_session');
   if(signal?.aborted)throw new ApiError('closed');
   if(signal&&(typeof signal.addEventListener!=='function'||typeof signal.removeEventListener!=='function'||typeof signal.aborted!=='boolean'))throw new ApiError('invalid_request');
   let self,client;try{self=codec.userId(session.userId);client=codec.clientId(session.clientId);}catch{throw new ApiError('invalid_saved_session');}
   const connection=new SignalingConnection();
   connection.#session={provider:'nasim',token:session.token,userId:self,clientId:client,deviceId:session.deviceId};
-  connection.#cursor=BigInt(cursor);connection.#fetch=fetchImpl;connection.#onEvent=onEvent;connection.#clockNow=clockNow;
+  connection.#cursor=BigInt(cursor);connection.#fetch=fetchImpl;connection.#onEvent=onEvent;connection.#onCallMessage=onCallMessage;connection.#clockNow=clockNow;
   connection.#api=new HttpClient({deviceId:session.deviceId,fetchImpl});
   if(signal){const close=()=>connection.close();signal.addEventListener('abort',close,{once:true});connection.#unbind=()=>signal.removeEventListener('abort',close);}
   try{await connection.#start();return connection;}catch(error){const reason=connection.#phase==='closed'?'closed':error instanceof ApiError?error.reason:'stream_connect_failed';connection.#fail(reason);throw new ApiError(reason,error instanceof ApiError?error.statusCode:undefined,['cursor_cipher','cursor_groups','cursor_message_id'].includes(error?.serviceType)?error.serviceType:undefined);}
@@ -114,7 +115,8 @@ class SignalingConnection{
       if(this.#abort.signal.aborted)return;
       if(incomingCallExpired(this.#clock,event.time,this.#clockNow)){this.#expiredIncomingConfigs++;continue;}
      }
-     try{await this.#onEvent(event);}catch{throw new ApiError('event_handler_failed');}
+     try{await this.#onEvent(event);if(!this.#abort.signal.aborted)await this.#onCallMessage?.(message);}
+     catch{throw new ApiError('event_handler_failed');}
      this.#calls++;
     }
     this.#cursor=cursor;this.#awaitingFreshEvent=false;
@@ -162,7 +164,7 @@ class SignalingConnection{
  #fail(reason){if(['closed','failed'].includes(this.#phase))return;
   this.#phase='failed';this.#reason=reason;this.#dispose();}
  #dispose(){this.#unbind?.();this.#unbind=null;this.#abort.abort();this.#api?.close();for(const pending of this.#pending)pending.abort();
-  this.#reader?.cancel().catch(()=>{});this.#parser?.close();this.#session=null;}
+  this.#reader?.cancel().catch(()=>{});this.#parser?.close();this.#onCallMessage=null;this.#session=null;}
  close(){if(this.#phase==='closed')return;this.#phase='closed';this.#reason=null;this.#dispose();}
  get state(){return {provider:'nasim',phase:this.#phase,reason:this.#reason,lastEventId:this.#cursor.toString(),
   receivedFrames:this.#frames,callEvents:this.#calls,ignoredMessages:this.#ignored,invalidCallMessages:this.#invalid,

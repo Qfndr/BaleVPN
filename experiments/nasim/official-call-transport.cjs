@@ -83,6 +83,18 @@ class OfficialCallTransport{
    await this.#gate.bindResponse(slot,decoded);return true;
   }finally{archived.body.fill(0);}
  }
+ async endKnownCall(slot){
+  this.#guard();const intent=await this.#journal.load();if(intent?.phase!=='bound')throw fail('call_not_bound');
+  const account=this.#account(slot),peer=this.#account(3-slot);
+  const encoded=codec.outgoing({type:'bye',callUUID:intent.callUUID,callData:null},account.userId,peer.userId);
+  const plain=Buffer.from(JSON.stringify(encoded.body));let frame,response;
+  try{
+   frame=wire.encryptBytes(plain,account.token);
+   response=await this.forward(slot,{url:ENDPOINT,method:'POST',headers:{'api-version':'v2.5','x-token':account.token,
+    'x-clientid':account.clientId,'x-topic':encoded.topic,project:'nasimrezvan','content-type':'application/json'},body:frame});
+   return {status:response.status};
+  }finally{plain.fill(0);frame?.fill(0);response?.body.fill(0);}
+ }
  #eventsWork(action){const task=this.#eventQueue.then(action);this.#eventQueue=task.catch(()=>{});return task;}
  async #dispatch(slot,message){
   let checked;try{checked=await this.#gate.incoming(slot,message);}catch(error){

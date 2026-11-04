@@ -1,7 +1,6 @@
 // Standalone laboratory vault. Never reads or migrates BaleVPN account folders.
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
-const {promisify}=require('node:util');const scrypt=promisify(crypto.scrypt);
-const {isDeepStrictEqual}=require('node:util');
+const {promisify,isDeepStrictEqual}=require('node:util');const scrypt=promisify(crypto.scrypt);
 const FORMAT='provider-lab-v1',PROVIDERS=new Set(['igap','eitaa','nasim','rubika']);
 const {validateCallRecovery,CallRecoveryError,MAX_CALL_RECOVERY_BYTES:CALL_RECOVERY_MAX}=require('../rubika/call-recovery.cjs');
 const CALL_RECOVERY='rubika-request-call-recovery-v1';
@@ -84,6 +83,7 @@ class SessionVault{
   const directory=path.join(this.#directory,'nasim-official-call'),file=path.join(directory,'pair.json'),ownerFile=path.join(directory,'owner.json');
   const owner={pid:process.pid,nonce:crypto.randomBytes(16).toString('hex')},aad=FORMAT+'/nasim-official-call/pair';
   await fs.mkdir(directory,{recursive:true,mode:0o700});
+  await syncOfficialDirectory(this.#directory);
   try{await fs.writeFile(ownerFile,JSON.stringify(owner),{flag:'wx',mode:0o600});}catch(error){throw new VaultError(error.code==='EEXIST'?'official_call_owner_busy':'write_failed');}
   let closed=false;
   const close=async()=>{

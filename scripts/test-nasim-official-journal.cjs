@@ -4,6 +4,7 @@ const {SessionVault}=require('../experiments/providers/session-vault.cjs');
 const {OfficialCallGate}=require('../experiments/nasim/official-call-gate.cjs');
 const {CleanupIntent}=require('../experiments/nasim/cleanup-intent.cjs');
 const {OfficialCallTransport,ENDPOINT}=require('../experiments/nasim/official-call-transport.cjs');
+const {runOfficialReference}=require('../experiments/nasim/official-reference-runner.cjs');
 const wire=require('../experiments/nasim/wire.cjs');
 const PASSWORD='synthetic-official-journal-test-password';
 const request={type:'callRequest',callData:{method:'audio'}};
@@ -119,4 +120,15 @@ test('only an intent that never reached request admission can be abandoned',asyn
  const f=await fixture(t),gate=f.makeGate();await gate.begin();await gate.abandonPrepared();
  assert.equal(await f.journal.load(),null);await gate.begin();await gate.outgoing(1,request);
  await assert.rejects(gate.abandonPrepared(),e=>e.reason==='cleanup_pending');assert.equal((await f.journal.load()).phase,'requested');
+});
+test('runner with pending request or mismatched saved identity never starts a browser or provider read',async t=>{
+ const f=await fixture(t),gate=f.makeGate();let launches=0,requests=0;
+ for(const slot of [1,2])await f.vault.save('nasim',slot,f.accounts.get(slot).exportSession());
+ await gate.begin();await gate.outgoing(1,request);await f.journal.close();
+ const options={vault:f.vault,accounts:f.accounts,directory:f.dir,mediaGuard:{checkSignal(){},checkServers(){},capture(){}},
+  chromium:{launch(){launches++;throw Error('unexpected browser');}},fetchImpl:()=>{requests++;throw Error('unexpected provider read');},checkIdle:async()=>true};
+ assert.deepEqual(await runOfficialReference(options),{ok:false,reason:'cleanup_pending',cleanupPending:true,phase:'requested',uuidKnown:false});
+ await f.vault.save('nasim',1,{...f.accounts.get(1).exportSession(),token:'different-synthetic-token'});
+ const mismatch=await runOfficialReference(options);assert.equal(mismatch.reason,'account_binding_changed');
+ assert.equal(launches,0);assert.equal(requests,0);
 });

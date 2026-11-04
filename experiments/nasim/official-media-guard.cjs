@@ -25,12 +25,14 @@ function candidate(line){
  const fields=line.split(/ +/);
  if(!/^candidate:[A-Za-z0-9+/]{1,32}$/.test(fields[0])||!['1','2'].includes(fields[1])||fields[2]?.toLowerCase()!=='udp'||
   !/^\d{1,10}$/.test(fields[3])||fields[6]!=='typ'||!['host','srflx','prflx','relay'].includes(fields[7]))throw fail('invalid_candidate');
- return {...ip(fields[4]),port:port(fields[5])};
+ return {...ip(fields[4]),port:port(fields[5]),type:fields[7]};
 }
 function description(sdp){
- if(typeof sdp!=='string'||Buffer.byteLength(sdp)>65535)throw fail('invalid_sdp');
+ if(typeof sdp!=='string'||Buffer.byteLength(sdp)>65535||/\0|\r(?!\n)/.test(sdp))throw fail('invalid_sdp');
  const targets=[];let mediaPort=null;
  for(const line of sdp.split(/\r?\n/)){
+  if(line&& !/^[a-z]=/.test(line))throw fail('invalid_sdp');
+  if(line.startsWith('a=candidate')&&!line.startsWith('a=candidate:'))throw fail('invalid_sdp');
   if(line.startsWith('a=candidate:'))targets.push(candidate(line.slice(2)));
   if(line.startsWith('m=')){const fields=line.split(' ');mediaPort=port(fields[1]);}
   if(line.startsWith('c=')){
@@ -58,7 +60,8 @@ class OfficialMediaGuard{
   if(!Array.isArray(approvedServers)||!approvedServers.length||approvedServers.length>16)throw fail('invalid_ice_server');
   this.#pins=new Map();
   for(const [host,address]of Object.entries(hostPins)){
-   if(!/^[a-z0-9.-]{1,253}$/.test(host)||net.isIP(host)||!isPublic(address))throw fail('invalid_ice_server');
+   if(host.length>253||!/^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/.test(host)||
+    new URL('http://'+host+'/').hostname!==host||!isPublic(address))throw fail('invalid_ice_server');
    this.#pins.set(host,ip(address).address);
   }
   this.#servers=new Set(approvedServers);
@@ -73,6 +76,7 @@ class OfficialMediaGuard{
  #registry(slot){if(![1,2].includes(slot))throw fail('invalid_slot');return this.#local[slot-1];}
  capture(slot,line){
   const endpoint=candidate(line),registry=this.#registry(slot);
+  if(!isPublic(endpoint.address)&&(!owned.check(endpoint.address,endpoint.family)||endpoint.type!=='host'))throw fail('candidate_denied');
   if(registry.size>=128)throw fail('candidate_limit');
   registry.add(endpoint.address+':'+endpoint.port);
  }
