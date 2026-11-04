@@ -290,10 +290,12 @@ impl Backend {
                     break;
                 }
                 let result = this.connection(config.clone(), &mut rx).await;
-                let last_tunnel=this.tunnel.lock().clone();
-                if let Some(tunnel)=last_tunnel {
+                let last_tunnel = this.tunnel.lock().clone();
+                if let Some(tunnel) = last_tunnel {
                     tunnel.capture_media_stats().await;
-                    if let Some(terminal)=this.media_terminal.lock().as_mut() {terminal["rtc"]=tunnel.media_diagnostic().unwrap_or(Value::Null);}
+                    if let Some(terminal) = this.media_terminal.lock().as_mut() {
+                        terminal["rtc"] = tunnel.media_diagnostic().unwrap_or(Value::Null);
+                    }
                 }
                 this.capture_media_terminal(
                     "control",
@@ -367,6 +369,10 @@ impl Backend {
     ) -> Result<Option<TransportSession>> {
         let mut accepted = self.accepted.lock().await;
         while accepted.try_recv().is_ok() {}
+        // Historical call-end notifications are not scoped to the next admission.
+        while let Ok(event) = signals.try_recv() {
+            check_waiting_signal(Some(event))?;
+        }
         // A stop between two calls must never re-enable admission.
         {
             let enabled = self.admission_enabled.lock();
@@ -382,9 +388,9 @@ impl Backend {
             tokio::select! {
                 biased;
                 _=&mut *stop=>return Ok(None),
-                value=accepted.recv()=>{let (from,session)=value.ok_or(Failure("signaling_closed"))?;if &from!=peer{return Err(Failure("unexpected_peer"));}return Ok(Some(session));},
+                value=accepted.recv()=>{let (from,session)=value.ok_or(Failure("signaling_closed"))?;if &from!=peer{return Err(Failure("unexpected_peer"));}if self.app.joined_call_revision(&session).is_some(){return Ok(Some(session));}},
                 _=health.tick()=>if !self.app.is_connected(){return Err(Failure("signaling_disconnected"));},
-                event=signals.recv()=>check_signal(event)?,
+                event=signals.recv()=>check_waiting_signal(event)?,
             }
         }
     }
@@ -422,6 +428,10 @@ impl Backend {
                 _=&mut *stop=>{let _=tokio::time::timeout(Duration::from_secs(8),self.app.hang_up()).await;return Ok(());},
             }
         };
+        let call_revision = self
+            .app
+            .joined_call_revision(&session)
+            .ok_or(Failure("call_ended"))?;
         if session.url != "wss://call.igap.net/" || session.peer_id != peer {
             return Err(Failure("invalid_transport_session"));
         }
@@ -461,7 +471,7 @@ impl Backend {
                     if !self.app.is_connected(){return Err(Failure("signaling_disconnected"));}
                     if tunnel.is_peer_authenticated(){*self.phase.lock()="connected";}
                 },
-                event=signals.recv()=>check_signal(event)?,
+                event=signals.recv()=>check_call_signal(event, self.app.is_joined_call_revision(call_revision))?,
                 event=events.recv()=>{
                     let event=event.ok_or(Failure("media_closed"))?;
                     match event.kind {
@@ -540,6 +550,20 @@ fn recoverable_server_end(result: &Result<()>) -> bool {
             "call_ended" | "media_closed" | "media_failed" | "authentication_timeout"
         ))
     )
+}
+fn check_waiting_signal(event: Option<SignalingEvent>) -> Result<()> {
+    // There is no accepted transport yet: ending an earlier/pending call does
+    // not stop a listening server. Authentication/protocol failures still do.
+    if matches!(event, Some(SignalingEvent::CallEnded { .. })) {
+        return Ok(());
+    }
+    check_signal(event)
+}
+fn check_call_signal(event: Option<SignalingEvent>, same_call_joined: bool) -> Result<()> {
+    if same_call_joined && matches!(event, Some(SignalingEvent::CallEnded { .. })) {
+        return Ok(());
+    }
+    check_signal(event)
 }
 fn check_signal(event: Option<SignalingEvent>) -> Result<()> {
     match event {
@@ -1015,8 +1039,14 @@ mod tests {
     #[test]
     fn media_diagnostics_keep_only_known_codes_and_bounded_service_enums() {
         assert_eq!(super::media_reason("room empty")["code"], "room_empty");
-        assert_eq!(super::media_reason("publisher PC failed")["code"], "publisher_failed");
-        assert_eq!(super::media_reason("subscriber PC closed")["code"], "subscriber_closed");
+        assert_eq!(
+            super::media_reason("publisher PC failed")["code"],
+            "publisher_failed"
+        );
+        assert_eq!(
+            super::media_reason("subscriber PC closed")["code"],
+            "subscriber_closed"
+        );
         assert_eq!(
             super::media_reason("server leave reason=14 action=0 reconnect=0"),
             serde_json::json!({"code":"server_leave","serviceReason":14,"serviceAction":0,"reconnect":false})

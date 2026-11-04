@@ -11,7 +11,7 @@
     "igap-signaling-rust/igap-signaling/examples/native_endpoint.rs": "243c14b8f4b366301fc0ad23bbc3deb58fc50839bfd9a8b7b8d9423cb2c529ae",
     "igap-signaling-rust/igap-signaling/examples/public_probe.rs": "b0a1df53d51e60248ed96728b49dd6c34e3b9ca84c4fbcb713e1c81534e14265",
     "igap-signaling-rust/igap-signaling/examples/restore_probe.rs": "63812733620c05f283ba209da7975273b54bab9f1a87c95c2822525c317a3405",
-    "igap-signaling-rust/igap-signaling/src/adapter.rs": "0fbad51e073ef9772e8435bf3c7595eae1ffe5d05c64df01daa8e67a2fe5909f",
+    "igap-signaling-rust/igap-signaling/src/adapter.rs": "fab7be9328d3d011b772e06c8d7a06a401b97d01f60a0a37a5bfb85dfc435add",
     "igap-signaling-rust/igap-signaling/src/auth.rs": "efe2a7eb7e5195609b6bb621dc1f336d2fcb651a378172052234a1c6d7c6527e",
     "igap-signaling-rust/igap-signaling/src/lib.rs": "359f071c374ae1887151d6e7be3a3db3fefc2256c68d503fcb8c0505848dabe7",
     "igap-signaling-rust/igap-signaling/src/privacy.rs": "4f1a73be1ac18f0e6d8f702a739ee399d54c8b56d5be3630ba56e5085fb7dd33",
@@ -20,6 +20,6 @@
     "igap-signaling-rust/igap-signaling/src/security.rs": "1d814172974dc5bdb161f41f5a3e4f95be0954b2374dd60653128e13694edd61",
     "igap-signaling-rust/igap-signaling/src/wire.rs": "cb62f98ca61d4b7d5c8726884ac43664873d3cdb5bd482692456783b0576fc71",
     "igap-signaling-rust/igap-signaling/tests/auth_privacy.rs": "3a09f6e9582bded377c777076c6e9bdac872d71e90ecb6a31bb530e2384d1fec",
-    "igap-signaling-rust/igap-signaling/tests/lifecycle.rs": "6fa60f0a47ee805e4f857a128d00765d4584f90d06634042b5e6ec47c8e594ff"
+    "igap-signaling-rust/igap-signaling/tests/lifecycle.rs": "58986161ffc97955fbda55887d2dd7e83d4152660d37acb14fc9a033e1138049"
   }
 }

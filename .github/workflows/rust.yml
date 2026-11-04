@@ -166,6 +166,12 @@ jobs:
         working-directory: bale-signaling-rust
         run: cargo test --workspace --locked --release
 
+      - name: Test iGap signaling lifecycle and stale-call isolation
+        working-directory: igap-signaling-rust
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/bale-vpn-rust/target
+        run: cargo test -p igap-signaling --locked --release
+
       # The Android JNI shim depends on bale-signaling + lktunnel
       # + jni-shared; confirms the FFI shape compiles for the host
       # target. The full Android build (cargo-ndk → arm64) is

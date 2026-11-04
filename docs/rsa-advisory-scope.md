@@ -49,6 +49,12 @@ The 2026-11-04 follow-up review updated only the workspace manifest fingerprint
 for the local `webrtc-ice` patch. RSA dependencies, features and all reviewed
 cryptographic source files remained unchanged.
 
+A subsequent lifecycle review refreshed only `src/adapter.rs` and
+`tests/lifecycle.rs` fingerprints for accepted-transport generation binding and
+atomic call-end handling. The added SHA256 digest identifies an accepted call
+without retaining its transport token. RSA operations and configuration remain
+unchanged; this refresh does not expand the RSA exception.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.

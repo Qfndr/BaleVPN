@@ -11,6 +11,7 @@ use lk_signaling::{
     TunnelHooks,
 };
 use parking_lot::Mutex;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -54,6 +55,7 @@ struct Call {
     phase: Phase,
     reply: Option<oneshot::Sender<Result<TransportSession, Error>>>,
     deferred_self_leave: bool,
+    transport_digest: Option<[u8; 32]>,
     local_leave_confirmed: Option<Arc<AtomicBool>>,
 }
 struct Auth {
@@ -133,6 +135,28 @@ pub struct CodeRequest {
     pub retry_after: u32,
 }
 impl IgapSignaling {
+    /// Bind a consumer to the exact accepted transport, without retaining its token.
+    pub fn joined_call_revision(&self, session: &TransportSession) -> Option<u64> {
+        let digest: [u8; 32] = Sha256::digest(session.token.as_bytes()).into();
+        let call = self.inner.call.lock();
+        call.as_ref()
+            .filter(|c| {
+                c.epoch == self.epoch()
+                    && c.phase == Phase::Joined
+                    && c.peer == session.peer_id
+                    && c.transport_digest == Some(digest)
+            })
+            .map(|_| self.inner.call_revision.load(Ordering::Acquire))
+    }
+    /// Local event queues can contain an earlier call's end event. This checks
+    /// the exact locally accepted generation; it does not reinterpret wire pushes.
+    pub fn is_joined_call_revision(&self, revision: u64) -> bool {
+        let call = self.inner.call.lock();
+        self.inner.call_revision.load(Ordering::Acquire) == revision
+            && call
+                .as_ref()
+                .is_some_and(|c| c.epoch == self.epoch() && c.phase == Phase::Joined)
+    }
     pub fn service_leave_diagnostic(&self) -> Option<ServiceLeaveDiagnostic> {
         *self.inner.last_service_leave.lock()
     }
@@ -732,6 +756,7 @@ impl IgapSignaling {
                             phase: Phase::Incoming,
                             reply: None,
                             deferred_self_leave: false,
+                            transport_digest: None,
                             local_leave_confirmed: None,
                         });
                     }
@@ -772,6 +797,7 @@ impl IgapSignaling {
                     if let Some(c) = call.as_mut() {
                         if c.phase == Phase::Outgoing && c.epoch == epoch {
                             if let Ok(token) = room::bound_token(&reply.fields, &self_id, &c.room) {
+                                c.transport_digest = Some(Sha256::digest(token.as_bytes()).into());
                                 c.phase = Phase::Joined;
                                 if let Some(sender) = c.reply.take() {
                                     let _ = sender.send(Ok(TransportSession {
@@ -810,8 +836,18 @@ impl IgapSignaling {
                     if let Some(confirmed) = &call.local_leave_confirmed {
                         confirmed.store(true, Ordering::Release);
                     }
-                    drop(current);
-                    self.end_call(EndReason::CallerHangup);
+                    // Consume the validated call under the same lock. Releasing
+                    // it and invoking end_call() could end a newly admitted call
+                    // after a concurrent local hang-up cleared this one.
+                    if let Some(mut ended) = current.take() {
+                        if let Some(reply) = ended.reply.take() {
+                            let _ = reply.send(Err(Error::Cancelled));
+                        }
+                        self.inner.events.emit(SignalingEvent::CallEnded {
+                            peer_id: ended.peer,
+                            reason: EndReason::CallerHangup,
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -869,6 +905,7 @@ impl IgapSignaling {
             if c.room != room || c.epoch != epoch || c.phase != Phase::Joining {
                 return Err(Error::Cancelled);
             }
+            c.transport_digest = Some(Sha256::digest(token.as_bytes()).into());
             c.phase = Phase::Joined;
         }
         self.inner
@@ -1028,6 +1065,7 @@ impl TunnelHooks for IgapSignaling {
                     phase: Phase::Outgoing,
                     reply: Some(tx),
                     deferred_self_leave: false,
+                    transport_digest: None,
                     local_leave_confirmed: None,
                 });
             }

@@ -528,3 +528,28 @@ async fn matched_service_leave_does_not_mask_service_rejection() {
     );
     app.disconnect().await;
 }
+
+#[tokio::test]
+async fn transport_revision_rejects_stale_same_peer_session_and_real_end() {
+    let (app, rpc, _) = fixture();
+    app.restore(record()).await.unwrap();
+    app.set_allowed_peers(&["42".into()]).unwrap();
+    let peer = app.resolve_peer("42").await.unwrap();
+    let worker = app.clone();
+    let task = tokio::spawn(async move { worker.place_call(peer).await });
+    wait_call(&rpc, 915).await;
+    rpc.push.send(joined("99")).await.unwrap();
+    let session = task.await.unwrap().unwrap();
+    let revision = app.joined_call_revision(&session).unwrap();
+    assert!(app.is_joined_call_revision(revision));
+    let unrelated = lk_signaling::TransportSession {
+        url: session.url.clone(),
+        token: "a-different-transport-token".into(),
+        peer_id: session.peer_id.clone(),
+    };
+    assert!(app.joined_call_revision(&unrelated).is_none());
+    push_leave(&app, &rpc, 42).await;
+    assert!(!app.is_joined_call_revision(revision));
+    assert!(app.joined_call_revision(&session).is_none());
+    app.disconnect().await;
+}

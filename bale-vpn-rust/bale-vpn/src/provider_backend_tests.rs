@@ -262,8 +262,8 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
     let peer = app.resolve_peer("42").await.unwrap();
     let mut health = tokio::time::interval(Duration::from_secs(1));
     *backend.admission_enabled.lock() = true;
+    let mut signals = app.events();
     for _ in 0..2 {
-        let mut signals = app.events();
         let (_stop, mut stopped) = oneshot::channel();
         let accepting =
             backend.accept_session(&peer, "42", &mut stopped, &mut signals, &mut health);
@@ -305,4 +305,40 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         "cancelled next cycle must not reopen admission"
     );
     service.shutdown().await;
+}
+
+#[test]
+fn queued_previous_call_end_does_not_end_current_transport_or_listening() {
+    struct TestPeer;
+    impl lk_signaling::PeerRef for TestPeer {
+        fn id_str(&self) -> &str {
+            "42"
+        }
+    }
+    let ended = || {
+        Some(SignalingEvent::CallEnded {
+            peer_id: PeerId::new(TestPeer),
+            reason: lk_signaling::EndReason::CallerHangup,
+        })
+    };
+    assert!(check_waiting_signal(ended()).is_ok());
+    assert!(check_call_signal(ended(), true).is_ok());
+    assert!(matches!(
+        check_call_signal(ended(), false),
+        Err(Failure("call_ended"))
+    ));
+    for joined in [false, true] {
+        assert!(matches!(
+            check_call_signal(Some(SignalingEvent::AuthExpired), joined),
+            Err(Failure("auth_expired"))
+        ));
+        assert!(matches!(
+            check_call_signal(Some(SignalingEvent::ProtocolObsolete), joined),
+            Err(Failure("protocol_obsolete"))
+        ));
+        assert!(matches!(
+            check_call_signal(None, joined),
+            Err(Failure("signaling_closed"))
+        ));
+    }
 }
