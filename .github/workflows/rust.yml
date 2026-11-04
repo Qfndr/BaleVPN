@@ -201,11 +201,23 @@ jobs:
         run: |
           mkdir -p security-evidence
           python scripts/check-crypto-dependencies.py | tee security-evidence/crypto-dependencies.txt
+          python scripts/test-rust-audit-policy.py
           failed=0
           fetch_arg=""
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust vendor/webrtc-dtls; do
             name="${workspace//\//-}"
-            cargo audit $fetch_arg --file "$workspace/Cargo.lock" --json > "security-evidence/$name.json" || failed=1
+            audit_status=0
+            cargo audit $fetch_arg --file "$workspace/Cargo.lock" --json > "security-evidence/$name.json" || audit_status=$?
+            metadata_arg=()
+            if [ "$workspace" = "bale-vpn-rust" ]; then
+              if cargo metadata --locked --format-version 1 --manifest-path "$workspace/Cargo.toml" > "security-evidence/$name-metadata.json"; then
+                metadata_arg=(--metadata "security-evidence/$name-metadata.json")
+              else
+                failed=1
+              fi
+            fi
+            python scripts/classify-rust-audit.py --workspace "$workspace" --report "security-evidence/$name.json" \
+              --audit-exit-code "$audit_status" "${metadata_arg[@]}" --output "security-evidence/$name-disposition.json" || failed=1
             fetch_arg="--no-fetch"
           done
           exit "$failed"
