@@ -49,21 +49,24 @@ test('iGap connection failures explain media, authentication, storage and port e
 test('iGap language changes translate controls and retain the checked call-privacy result',()=>{
  const context=providerTranslations();
  const elements=new Map();
+ const reconnectLabel={textContent:''};
  const element=id=>{
-  if(!elements.has(id))elements.set(id,{textContent:'',dataset:{},setAttribute(name,value){this[name]=value;}});
+  if(!elements.has(id))elements.set(id,{textContent:'',dataset:{},setAttribute(name,value){this[name]=value;},
+   querySelector(selector){return id==='autoReconnect'&&selector==='b'?reconnectLabel:null;}});
   return elements.get(id);
  };
  const control={dataset:{aria:'countrySearch'},setAttribute(name,value){this[name]=value;}};
  const root={dataset:{}};
  Object.assign(context,{
   root,prefs:{language:'fa',theme:'dark'},lang:'fa',role:'client',privacyStatus:'privacyAllowed',
-  state:{authenticated:true,hasSession:true,account:{userId:'account-one'}},privacyAccount:'account-one',privacyEpoch:1,
+  state:{authenticated:true,hasSession:true,account:{userId:'account-one'}},config:null,privacyAccount:'account-one',privacyEpoch:1,
   navigator:{language:'fa'},systemTheme:{matches:true},localStorage:{setItem(){}},
   document:{querySelectorAll:selector=>selector==='[data-aria]'?[control]:[],title:''},
   drawChart(){},renderCountries(){},renderState(){},native(){},$:element
  });
  const translate=providerScript.slice(providerScript.indexOf('const t='),providerScript.indexOf('function native('));
  vm.runInContext(translate,context);
+ vm.runInContext(providerScript.slice(providerScript.indexOf('function syncReconnectSwitch('),providerScript.indexOf('function fillConfig(')),context);
  vm.runInContext('appearance()',context);
  assert.equal(control['aria-label'],'جست‌وجوی کشورها');
  assert.equal(element('privacyValue').textContent,context.translations.fa.privacyAllowed);
@@ -73,6 +76,8 @@ test('iGap language changes translate controls and retain the checked call-priva
  assert.equal(control['aria-label'],'Search countries');
  assert.equal(element('privacyValue').textContent,context.translations.en.privacyAllowed);
  assert.equal(root.dir,'ltr');
+ vm.runInContext("pickRole('server')",context);
+ assert.equal(reconnectLabel.textContent,context.translations.en.serverReconnect);
 });
 
 test('iGap privacy status resets on logout or account changes and ignores late responses',async()=>{
