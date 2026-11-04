@@ -104,7 +104,7 @@ jobs:
           python scripts/test-release-publisher.py
           python scripts/check-crypto-dependencies.py
           cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib
-          cargo check --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --examples
+          cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --test cli_compatibility
 
       - name: cargo test --workspace
         working-directory: lktunnel-rust

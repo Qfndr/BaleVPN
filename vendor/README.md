@@ -61,4 +61,8 @@ The vendored crate's development-only Clap 3 dependency enables `std` and
 `suggestions` explicitly instead of its default terminal-color feature. That
 removes the unsound, unmaintained `atty` dependency from the standalone test and
 example graph. Example CLI parsing remains available; automatic help coloring
-is disabled. Runtime DTLS dependencies and protocol behavior are unchanged.
+is disabled. `tests/cli_compatibility.rs` exercises the exposed PSK and
+certificate example endpoint flags, defaults, help output and argument errors.
+The packaged upstream example programs also reference an absent upstream
+`hub` helper, so this test covers their CLI definitions independently. Runtime
+DTLS dependencies and protocol behavior are unchanged.
