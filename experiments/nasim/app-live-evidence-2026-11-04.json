@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-04",
+  "scope": "Two separate BaleVPN processes and encrypted vaults on one Windows host, desktop executable in headless mode",
+  "sourceCommit": "f5c0955476e7ceacdfdd12c3619fe586570aafbd",
+  "appSha256": "4670a4dfbb31771606a08715322a5f019d36a59d15c7410156bb944eb67ef4d5",
+  "kitArchiveSha256": "6c33717f79de74ef0b0d80e3becc490ef1a59d458eb54884b0fcd4997d5d88fc",
+  "routeProof": "client-relay/server-public",
+  "bothRoutesVerified": true,
+  "bothPeersAuthenticated": true,
+  "proxyReady": true,
+  "download": {
+    "bytes": 1024,
+    "sha256": "6ab72eeb9e77b07540897e0c8d6d23ec8eef0f8c3a47e1b3f4e93443d9536bed",
+    "exact": true
+  },
+  "upload": {
+    "bytes": 8192,
+    "sha256": "cbbd17323944df364bf013f7a0911ac7df50317f2e89aa2da96d58c386df8be8",
+    "echoedExactly": true
+  },
+  "cleanup": {
+    "bothEndpointsConfirmed": true,
+    "ownedAppsExited": true,
+    "pendingIntents": 0,
+    "labSignalingRestored": true
+  },
+  "otpRequests": 0,
+  "separateNetworksVerified": false,
+  "operatorBillingVerified": false,
+  "internationalOutageVerified": false
+}
