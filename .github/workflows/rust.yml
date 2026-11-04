@@ -244,3 +244,4 @@ jobs:
           git archive HEAD | tar -x -C "$RUNNER_TEMP/security-snapshot"
           cd "$RUNNER_TEMP/security-snapshot"
           "$RUNNER_TEMP/gitleaks" dir . --config .gitleaks.toml --redact --no-banner
+          python3 scripts/test-secret-scan-allowlists.py --gitleaks "$RUNNER_TEMP/gitleaks"

@@ -15,3 +15,35 @@ paths = ['''^vendor/webrtc-dtls/examples/certificates/(README\.md|client\.pem|se
 description = "Public upstream SHA256 provenance hashes, not API keys"
 rules = ["generic-api-key"]
 paths = ['''^vendor/webrtc-dtls/UPSTREAM\.json$''']
+
+[[allowlists]]
+description = "Public Eitaa application identifiers extracted from official app/web code; not account credentials"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+paths = ['''^experiments/eitaa/account\-client\.cjs$''', '''^experiments/eitaa/android\-profile\-evidence\-2026\-11\-04\.json$''', '''^experiments/eitaa/client\-profile\.cjs$''', '''^scripts/test\-eitaa\-account\.cjs$''', '''^scripts/test\-eitaa\-client\-profile\.cjs$''', '''^scripts/test\-eitaa\-official\-wire\.cjs$''']
+regexes = ['''^0d870902a3e09e7cdc57e5d7bd68da6b$''', '''^8da85b0d5bfe62527e5b244c209159c3$''']
+
+[[allowlists]]
+description = "Exact reviewed public source and media SHA256 provenance hashes"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+paths = ['''^experiments/providers/video\-carrier\-evidence\-2026\-11\-04\.json$''', '''^scripts/rsa\-public\-only\-review\.json$''']
+regexes = ['''^3a09f6e9582bded377c777076c6e9bdac872d71e90ecb6a31bb530e2384d1fec$''', '''^5485d4cdaa0993586792154b0d94c205cc20de3a702955b387ce404108f4c063$''', '''^efe2a7eb7e5195609b6bb621dc1f336d2fcb651a378172052234a1c6d7c6527e$''']
+
+[[allowlists]]
+description = "Literal RSA algorithm name in public source audit prose"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+paths = ['''^experiments/rubika/auth\-lifecycle\-evidence\-2026\-11\-04\.json$''']
+regexes = ['''^RSA/NONE/OAEPPadding$''']
+
+[[allowlists]]
+description = "Exact synthetic password constants used solely by disposable offline test vaults"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+paths = ['''^scripts/test\-provider\-lab\.cjs$''', '''^scripts/test\-provider\-vault\.cjs$''']
+regexes = ['''^fixture\-passphrase\-123$''', '''^fixture\-password$''', '''^fixture\-vault\-passphrase\-1234$''']
