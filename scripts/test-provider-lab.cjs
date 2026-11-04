@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {startLab,startupOptions}=require('../experiments/providers/lab.cjs');
 const {FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,eitaaFixture,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,nasimAsymmetric=false,eitaaNative=false,privacyOperation=require('./provider-privacy-fixture.cjs').allow}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({privacyOperation,directory:dir,port:0,nasimAsymmetric,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,nasimAsymmetric=false,eitaaNative=false,beforeRubikaSave,privacyOperation=require('./provider-privacy-fixture.cjs').allow}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({privacyOperation,directory:dir,port:0,nasimAsymmetric,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,beforeRubikaSave?{saveSession:async record=>{await beforeRubikaSave(slot);await options.saveSession(record);}}:options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key,eitaaHarness});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
@@ -206,6 +206,30 @@ test('Rubika accounts seal private keys independently and restore without creati
  await request('/api/rubika/2/forget',{});state=await(await request('/api/state')).json();assert.equal(state.providerAccounts.rubika[1].stored,false);assert.ok(state.accounts.every(a=>a.stored));assert.ok(state.providerAccounts.nasim.every(a=>a.stored));
  assert.equal((await request('/api/rubika/1/events/connect',{})).status,404);assert.equal((await request('/api/rubika/1/call/dial',{})).status,404);
 }));
+test('Rubika rejects same-slot login during verification while the other slot remains independent',async()=>{
+ let entered,release;
+ const saving=new Promise(resolve=>{entered=resolve;}),allowSave=new Promise(resolve=>{release=resolve;});
+ await fixture(async({request,calls})=>{
+  const login={country:'IR',phone:'09120000001'};
+  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+  assert.equal((await request('/api/rubika/1/start',login)).status,200);
+  const verifying=request('/api/rubika/1/verify',{code:'123456'});
+  try{
+   await Promise.race([saving,verifying.then(()=>{throw Error('Fixture verification did not pause before save');})]);
+   const first=(await(await request('/api/state')).json()).providerAccounts.rubika[0];
+   assert.equal(first.busy,true);assert.equal(first.stored,false);
+   const conflict=await request('/api/rubika/1/start',login);
+   assert.equal(conflict.status,409);assert.equal((await conflict.json()).reason,'account_busy');
+   assert.equal((await request('/api/rubika/2/start',login)).status,200);
+   assert.deepEqual(calls.filter(call=>call.action==='rubika-start').map(call=>call.slot),[1,2]);
+  }finally{release();}
+  assert.equal((await verifying).status,200);
+  await request('/api/vault/lock',{});await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
+  const retained=await request('/api/rubika/1/start',login);
+  assert.equal((await retained.json()).reason,'already_signed_in');
+  assert.equal((await request('/api/rubika/1/resume',{})).status,200);
+ },{beforeRubikaSave:async slot=>{if(slot===1){entered();await allowSave;}}});
+});
 test('Nasim media control prepares only local distinct accounts, needs explicit call/accept and keeps all transport secrets private',()=>fixture(async({request,calls})=>{
  assert.equal((await request('/api/nasim/media/prepare',{clientSlot:1,socksPort:1090,throughput:true})).status,423);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
