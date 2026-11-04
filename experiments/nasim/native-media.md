@@ -1,12 +1,13 @@
-# Native relay-only media foundation
+# Native WebRTC media
 
 `lktunnel::peer_media::RelayMedia` is an experimental one-peer WebRTC audio/RTP
 carrier for two compatible native tunnel endpoints. It is independent of the
 existing LiveKit/Bale `rtc::Engine`. It uses the authenticated external-carrier
 API and the existing SOCKS5/QUIC stack. A [private native pipe helper](native-bridge-protocol.md)
-and parent process controller now expose it for integration testing. It is not
-enabled in the main product. The experimental account controller and local
-two-account lab now use this bridge; live provider calls remain unverified.
+and parent process controller expose it in the experimental account controller
+and the local two-account lab. Two live Nasim calls on one Windows host carried
+integrity-verified HTTPS traffic in the asymmetric mode described below.
+[Recorded evidence](turn-path-evidence-2026-11-04.json)
 
 The owner supplies private TURN configuration from an authenticated call. The
 driver accepts bounded TURN/UDP URLs with separate password credentials. Empty
@@ -23,12 +24,33 @@ offerer is independent of the tunnel's client/server role. Nasim's invited
 callee can therefore offer while the caller answers, matching the current web
 protocol. SDP and candidates must never be placed in public state or logs.
 
-Before calling the external carrier's `connected()`, the driver checks typed
+In the default relay-only mode, before calling the external carrier's `connected()`, the driver checks typed
 ICE statistics for a successful nominated relay/relay pair. This establishes
 the candidate types, not the provider's ownership, geolocation, tariff or
 outage behavior. `selected_route()` exposes only an enum without addresses or
 credentials, and returns Unknown after closure. A real provider controller
 still needs to validate the supplied relay and establish the actual route.
+
+## Nasim asymmetric endpoint
+
+The explicit Nasim mode requires a nominated local TURN relay on the client
+and a public UDP candidate on the server side. The client accepts an
+ICE-discovered peer-reflexive address in selected-pair proof after the
+authenticated Binding checks. SDP and trickle candidates use the stricter
+admission policy. Both endpoints must authenticate their pinned QUIC peers
+before the proxy passes user traffic.
+
+The source for the two-role test kit is in
+[`nasim-asymmetric-endpoint.cjs`](nasim-asymmetric-endpoint.cjs) and
+[`nasim-asymmetric-launch.cjs`](nasim-asymmetric-launch.cjs). The launcher
+requires Node.js 22 or newer, the verified helper and its SHA-256, and a retained
+encrypted vault for one account per endpoint. Password entry stays in the
+local terminal. The public pairing certificates are exchanged through a
+trusted channel. Each run generates a new certificate and supports one call.
+
+The same-host result covers authenticated transfer and cleanup. Transfer on
+separate access networks, operator accounting, and behavior during an
+international outage still require separate measurements.
 
 DTLS/SRTP protects the media transport. QUIC adds independent certificate-pinned
 mutual authentication between the tunnel endpoints; a connected media call

@@ -1,11 +1,33 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
-const {startLab}=require('../experiments/providers/lab.cjs');
+const {startLab,startupOptions}=require('../experiments/providers/lab.cjs');
 const {FakeCallAuth,FakeNasimAuth,FakeRubikaAuth,eitaaFixture,fakeBridgeFactory,fakeNasimBridgeFactory}=require('./provider-lab-fixture.cjs');
 
-async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,eitaaNative=false,privacyOperation=require('./provider-privacy-fixture.cjs').allow}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({privacyOperation,directory:dir,port:0,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
+async function fixture(fn,{native=false,nasimNative=false,nasimOpenBridge,nasimAsymmetric=false,eitaaNative=false,privacyOperation=require('./provider-privacy-fixture.cjs').allow}={}){const dir=await fs.mkdtemp(path.join(os.tmpdir(),'provider-lab-test-')),calls=[],eitaaHarness=require('./eitaa-lab-call-fixture.cjs').fixture(calls);const lab=await startLab({privacyOperation,directory:dir,port:0,nasimAsymmetric,...native?{bridgeExecutable:path.resolve('fixture-native-helper'),openBridge:fakeBridgeFactory()}:{},...nasimNative?{nasimBridgeExecutable:path.resolve('fixture-nasim-helper'),nasimOpenBridge:nasimOpenBridge||fakeNasimBridgeFactory()}:{},...eitaaNative?{eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient}:{},eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options,{ack:slot===1,challenge:slot===2}),rubikaSessionFactory:(slot,options)=>new FakeRubikaAuth(slot,calls,options),nasimSessionFactory:slot=>new FakeNasimAuth(slot,calls),sessionFactory:(slot,onPush)=>new FakeCallAuth(slot,calls,onPush)});const key=new URL(lab.url).hash.slice(1);
  const request=async(route,body,headers={})=>fetch(lab.origin+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+key,...body===undefined?{}:{Origin:lab.origin,'Content-Type':'application/json'},...headers},body:body===undefined?undefined:JSON.stringify(body)});
  try{await fn({lab,request,dir,calls,key,eitaaHarness});}finally{await lab.close();if(!path.resolve(dir).startsWith(path.resolve(os.tmpdir())+path.sep)||!path.basename(dir).startsWith('provider-lab-test-'))throw Error('Unexpected fixture cleanup target');await fs.rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}
 }
+
+test('Nasim asymmetric startup requires its own absolute helper and explicit flag',async()=>{
+ const directory=path.join(os.tmpdir(),'provider-lab-unused'),helper=path.resolve('fixture-nasim-helper'),base=['--data-dir',directory];
+ assert.equal(startupOptions([...base,'--nasim-bridge',helper]).nasimAsymmetric,false);
+ assert.equal(startupOptions([...base,'--nasim-bridge',helper,'--nasim-asymmetric']).nasimAsymmetric,true);
+ assert.throws(()=>startupOptions([...base,'--nasim-asymmetric','--bridge',helper]));
+ assert.throws(()=>startupOptions([...base,'--nasim-asymmetric','--nasim-bridge','relative-helper']));
+ await assert.rejects(startLab({directory,port:0,nasimAsymmetric:true}),/Nasim asymmetric mode requires/);
+});
+
+test('Nasim opt-in reports its same-host reference scope without changing other provider capabilities',async()=>{
+ let strict;
+ await fixture(async({request})=>{strict=await(await request('/api/state')).json();},{nasimNative:true});
+ assert.equal(strict.nasimMedia.routeMode,'relay-only');assert.equal(strict.nasimMedia.referenceTransferScope,null);
+ await fixture(async({request,calls})=>{
+  const state=await(await request('/api/state')).json();
+  assert.equal(state.nasimMedia.routeMode,'client-relay/server-public');assert.equal(state.nasimMedia.referenceTransferScope,'same-host');
+  assert.equal(state.nasimMedia.vpsVerified,false);assert.equal(state.nasimMedia.billingVerified,false);assert.equal(state.nasimMedia.internationalOutageVerified,false);
+  for(const field of ['capabilities','media','eitaaMedia','rubikaMedia'])assert.deepEqual(state[field],strict[field]);
+  assert.equal(calls.length,0);
+ },{nasimNative:true,nasimAsymmetric:true});
+});
 
 test('Nasim cleanup does not need a native helper after a saved-intent restart',()=>fixture(async({request,calls,dir})=>{
  const password='fixture-passphrase-123';await request('/api/vault/unlock',{password});

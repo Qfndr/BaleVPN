@@ -70,6 +70,15 @@ const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');co
  const nasimTwo=page.locator('.account[data-provider="nasim"][data-slot="2"]');
  await nasimTwo.locator('[data-phone]').fill('09120000002');await nasimTwo.locator('[data-login] button[type=submit]').click();await nasimTwo.locator('[data-code]').fill('12345');await nasimTwo.locator('[data-code-form] button').click();
  await page.waitForFunction(()=>document.querySelector('.account[data-provider="nasim"][data-slot="2"]').dataset.signed==='true');
+ assert.match(await page.locator('#nasimRouteMode').innerText(),/پیش‌فرض.*TURN/);
+ const showAsymmetricMode=async route=>{const response=await route.fetch(),state=await response.json();
+  state.nasimMedia={...state.nasimMedia,routeMode:'client-relay/server-public',referenceTransferScope:'same-host',vpsVerified:false};
+  await route.fulfill({response,json:state});};
+ await page.route('**/api/state',showAsymmetricMode);
+ await page.waitForFunction(()=>document.getElementById('nasimRouteMode').textContent.includes('روی یک میزبان'));
+ assert.match(await page.locator('#nasimRouteMode').innerText(),/VPS.*هنوز/);
+ await page.unroute('**/api/state',showAsymmetricMode);
+ await page.waitForFunction(()=>document.getElementById('nasimRouteMode').textContent.includes('پیش‌فرض'));
  await page.locator('#nasimPort').fill('1090');await page.locator('#nasimPrepare').click();
  await page.waitForFunction(()=>[...document.querySelectorAll('[data-nasim-state]')].every(e=>e.dataset.phase==='ready'));
  assert.equal(calls.filter(c=>c.action==='nasim-signal').length,0);

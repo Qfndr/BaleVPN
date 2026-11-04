@@ -8,6 +8,7 @@ const {MediaPair}=require('./media-pair.cjs');
 const {AuthSession:NasimAuth}=require('../nasim/auth-session.cjs');
 const {ApiError:NasimError}=require('../nasim/http-client.cjs');
 const {CallPair:NasimCallPair}=require('../nasim/call-pair.cjs');
+const {createBridge}=require('./relay-media-bridge.cjs');
 const {CleanupIntent:NasimCleanupIntent}=require('../nasim/cleanup-intent.cjs');
 const {AuthSession:RubikaAuth}=require('../rubika/auth-session.cjs');
 const {ApiError:RubikaError}=require('../rubika/http-client.cjs');
@@ -17,8 +18,9 @@ const {CallPair:EitaaCallPair}=require('../eitaa/call-pair.cjs');
 const {CallPair:RubikaCallPair}=require('../rubika/call-pair.cjs');
 const {CallClient:RubikaCallClient}=require('../rubika/call-client.cjs');
 function sameSecret(a,b){const x=Buffer.from(a||''),y=Buffer.from(b);return x.length===y.length&&crypto.timingSafeEqual(x,y);}
-async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimBridgeExecutable,nasimOpenBridge,eitaaBridgeExecutable,eitaaOpenBridge,eitaaCallClientFactory,eitaaAccountClientFactory,rubikaBridgeExecutable,rubikaOpenBridge,rubikaCallClientFactory,rubikaSessionPollInterval=2000,privacyOperation=privacy.operate,eitaaSessionFactory=(slot,options)=>new EitaaAuth(options),rubikaSessionFactory=(slot,options)=>new RubikaAuth(options),nasimSessionFactory=()=>new NasimAuth(),sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
+async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimBridgeExecutable,nasimOpenBridge,nasimAsymmetric=false,eitaaBridgeExecutable,eitaaOpenBridge,eitaaCallClientFactory,eitaaAccountClientFactory,rubikaBridgeExecutable,rubikaOpenBridge,rubikaCallClientFactory,rubikaSessionPollInterval=2000,privacyOperation=privacy.operate,eitaaSessionFactory=(slot,options)=>new EitaaAuth(options),rubikaSessionFactory=(slot,options)=>new RubikaAuth(options),nasimSessionFactory=()=>new NasimAuth(),sessionFactory=(slot,onPush)=>new AuthSession({onPush})}={}){
  if(!directory)throw new Error('An explicit isolated laboratory data directory is required');
+ if(typeof nasimAsymmetric!=='boolean'||nasimAsymmetric&&!path.isAbsolute(nasimBridgeExecutable||''))throw new Error('Nasim asymmetric mode requires an absolute Nasim helper path');
  const vault=new SessionVault(directory),sessions=new Map(),calls=new Map(),secret=crypto.randomBytes(32).toString('hex');let origin,closing=false,unlocking=false,locking=false;
  const rubikaWrites=new Map(),rubikaOperations=new Set();
  function rubikaWrite(slot,operation){const queued=(rubikaWrites.get(slot)||Promise.resolve()).then(operation);rubikaWrites.set(slot,queued.catch(()=>{}));return queued;}
@@ -42,7 +44,8 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
   for(const snapshot of snapshots){const state=privacyAccounts[provider].get(snapshot.slot).state;if(!vault.unlocked||!state.signedIn||state.userId!==snapshot.userId||(privacyGeneration.get(provider+'/'+snapshot.slot)||0)!==snapshot.generation)throw Object.assign(new Error('Account changed during permission check'),{reason:'account_binding_changed'});}
  }
 
- const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpenBridge,
+ const nasimOpen=nasimOpenBridge??(nasimAsymmetric?createBridge('nasim',{nasimAsymmetric:true}).NativeMediaBridge.open:undefined);
+ const nasimCalls=new NasimCallPair(nasimSessions,{executable:nasimBridgeExecutable,open:nasimOpen,
   cleanupFactory:(account,slot)=>new NasimCleanupIntent(account,{
    loadIntent:()=>vault.loadCleanupIntent('nasim',slot),
    saveIntent:async(record,guard)=>{guard();await vault.saveCleanupIntent('nasim',slot,record);guard();},
@@ -80,7 +83,9 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     const rubikaAccounts=[];for(const [slot,session]of rubikaSessions)rubikaAccounts.push({provider:'rubika',slot,...session.state,call:rubikaCalls.getCall(slot),busy:session.state.busy||rubikaOperations.has(slot),stored:await vault.has('rubika',slot),callRecoveryStored:await vault.hasCallRecovery('rubika',slot)});
     const eitaaAccounts=[];for(const [slot,session]of eitaaSessions)eitaaAccounts.push({provider:'eitaa',slot,...session.state,call:eitaaCalls.getCall(slot),busy:session.state.busy||eitaaOperations.has(slot),stored:await vault.has('eitaa',slot),recoveryStored:await vault.hasRecovery('eitaa',slot),refreshRecoveryStored:await vault.hasRefreshRecovery('eitaa',slot)});
     for(const [provider,list]of Object.entries({igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts}))for(const account of list){account.callPrivacy=privacyStatus(provider,account.slot);account.callPrivacySupported=privacy.supported(provider);account.busy||=privacyBusy.has(provider+'/'+account.slot);}
-    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking||locking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts},nasimMedia:nasimCalls.state,eitaaMedia:eitaaCalls.state,rubikaMedia:rubikaCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:true,liveCallVerified:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:true,liveCallVerified:false,tunnelReady:false}}});
+    const nasimMedia={...nasimCalls.state,routeMode:nasimAsymmetric?'client-relay/server-public':'relay-only',
+     referenceTransferScope:nasimAsymmetric?'same-host':null,vpsVerified:false};
+    return json({ok:true,vault:{unlocked:vault.unlocked,exists:await fs.stat(path.join(directory,'vault.json')).then(()=>true,()=>false),busy:unlocking||locking},accounts,providerAccounts:{igap:accounts,nasim:nasimAccounts,rubika:rubikaAccounts,eitaa:eitaaAccounts},nasimMedia,eitaaMedia:eitaaCalls.state,rubikaMedia:rubikaCalls.state,media:media?media.state:{available:false,phase:'unavailable'},capabilities:{igap:{loginLab:true,liveCallVerified:false,tunnelReady:false},eitaa:{loginLab:true,liveCallVerified:false,tunnelReady:false},nasim:{loginLab:true,liveCallVerified:false,tunnelReady:false},rubika:{loginLab:true,liveCallVerified:false,tunnelReady:false}}});
    }
    if(req.method==='GET'&&url.pathname==='/api/countries')return json(countries);
    const privacyRead=url.pathname.match(/^\/api\/(igap|nasim|rubika|eitaa)\/([12])\/call-privacy$/);if(req.method==='GET'&&privacyRead)return json({ok:true,callPrivacy:await callPrivacy(privacyRead[1],Number(privacyRead[2]))});
@@ -239,5 +244,27 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
  async function close(){if(closing)return;closing=true;for(const controller of privacyControllers.values())controller.abort();media?.close();nasimCalls.reset();eitaaCalls.reset();rubikaCalls.reset();for(const call of calls.values())call.reset();for(const session of [...sessions.values(),...nasimSessions.values(),...rubikaSessions.values(),...eitaaSessions.values()])session.close();await Promise.allSettled([...rubikaWrites.values(),...eitaaWrites.values()]);vault.lock();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
  return {origin,url:origin+'/#'+secret,close,server};
 }
-if(require.main===module){const args=process.argv.slice(2);let directory,bridgeExecutable,nasimBridgeExecutable,eitaaBridgeExecutable,rubikaBridgeExecutable,port=37131;for(let i=0;i<args.length;i++){if(args[i]==='--data-dir')directory=args[++i];else if(args[i]==='--port')port=Number(args[++i]);else if(args[i]==='--bridge')bridgeExecutable=args[++i];else if(args[i]==='--nasim-bridge')nasimBridgeExecutable=args[++i];else if(args[i]==='--eitaa-bridge')eitaaBridgeExecutable=args[++i];else if(args[i]==='--rubika-bridge')rubikaBridgeExecutable=args[++i];else throw new Error('Unknown argument');}if(!directory||!Number.isInteger(port)||port<0||port>65535||bridgeExecutable&&!path.isAbsolute(bridgeExecutable)||nasimBridgeExecutable&&!path.isAbsolute(nasimBridgeExecutable)||eitaaBridgeExecutable&&!path.isAbsolute(eitaaBridgeExecutable)||rubikaBridgeExecutable&&!path.isAbsolute(rubikaBridgeExecutable)){console.error('node experiments/providers/lab.cjs --data-dir ISOLATED-DIRECTORY [--port 37131] [--bridge ABSOLUTE-NATIVE-HELPER] [--nasim-bridge ABSOLUTE-NASIM-HELPER] [--eitaa-bridge ABSOLUTE-EITAA-HELPER] [--rubika-bridge ABSOLUTE-RUBIKA-HELPER]');process.exitCode=2;}else startLab({directory,port,bridgeExecutable,nasimBridgeExecutable,eitaaBridgeExecutable,rubikaBridgeExecutable}).then(lab=>{console.log(lab.url);for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>lab.close().then(()=>process.exit(0)));}).catch(()=>{console.error('Could not start the isolated local login tool');process.exitCode=1;});}
-module.exports={startLab};
+function startupOptions(args){
+ const options={port:37131,nasimAsymmetric:false};
+ const fields={'--data-dir':'directory','--port':'port','--bridge':'bridgeExecutable','--nasim-bridge':'nasimBridgeExecutable',
+  '--eitaa-bridge':'eitaaBridgeExecutable','--rubika-bridge':'rubikaBridgeExecutable'};
+ for(let i=0;i<args.length;i++){
+  if(args[i]==='--nasim-asymmetric'){options.nasimAsymmetric=true;continue;}
+  const key=Object.hasOwn(fields,args[i])?fields[args[i]]:null,value=args[++i];
+  if(!key||!value||value.startsWith('--'))throw Error('Invalid laboratory argument');
+  options[key]=key==='port'?Number(value):value;
+ }
+ if(!options.directory||!Number.isInteger(options.port)||options.port<0||options.port>65535||
+  options.nasimAsymmetric&&!options.nasimBridgeExecutable||
+  ['bridgeExecutable','nasimBridgeExecutable','eitaaBridgeExecutable','rubikaBridgeExecutable'].some(key=>options[key]&&!path.isAbsolute(options[key])))throw Error('Invalid laboratory options');
+ return options;
+}
+if(require.main===module){
+ let options;
+ try{options=startupOptions(process.argv.slice(2));}catch{
+  console.error('node experiments/providers/lab.cjs --data-dir ISOLATED-DIRECTORY [--port 37131] [--bridge ABSOLUTE-NATIVE-HELPER] [--nasim-bridge ABSOLUTE-NASIM-HELPER [--nasim-asymmetric]] [--eitaa-bridge ABSOLUTE-EITAA-HELPER] [--rubika-bridge ABSOLUTE-RUBIKA-HELPER]');
+  process.exitCode=2;
+ }
+ if(options)startLab(options).then(lab=>{console.log(lab.url);for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>lab.close().then(()=>process.exit(0)));}).catch(()=>{console.error('Could not start the isolated local login tool');process.exitCode=1;});
+}
+module.exports={startLab,startupOptions};
