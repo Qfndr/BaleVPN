@@ -93,7 +93,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/clients",           get(tunnel_clients))
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
         .with_state(state.clone())
-        .nest("/providers/igap", crate::provider::router(state.igap.clone()));
+        .nest(
+            "/providers/igap",
+            crate::provider::router_with_nasim(state.igap.clone(), state.nasim.is_some()),
+        );
     let app = match &state.nasim {
         Some(service) => app.nest("/providers/nasim", crate::nasim_provider::router(service.clone())),
         None => app.route("/providers/nasim/info", get(|| async { Json(serde_json::json!({"available":false})) })),

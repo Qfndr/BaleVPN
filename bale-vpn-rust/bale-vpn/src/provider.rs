@@ -869,9 +869,13 @@ async fn csrf(State(service): State<Arc<Service>>, request: Request, next: Next)
     response
 }
 pub fn router(service: Arc<Service>) -> Router {
+    router_with_nasim(service, false)
+}
+
+pub(crate) fn router_with_nasim(service: Arc<Service>, nasim_enabled: bool) -> Router {
     Router::new()
-        .route("/", get(provider_index))
-        .route("/ui", get(provider_index))
+        .route("/", get(move || async move { provider_index(nasim_enabled) }))
+        .route("/ui", get(move || async move { provider_index(nasim_enabled) }))
         .route("/ui.js", get(provider_script))
         .route("/countries.js", get(provider_countries))
         .route("/fonts/:name", get(crate::ui::font))
@@ -904,8 +908,17 @@ pub fn router(service: Arc<Service>) -> Router {
         .layer(middleware::from_fn(crate::ui::protect_management_ui))
         .with_state(service)
 }
-async fn provider_index() -> axum::response::Html<&'static str> {
-    axum::response::Html(include_str!("../assets/provider.html"))
+fn provider_index(nasim_enabled: bool) -> axum::response::Html<std::borrow::Cow<'static, str>> {
+    let page = include_str!("../assets/provider.html");
+    axum::response::Html(if nasim_enabled {
+        std::borrow::Cow::Owned(page.replacen(
+            "data-text=\"providerName\">آی‌گپ</a></nav>",
+            "data-text=\"providerName\">آی‌گپ</a><a href=\"/providers/nasim/ui\">نسیم رضوان · Nasim</a></nav>",
+            1,
+        ))
+    } else {
+        std::borrow::Cow::Borrowed(page)
+    })
 }
 async fn desktop_show() -> Json<Value> {
     #[cfg(feature = "gui")]
@@ -1302,6 +1315,13 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn igap_navigation_only_links_to_configured_nasim() {
+        let link = "href=\"/providers/nasim/ui\"";
+        assert!(!super::provider_index(false).0.contains(link));
+        assert_eq!(super::provider_index(true).0.matches(link).count(), 1);
+    }
+
     #[test]
     fn media_diagnostics_keep_only_known_codes_and_bounded_service_enums() {
         assert_eq!(super::media_reason("room empty")["code"], "room_empty");
