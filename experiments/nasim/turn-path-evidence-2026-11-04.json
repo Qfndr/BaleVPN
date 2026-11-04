@@ -60,6 +60,34 @@
     },
     "rawConfigCredentialsAddressesAndCallIdentifiersRecorded": false
   },
+  "acceptedSignalingFollowup": {
+    "executionReportedBy": "parent agent controlling the local diagnostic runner",
+    "attempts": 1,
+    "platform": "Windows",
+    "serverClockVerified": true,
+    "configsBoundToBothOwnedAccountsAndSameCanonicalCall": true,
+    "signalingAccepted": true,
+    "callerObservedAccept": true,
+    "mediaConfigured": false,
+    "additionalWebRtcAllocations": 0,
+    "probe": {
+      "allocated": 2,
+      "bidirectionalVerified": false,
+      "localCleanupComplete": true,
+      "ok": false,
+      "reason": "timeout",
+      "stage": "receive_and_verify"
+    },
+    "callCleanup": {
+      "slotOneExactCleanupServiceAcknowledged": true,
+      "remainingEncryptedCleanupIntents": [false, false],
+      "labEventSubscriptionsRestored": [true, true],
+      "bothAccountsStillSignedIn": true
+    },
+    "interpretation": "The accept signal was observed by the caller without creating additional WebRTC allocations. This still did not verify a bidirectional nonce exchange. Signaling acceptance alone does not establish full media negotiation or all service-side forwarding eligibility conditions.",
+    "rawConfigCredentialsAddressesAndCallIdentifiersRecorded": false
+  },
+  "totalLiveProbeAttempts": 2,
   "sourceAudit": {
     "turnDependency": "turn 0.8.0 via webrtc 0.11.0",
     "permissionOrdering": "RelayConnInternal.create_perm awaits create_permissions and marks the permission permitted after the transaction returns. Both first sends complete before the fixed second send round starts.",
@@ -71,13 +99,13 @@
     "officialPreAcceptanceBehavior": "onReceiveConfig creates the incoming peer connection and sends an offer before acceptance. This supports pre-acceptance connection setup but does not establish the backend's forwarding policy before acceptance."
   },
   "interpretationLimits": [
-    "The probe ran before accepting the call. Service-side forwarding eligibility at this point is not verified.",
+    "The first probe ran before acceptance; the second followed observed signaling acceptance without media negotiation. Service-side forwarding eligibility is not established by either state.",
     "Both allocations originated on the same Windows host. This does not test two independent access networks or isolate service relay hairpin behavior.",
     "The probe makes two fixed sends per direction. Datagram loss and time consumed by allocation cannot be excluded by this result.",
     "The successful local TURN mock proves the probe's fixture path, not compatibility with every service policy or relay deployment.",
     "localCleanupComplete describes local close operations. It is not acknowledgement that every remote allocation was deleted, especially after a cancelled operation.",
     "The earlier accepted WebRTC call failed ICE. The pre-acceptance raw TURN timeout neither exonerates ICE nor establishes that both failures share one cause.",
-    "No provider-blocking, account-policy, billing, throughput or final root-cause conclusion follows from this single probe."
+    "No provider-blocking, account-policy, billing, throughput or final root-cause conclusion follows from these probes."
   ],
-  "nextDiagnostic": "Only after separate authorization and source review, compare a fresh account-bound probe after acceptance while retaining the same bounded nonce-only destinations and exact encrypted call cleanup. No additional live attempt is recorded here."
+  "nextDiagnostic": "Review an explicitly experimental asymmetric route policy with a relay-only client and a bounded public server candidate set. Require selected-pair proof of the client relay, preserve the strict relay default, and obtain separate authorization before any new live call."
 }
