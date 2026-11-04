@@ -203,8 +203,15 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
     let sender = connector.senders.lock().last().unwrap().clone();
     let incoming = || RpcResponse {
         action: 30915,
-        fields: w::parse(&[w::uint_field(2, 42).unwrap(), w::uint_field(3, 99).unwrap()].concat())
-            .unwrap(),
+        fields: w::parse(
+            &[
+                w::bytes_field(1, &w::uint_field(2, 100).unwrap()).unwrap(),
+                w::uint_field(2, 42).unwrap(),
+                w::uint_field(3, 99).unwrap(),
+            ]
+            .concat(),
+        )
+        .unwrap(),
     };
     sender.send(incoming()).await.unwrap();
     tokio::time::timeout(Duration::from_secs(2), backend.accepted.lock().await.recv())
@@ -225,7 +232,14 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
     sender
         .send(RpcResponse {
             action: 30918,
-            fields: w::parse(&w::uint_field(2, 42).unwrap()).unwrap(),
+            fields: w::parse(
+                &[
+                    w::bytes_field(1, &w::uint_field(2, 99).unwrap()).unwrap(),
+                    w::uint_field(2, 42).unwrap(),
+                ]
+                .concat(),
+            )
+            .unwrap(),
         })
         .await
         .unwrap();
@@ -242,6 +256,19 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         1,
         "late caller must not be auto-answered by an orphan worker"
     );
+    backend.capture_media_terminal("control", "call_ended");
+    let ended = backend.snapshot();
+    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["actor"], "peer");
+    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["phase"], "joined");
+    assert_eq!(
+        ended["mediaDiagnostic"]["serviceLeave"]["metadataTimestampOrder"], "earlier",
+        "metadata ordering is observable and never suppresses a real leave"
+    );
+    assert_eq!(
+        ended["mediaDiagnostic"]["lastEvent"]["serviceLeave"],
+        ended["mediaDiagnostic"]["serviceLeave"]
+    );
+
     rpc.leave_fails.store(false, Ordering::Release);
     assert!(backend.cleanup_connection().await);
     let new_handler = backend.set_admission(Some(peer.clone()));
@@ -280,6 +307,12 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         .await
         .unwrap();
         assert_eq!(received.peer_id, peer);
+        let active = backend.snapshot();
+        assert!(active["mediaDiagnostic"]["serviceLeave"].is_null());
+        assert_eq!(
+            active["mediaDiagnostic"]["lastEvent"]["serviceLeave"]["actor"], "peer",
+            "a new call must not rewrite the retained previous leave event"
+        );
         assert!(backend.cleanup_connection().await);
     }
     assert_eq!(rpc.actions.lock().iter().filter(|a| **a == 916).count(), 3);

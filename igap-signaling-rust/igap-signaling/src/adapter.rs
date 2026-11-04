@@ -56,6 +56,7 @@ struct Call {
     reply: Option<oneshot::Sender<Result<TransportSession, Error>>>,
     deferred_self_leave: bool,
     transport_digest: Option<[u8; 32]>,
+    incoming_timestamp: Option<u32>,
     local_leave_confirmed: Option<Arc<AtomicBool>>,
 }
 struct Auth {
@@ -104,6 +105,7 @@ pub struct ServiceLeaveDiagnostic {
     pub actor: &'static str,
     pub phase: &'static str,
     pub deferred: bool,
+    pub metadata_timestamp_order: &'static str,
 }
 struct CallLease {
     owner: IgapSignaling,
@@ -757,6 +759,7 @@ impl IgapSignaling {
                             reply: None,
                             deferred_self_leave: false,
                             transport_digest: None,
+                            incoming_timestamp: room::response_timestamp(&reply.fields),
                             local_leave_confirmed: None,
                         });
                     }
@@ -828,6 +831,10 @@ impl IgapSignaling {
                             Phase::Joined => "joined",
                         },
                         deferred: actor == self_id && call.phase == Phase::Joining,
+                        metadata_timestamp_order: room::timestamp_order(
+                            call.incoming_timestamp,
+                            room::response_timestamp(&reply.fields),
+                        ),
                     });
                     if actor == self_id && call.phase == Phase::Joining {
                         call.deferred_self_leave = true;
@@ -1066,6 +1073,7 @@ impl TunnelHooks for IgapSignaling {
                     reply: Some(tx),
                     deferred_self_leave: false,
                     transport_digest: None,
+                    incoming_timestamp: None,
                     local_leave_confirmed: None,
                 });
             }

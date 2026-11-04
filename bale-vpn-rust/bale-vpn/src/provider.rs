@@ -210,7 +210,7 @@ impl Backend {
             .as_ref()
             .and_then(|t| t.media_diagnostic())
             .or_else(|| last_event.as_ref().and_then(|v| v.get("rtc").cloned()));
-        json!({"provider":"igap","phase":*self.phase.lock(),"error":self.error.lock().map(|reason|json!({"reason":reason})),"authenticated":auth.signed_in&&!self.store.failed(),"credentialsSaved":!self.store.failed(),"wsReady":self.app.is_connected(),"hasSession":self.store.record().ok().flatten().is_some(),"authStage":auth.stage,"retryAfterSeconds":auth.retry_after,"codeDigits":auth.code_digits,"deliveryMethod":auth.delivery_method,"mode":self.config.lock().mode,"mediaConnected":media,"peerAuthenticated":paired,"proxyReady":ready&&paired,"traffic":traffic,"metrics":metrics,"mediaDiagnostic":{"rtc":rtc,"lastEvent":last_event},"account":self.account(),"publicCode":hex(&self.identity.certificate),"frontendReady":true,"billingVerified":false})
+        json!({"provider":"igap","phase":*self.phase.lock(),"error":self.error.lock().map(|reason|json!({"reason":reason})),"authenticated":auth.signed_in&&!self.store.failed(),"credentialsSaved":!self.store.failed(),"wsReady":self.app.is_connected(),"hasSession":self.store.record().ok().flatten().is_some(),"authStage":auth.stage,"retryAfterSeconds":auth.retry_after,"codeDigits":auth.code_digits,"deliveryMethod":auth.delivery_method,"mode":self.config.lock().mode,"mediaConnected":media,"peerAuthenticated":paired,"proxyReady":ready&&paired,"traffic":traffic,"metrics":metrics,"mediaDiagnostic":{"rtc":rtc,"lastEvent":last_event,"serviceLeave":self.app.service_leave_diagnostic()},"account":self.account(),"publicCode":hex(&self.identity.certificate),"frontendReady":true,"billingVerified":false})
     }
     async fn stop(&self) {
         {
@@ -346,7 +346,9 @@ impl Backend {
             .and_then(|t| t.media_diagnostic());
         let mut current = self.media_terminal.lock();
         if current.is_none() {
-            *current = Some(json!({"kind":kind,"reason":media_reason(reason),"rtc":rtc}));
+            *current = Some(
+                json!({"kind":kind,"reason":media_reason(reason),"rtc":rtc,"serviceLeave":self.app.service_leave_diagnostic()}),
+            );
         }
     }
     async fn cleanup_connection(&self) -> bool {
@@ -428,6 +430,9 @@ impl Backend {
                 _=&mut *stop=>{let _=tokio::time::timeout(Duration::from_secs(8),self.app.hang_up()).await;return Ok(());},
             }
         };
+        // This accepted transport starts a new diagnostic generation even if
+        // a service leave races its validation before media can be created.
+        *self.media_terminal.lock() = None;
         let call_revision = self
             .app
             .joined_call_revision(&session)
@@ -435,7 +440,6 @@ impl Backend {
         if session.url != "wss://call.igap.net/" || session.peer_id != peer {
             return Err(Failure("invalid_transport_session"));
         }
-        *self.media_terminal.lock() = None;
         let mut options = self
             .identity
             .options(

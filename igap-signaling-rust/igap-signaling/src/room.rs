@@ -32,6 +32,23 @@ pub fn join(room: &str) -> Result<Vec<u8>, Error> {
 pub fn leave() -> Result<Vec<u8>, Error> {
     Ok(w::uint_field(2, 0)?)
 }
+/// Common Response.timestamp is a uint32 in the inspected schema. No clock
+/// units or ordering guarantee are inferred. Missing/invalid metadata is unknown.
+pub(crate) fn response_timestamp(fields: &w::Fields) -> Option<u32> {
+    let metadata = w::parse(w::bytes(fields, 1, 1024).ok()?).ok()?;
+    let value = w::number(&metadata, 2, u32::MAX as u64).ok()?;
+    u32::try_from(value).ok().filter(|value| *value != 0)
+}
+pub(crate) fn timestamp_order(incoming: Option<u32>, leave: Option<u32>) -> &'static str {
+    match (incoming, leave) {
+        (Some(incoming), Some(leave)) => match leave.cmp(&incoming) {
+            std::cmp::Ordering::Less => "earlier",
+            std::cmp::Ordering::Equal => "equal",
+            std::cmp::Ordering::Greater => "later",
+        },
+        _ => "unavailable",
+    }
+}
 pub fn response_id(fields: &w::Fields, n: u32) -> Result<String, Error> {
     let value = w::number(fields, n, u64::MAX)?;
     if value == 0 {
@@ -131,6 +148,31 @@ pub fn bound_token(fields: &w::Fields, self_id: &str, room: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn common_timestamp_is_bounded_and_only_compared_as_metadata() {
+        let response =
+            |metadata: Vec<u8>| w::parse(&w::bytes_field(1, &metadata).unwrap()).unwrap();
+        let timestamp = |n| response(w::uint_field(2, n).unwrap());
+        assert_eq!(response_timestamp(&timestamp(42)), Some(42));
+        assert_eq!(
+            response_timestamp(&timestamp(u32::MAX as u64)),
+            Some(u32::MAX)
+        );
+        for metadata in [
+            Vec::new(),
+            w::uint_field(2, 0).unwrap(),
+            w::uint_field(2, u32::MAX as u64 + 1).unwrap(),
+            w::string_field(2, "42", 2).unwrap(),
+            [w::uint_field(2, 42).unwrap(), w::uint_field(2, 43).unwrap()].concat(),
+        ] {
+            assert_eq!(response_timestamp(&response(metadata)), None);
+        }
+        assert_eq!(timestamp_order(Some(42), Some(41)), "earlier");
+        assert_eq!(timestamp_order(Some(42), Some(42)), "equal");
+        assert_eq!(timestamp_order(Some(42), Some(43)), "later");
+        assert_eq!(timestamp_order(None, Some(43)), "unavailable");
+        assert_eq!(timestamp_order(Some(42), None), "unavailable");
+    }
     #[test]
     fn validates_ids() {
         for bad in ["0", "01", "-1", "18446744073709551616"] {

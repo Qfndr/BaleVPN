@@ -55,6 +55,11 @@ atomic call-end handling. The added SHA256 digest identifies an accepted call
 without retaining its transport token. RSA operations and configuration remain
 unchanged; this refresh does not expand the RSA exception.
 
+The later service-leave diagnostic review refreshed `src/adapter.rs` and
+`src/room.rs` for bounded optional timestamp parsing and relative-order labels.
+These metadata changes leave RSA operations and call admission decisions
+unchanged.
+
 The release publication verifier remains stricter: it still requires zero raw
 vulnerability findings. This CI disposition does not authorize publication or
 silently alter that rule.
