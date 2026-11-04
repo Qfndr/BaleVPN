@@ -28,6 +28,18 @@
   "separateNetworksVerified": false,
   "operatorBillingVerified": false,
   "internationalOutageVerified": false,
+  "replayContinuityTrial": {
+    "scope": "One controlled call using two retained test accounts and a separate encrypted journal",
+    "verdict": "receiver_close_unconfirmed",
+    "receiverClosureVerified": false,
+    "resumeRequestSent": false,
+    "terminalReplayVerified": false,
+    "exactCleanupFallbackCompleted": true,
+    "pendingIntents": 0,
+    "originalSessionsUnchanged": true,
+    "labSignalingRestored": true,
+    "otpRequests": 0
+  },
   "fullDurationFollowup": {
     "sourceCommit": "cc301df1eea3f62556ecf025e7b96b1ad733c373",
     "kitArchiveSha256": "7a73d89bf6c1507bb683034950adeff5523709193c44a4fe6947264bcd14f23e",
