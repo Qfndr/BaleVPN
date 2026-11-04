@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>نسیم رضوان · BaleVPN</title>
+  <style>
+    @font-face{font-family:Vazirmatn;src:url('/fonts/Vazirmatn.woff2') format('woff2');font-display:swap}
+    @font-face{font-family:Inter;src:url('/fonts/InterVariable.woff2') format('woff2');font-display:swap}
+    :root{color-scheme:dark;--bg:#0c121c;--surface:#121c29;--input:#182434;--text:#edf3fc;--muted:#a4b5cb;--line:#2c3a50;--accent:#8db5ff;--action:#2b65c6;--good:#53d8b4;--bad:#ffabb6}
+    :root[data-theme=light]{color-scheme:light;--bg:#f3f6fb;--surface:#fff;--input:#f0f4fa;--text:#182a43;--muted:#526781;--line:#dbe4ef;--accent:#245cb9;--action:#245cb9;--good:#067451;--bad:#a42843}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font:15px/1.7 Inter,Vazirmatn,system-ui,sans-serif}
+    html[lang=fa] body{font-family:Vazirmatn,Inter,system-ui,sans-serif}
+    main{max-width:1000px;margin:auto;padding:24px 20px 44px}
+    header,nav,.actions,.section-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    header,.section-heading{justify-content:space-between}
+    header{padding-bottom:18px;border-bottom:1px solid var(--line)}
+    nav a{padding:6px 12px;border-radius:8px;color:var(--muted);text-decoration:none}
+    nav a[aria-current=page]{background:var(--input);color:var(--accent)}
+    h1,h2,p{margin:0}
+    h1{font-size:clamp(1.6rem,4vw,2rem);line-height:1.4}
+    h2{font-size:1.05rem}
+    .intro{margin:26px 0 18px}
+    .intro p,.muted{color:var(--muted)}
+    .tag{color:var(--accent);font-size:.8rem;font-weight:700}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+    section{padding:18px;border-radius:14px;border:1px solid var(--line);background:var(--surface);min-width:0}
+    form,.pairing,.fields{display:grid;gap:12px}
+    .fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+    form,.pairing{margin-top:14px}
+    label{display:grid;gap:5px;color:var(--muted);font-size:.9rem}
+    button,input,select,textarea{font:inherit;color:var(--text);border:1px solid var(--line);border-radius:9px;background:var(--input);min-height:42px;padding:8px 10px}
+    input,select,textarea{width:100%;min-width:0}
+    textarea{resize:vertical;min-height:64px}
+    button{cursor:pointer}
+    button:disabled{opacity:.5;cursor:default}
+    button.primary{background:var(--action);border-color:var(--action);color:#fff}
+    button.danger{color:var(--bad)}
+    a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+    .technical{direction:ltr;text-align:left;font-family:Inter,system-ui,sans-serif}
+    .status{display:inline-flex;align-items:center;gap:7px;border-radius:999px;background:var(--input);padding:4px 10px;font-size:.85rem}
+    .status::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor}
+    .status[data-tone=good]{color:var(--good)}
+    .status[data-tone=bad],#notice[data-error=true]{color:var(--bad)}
+    .status[data-tone=wait]{color:var(--accent)}
+    .connection{margin-bottom:14px}
+    .connection .actions:not([hidden]){margin-top:12px}
+    #notice:not(:empty){margin-top:12px}
+    [hidden]{display:none!important}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}}
+    @media(max-width:350px){.fields{grid-template-columns:1fr}}
+  </style>
+  <script src="/providers/nasim/ui.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <nav aria-label="پیام‌رسان" data-aria="messengers">
+      <a href="/" data-text="bale">بله</a>
+      <a href="/providers/igap/ui" data-text="igap">آی‌گپ</a>
+      <a href="/providers/nasim/ui" aria-current="page" data-text="nasim">نسیم رضوان</a>
+    </nav>
+    <div class="actions">
+      <button id="language" type="button" aria-label="زبان" data-aria="language">EN</button>
+      <button id="theme" type="button" data-text="theme">ظاهر</button>
+    </div>
+  </header>
+  <div class="intro">
+    <div class="tag" data-text="experimental">اتصال آزمایشی</div>
+    <h1 data-text="nasim">نسیم رضوان</h1>
+    <p data-text="scope">با نشست رمزگذاری‌شدهٔ موجود، یک تماس جفت‌شده برقرار کنید.</p>
+  </div>
+  <p id="setupHint" class="muted" hidden data-text="setup">بستهٔ تأییدشدهٔ نسیم و مخزن نشست را هنگام اجرای برنامه مشخص کنید.</p>
+  <section class="connection" id="connection" hidden>
+    <div class="section-heading">
+      <h2 data-text="connection">وضعیت تماس</h2>
+      <span id="status" class="status" role="status" aria-live="polite">آماده</span>
+    </div>
+    <p class="muted" id="detail"></p>
+    <p class="technical" id="proxy" hidden></p>
+    <div class="actions" id="callActions">
+      <button type="button" id="dial" class="primary" data-text="dial">تماس بگیر</button>
+      <button type="button" id="accept" class="primary" data-text="accept">پذیرش تماس</button>
+      <button type="button" id="stop" class="danger" data-text="stop">پایان و پاک‌سازی</button>
+    </div>
+  </section>
+  <div class="grid" id="workspace" hidden>
+    <section aria-labelledby="sessionTitle">
+      <h2 id="sessionTitle" data-text="session">نشست و نقش</h2>
+      <form id="startForm" autocomplete="off">
+        <div class="fields">
+          <label><span data-text="role">نقش</span><select name="role"><option value="client" data-text="client">کلاینت</option><option value="server" data-text="server">سرور</option></select></label>
+          <label><span data-text="slot">شمارهٔ حساب در مخزن</span><select name="slot"><option value="1">1</option><option value="2">2</option></select></label>
+        </div>
+        <label><span data-text="peer">شناسهٔ حساب طرف مقابل</span><input class="technical" name="peerUserId" type="text" inputmode="numeric" pattern="[1-9][0-9]{0,15}" maxlength="16" required></label>
+        <label id="portField"><span data-text="port">پورت SOCKS5 کلاینت</span><input class="technical" name="socksPort" type="number" min="1024" max="65535" value="1098" required></label>
+        <label id="passwordField"><span data-text="password">رمز مخزن نشست</span><input name="vaultPassword" type="password" minlength="12" maxlength="1024" required></label>
+        <button type="submit" id="start" class="primary" data-text="start">آماده‌سازی نشست</button>
+      </form>
+    </section>
+    <section aria-labelledby="pairTitle">
+      <h2 id="pairTitle" data-text="pairing">جفت‌سازی</h2>
+      <p id="pairHint" class="muted" data-text="pairHint">پس از آماده‌سازی نشست، گواهی عمومی هر سمت را در سمت دیگر وارد کنید.</p>
+      <div id="pairing" class="pairing" hidden>
+        <label><span data-text="ownCertificate">گواهی عمومی این سمت</span><textarea class="technical" id="ownCertificate" readonly rows="2"></textarea></label>
+        <button type="button" id="copy" data-text="copy">کپی گواهی</button>
+        <form id="trustForm">
+          <label><span data-text="peerCertificate">گواهی عمومی طرف مقابل</span><textarea class="technical" name="publicCertificate" maxlength="16384" rows="2" required></textarea></label>
+          <button type="submit" id="trust" class="primary" data-text="trust">تأیید گواهی</button>
+        </form>
+      </div>
+    </section>
+  </div>
+  <p id="notice" role="status" aria-live="polite"></p>
+</main>
+</body>
+</html>

@@ -52,6 +52,25 @@ The same-host result covers authenticated transfer and cleanup. Transfer on
 separate access networks, operator accounting, and behavior during an
 international outage still require separate measurements.
 
+### Opt-in app panel
+
+On the x64 Windows or Linux app, pass the extracted kit, trusted Node
+executable and retained vault using absolute paths. The app adds a Nasim tab
+to its local management page when those options are supplied.
+
+```bash
+./bale-vpn --headless --nasim-kit /path/to/extracted-kit \
+  --nasim-node /path/to/node --nasim-vault /path/to/encrypted-vault
+```
+
+Open the Nasim tab, select the role and vault slot, and enter the peer account
+ID and vault password. Use the public certificate shown on each endpoint to
+pair the two sides, then dial from the client and accept on the server.
+The process supervisor keeps the vault locked while its worker is running.
+Each start prepares a single call with a 90-second call budget and a fresh
+certificate. This panel uses retained sessions and the experimental
+asymmetric transport.
+
 DTLS/SRTP protects the media transport. QUIC adds independent certificate-pinned
 mutual authentication between the tunnel endpoints; a connected media call
 does not make the SOCKS proxy ready by itself. No microphone, camera or data
