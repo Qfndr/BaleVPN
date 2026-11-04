@@ -27,7 +27,7 @@
     "failed": 0,
     "skipped": 0,
     "regression": "A synthetic stale SSE config precedes the current HTTP reply. Both current cleanup identities survive duplicate and conflicting configs, and the original pair completes media negotiation.",
-    "newLiveCallsAfterCanonicalDecoderFix": 0
+    "newLiveCallsAfterCanonicalDecoderFix": 1
   },
   "canonicalResponseEvidence": {
     "officialSource": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
@@ -36,6 +36,23 @@
     "behavior": "msgGroupCall returns the HTTP response data. callRequest passes its callData and callUUID to updateCallLog, which sets the active UUID independently of the response event type.",
     "postConfigOnlyFixTrial": "A later single live trial kept active identities immutable but reported requestedCallBound false. Caller and callee selected different UUIDs. Both exact cleanup intents were acknowledged and removed. This established that config-event-only response binding was insufficient.",
     "decoderTests": "Typeless canonical data and callLog data bind the same private request UUID. Video, wrong-peer, duplicate-peer, extra-participant and malformed-UUID responses are rejected. No synthetic config event is emitted."
+  },
+  "postCanonicalDecoderTrial": {
+    "sourceCommit": "95b1bc8",
+    "helperSha256": "67fa2af5148ac0d2f0daa967851b916a2f60565ab56616bea24052fe0fb3dcd0",
+    "outgoingRequests": 1,
+    "requestedCallBound": true,
+    "callerRejectedWrongCallEvents": 4,
+    "calleeTerminalSignal": "bye",
+    "calleeTerminalActor": "peer",
+    "calleePhaseBeforeEnd": "incoming",
+    "explicitAcceptReached": false,
+    "authenticatedMediaReached": false,
+    "transferAttempted": false,
+    "endAcknowledged": true,
+    "encryptedIntentsRemaining": false,
+    "retryAttempted": false,
+    "remainingQuestion": "The receiver selected an incoming config and received a peer bye before acceptance. Incoming event/config timing and replay need separate examination; the outgoing canonical UUID is now bound."
   },
   "limits": [
     "The live sequence did not retain the raw two config UUIDs or their timestamps, so their origin as stale history is not proven.",
