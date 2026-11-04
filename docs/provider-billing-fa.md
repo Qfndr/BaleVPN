@@ -42,6 +42,45 @@
 
 `experiments/providers/billing-evidence.cjs` داده‌های دو سنجش همسان را کنترل و نسبت کسر مؤثر را با بازهٔ خطا محاسبه می‌کند. این ابزار همواره تأیید مسیر بستر، قرارداد تعرفه و کار در قطع اینترنت بین‌الملل را **تأییدنشده** نگه می‌دارد. سیاست تعریف‌شدهٔ «بدون مسیر جایگزین مستقیم خارجی» فعلاً معیار تحقیق است و هنوز در تونل محصول فعال نشده است.
 
+## اجرای ابزار مقایسه
+
+برای محاسبهٔ محلی، اندازه‌گیری‌ها را در یک فایل JSON با کلیدهای `provider`،
+`operator`، `direct` و `tunneled` ثبت کنید. نمونهٔ زیر ساختگی است. نام بسته
+یک برچسب محلی مشترک بین دو آزمون است و اطلاعات مشترک را در بر ندارد.
+
+```json
+{
+  "provider": "nasim",
+  "operator": "نمونه",
+  "direct": {
+    "settled": true, "backgroundTrafficIsolated": true,
+    "counterKind": "same_general_bundle_remaining_bytes", "bundleId": "test-a",
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "payloadBytes": 10000000, "onWireBytes": 11000000, "meterStepBytes": 1000,
+    "before": 100000000, "after": 90000000, "startedAtMs": 1000, "endedAtMs": 2000
+  },
+  "tunneled": {
+    "settled": true, "backgroundTrafficIsolated": true,
+    "counterKind": "same_general_bundle_remaining_bytes", "bundleId": "test-a",
+    "payloadSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "payloadBytes": 10000000, "onWireBytes": 12000000, "meterStepBytes": 1000,
+    "before": 90000000, "after": 87000000, "startedAtMs": 3000, "endedAtMs": 4000
+  }
+}
+```
+
+`before` و `after` ماندهٔ بسته به بایت‌اند. `meterStepBytes` کوچک‌ترین گام
+نمایش شمارنده به بایت است. `onWireBytes` را در هر دو اجرا از همان رابط و با
+دامنهٔ یکسان اندازه بگیرید. زمان‌ها باید بر حسب میلی‌ثانیه و از مبدأ یکسان باشند.
+اگر مصرف پس‌زمینه را جداگانه اندازه گرفته‌اید، برآورد و عدم‌قطعیت آن را برای
+هر بازه در `idleDebitBytes` و `idleUncertaintyBytes` ثبت کنید.
+
+از ریشهٔ پروژه اجرا کنید.
+
+```sh
+node -e "const fs=require('node:fs');const {compareBilling}=require('./experiments/providers/billing-evidence.cjs');console.log(JSON.stringify(compareBilling(JSON.parse(fs.readFileSync(process.argv[1],'utf8'))),null,2))" measurements.json
+```
+
 ## شرایط تکمیل
 
 تماس واقعی دو حساب، انتقال بایت سالم، احراز هویت متقابل، مسیر رلهٔ تأییدشده، سنجش مستقل مصرف و آزمون قطع مسیر خارجی لازم‌اند. اگر سرویس فقط ورود یا signaling ارائه کند، آن بستر به‌عنوان تونل آماده معرفی نمی‌شود. هیچ تعرفه یا مصونیت از محدودیت حساب تضمین نمی‌شود.
