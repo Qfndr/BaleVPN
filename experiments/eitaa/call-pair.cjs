@@ -1,12 +1,15 @@
 // Explicit local two-account lab. Pairing identities stay inside this process;
 // access hashes come from the calling account's protected target lookup.
 'use strict';
-const {CallSession,CallError}=require('./call-session.cjs'),{CallMedia}=require('./call-media.cjs'),{TargetResolver,binding}=require('./target-resolver.cjs');
+const {createHash}=require('node:crypto');
+const {CallSession,CallError,confirmsTerminal}=require('./call-session.cjs'),{CallClient}=require('./call-client.cjs'),{CallMedia}=require('./call-media.cjs'),{TargetResolver,binding}=require('./target-resolver.cjs');
 const profiles=require('./client-profile.cjs');
 const fail=reason=>{throw new CallError(reason);};
 const same=(a,b)=>a.userId===b.userId&&a.token===b.token&&a.imei===b.imei&&profiles.fromRecord(a)===profiles.fromRecord(b);
+const fingerprint=record=>createHash('sha256').update(JSON.stringify([record.userId,record.token,record.imei,profiles.fromRecord(record)])).digest('hex');
 class CallPair{
  #accounts;#executable;#open;#clientFactory;#resolver;#calls=new Map();#media=new Map();#records;#targets;#epoch=0;#busy=false;#phase='idle';#reason=null;#clientSlot=1;
+ #recovery=null;#recoveryClient=null;
  constructor(accounts,{executable,open,createClient,createAccountClient}={}){
   this.#accounts=accounts;this.#executable=executable;this.#open=open;this.#clientFactory=createClient;
   this.#resolver=new TargetResolver(accounts,{...createClient?{createCallClient:createClient}:{},...createAccountClient?{createAccountClient}:{}});
@@ -15,6 +18,7 @@ class CallPair{
  #pending(confirmedId){return [...this.#calls.values()].some(call=>call.remotePending&&(!confirmedId||call.state.callId!==confirmedId));}
  #clear(phase,reason=null,confirmedId){
   const uncertain=this.#phase==='uncertain'||this.#pending(confirmedId);
+  this.#recoveryClient?.close();this.#recoveryClient=null;
   this.#epoch++;this.#resolver.close();for(const call of this.#calls.values())call.close();for(const media of this.#media.values())media.close();this.#calls.clear();this.#media.clear();this.#targets=null;this.#records=null;this.#busy=false;
   this.#phase=uncertain?'uncertain':phase;this.#reason=uncertain?'call_end_uncertain':reason;
  }
@@ -51,11 +55,43 @@ class CallPair{
   if(![1,2].includes(slot))fail('invalid_call_target');if(this.#busy)fail('call_busy');
   const call=this.#calls.get(slot),callId=call?.state.callId;
   if(!callId){if(this.#pending()||this.#phase==='uncertain')fail('call_end_uncertain');this.#clear('ended');return {ended:true,remoteConfirmed:false};}
+  const checkpoint=call.terminalCheckpoint(),bindings=[1,2].map(target=>fingerprint(this.#records.get(target)));
   const epoch=this.#epoch;this.#busy=true;for(const media of this.#media.values())media.close();
   try{await call.hangUp();this.#guard(epoch);this.#clear('ended',null,callId);return {ended:true,remoteConfirmed:true};}
-  catch(e){if(epoch===this.#epoch)this.#clear('uncertain','call_end_uncertain');throw e instanceof CallError?e:new CallError('call_end_uncertain');}
+  catch(e){
+   if(epoch===this.#epoch){
+    const other=this.#calls.get(3-slot);
+    if(checkpoint&&(!other?.remotePending||other.state.callId===callId))this.#recovery={slot,checkpoint,bindings};
+    this.#clear('uncertain','call_end_uncertain');
+   }
+   throw e instanceof CallError?e:new CallError('call_end_uncertain');
+  }
+ }
+ async recover(){
+  if(this.#busy)fail('call_busy');
+  const recovery=this.#recovery;
+  if(this.#phase!=='uncertain'||!recovery)fail('call_end_uncertain');
+  const epoch=this.#epoch;
+  const records=()=>{
+   this.#guard(epoch);
+   const pair=[1,2].map(slot=>binding(this.#accounts.get(slot)));
+   if(pair.some((record,index)=>fingerprint(record)!==recovery.bindings[index]))fail('account_binding_changed');
+   return pair;
+  };
+  const record=records()[recovery.slot-1];
+  const client=this.#clientFactory?this.#clientFactory(record):new CallClient(record);
+  this.#busy=true;this.#recoveryClient=client;
+  try{
+   const {pts,date}=recovery.checkpoint.cursor;
+   const result=await client.request('updates.getDifference',{pts,date,qts:-1});
+   records();
+   if(!confirmsTerminal(result,recovery.checkpoint))fail('call_end_uncertain');
+   this.#recovery=null;this.#phase='ended';this.#reason=null;
+   return {ended:true,remoteConfirmed:true};
+  }catch(error){throw error instanceof CallError?error:new CallError('call_end_uncertain');}
+  finally{if(epoch===this.#epoch){client.close();this.#recoveryClient=null;this.#busy=false;}}
  }
  getCall(slot){const signaling=this.#calls.get(slot)?.state,media=this.#media.get(slot)?.state;return {provider:'eitaa',slot,phase:!signaling?this.#phase==='idle'?'idle':'ended':media?.phase==='failed'?'failed':media?.phase==='closed'?'ended':media?.ready?'connected':signaling.phase==='listening'?'ready':signaling.phase==='secure'?'negotiating':signaling.phase,signalingPhase:signaling?.phase||null,busy:!!signaling?.busy,callId:signaling?.callId||null,reason:media?.reason||signaling?.reason||null,media:media||null};}
- get state(){const accounts=[1,2].map(slot=>this.getCall(slot));return {available:!!this.#executable,canPrepare:this.#phase!=='uncertain'&&!this.#busy&&this.#calls.size===0,phase:accounts.length===2&&accounts.every(a=>a.phase==='connected')?'connected':accounts.some(a=>a.phase==='failed')?'failed':this.#phase,busy:this.#busy,reason:this.#reason,clientSlot:this.#clientSlot,accounts,liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
+ get state(){const accounts=[1,2].map(slot=>this.getCall(slot));return {available:!!this.#executable,canPrepare:this.#phase!=='uncertain'&&!this.#busy&&this.#calls.size===0,canRecover:this.#phase==='uncertain'&&!!this.#recovery&&!this.#busy,phase:accounts.length===2&&accounts.every(a=>a.phase==='connected')?'connected':accounts.some(a=>a.phase==='failed')?'failed':this.#phase,busy:this.#busy,reason:this.#reason,clientSlot:this.#clientSlot,accounts,liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
 }
 module.exports={CallPair};

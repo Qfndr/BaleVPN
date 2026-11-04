@@ -165,6 +165,24 @@ test('Eitaa media HTTP rejects injected trust/SDP, invalid slots and unsigned ac
  assert.equal((await request('/api/eitaa/media/prepare',{clientSlot:2,socksPort:1092})).status,200);assert.equal((await request('/api/eitaa/media/dial',{slot:3})).status,400);assert.equal((await request('/api/eitaa/media/dial',{slot:1,sdp:'private'})).status,400);
  await request('/api/eitaa/1/stop',{});const state=await(await request('/api/state')).json();assert.equal(state.eitaaMedia.phase,'ended');assert.ok(eitaaHarness.natives.every(n=>n.state.phase==='closed'));assert.equal(state.providerAccounts.eitaa[1].signedIn,true);
 },{eitaaNative:true}));
+test('Eitaa HTTP recovery accepts only an exact terminal event and never retries discard',()=>fixture(async({request,eitaaHarness})=>{
+ await eitaaLogin(request);
+ assert.equal((await request('/api/eitaa/media/recover',{})).status,400);
+ assert.equal((await request('/api/eitaa/media/prepare',{})).status,200);
+ assert.equal((await request('/api/eitaa/media/dial',{slot:1})).status,200);
+ const {api}=eitaaHarness,id=api.call.base.id;
+ api.override=({method})=>{if(method==='phone.discardCall')throw Object.assign(Error('fixture response lost'),{reason:'network_error'});};
+ assert.equal((await request('/api/eitaa/media/end',{slot:1})).status,400);
+ let state=(await(await request('/api/state')).json()).eitaaMedia;
+ assert.equal(state.canRecover,true);assert.equal(state.canPrepare,false);
+ assert.equal((await request('/api/eitaa/media/recover',{slot:2})).status,400);
+ assert.equal((await request('/api/eitaa/media/recover',{})).status,400);
+ api.queues.get(8000001).push({_:'updatePhoneCall',phone_call:{_:'phoneCallDiscarded',id}});
+ assert.deepEqual(await(await request('/api/eitaa/media/recover',{})).json(),{ok:true,ended:true,remoteConfirmed:true});
+ state=(await(await request('/api/state')).json()).eitaaMedia;
+ assert.equal(state.canRecover,false);assert.equal(state.canPrepare,true);
+ assert.equal(api.calls.filter(call=>call.method==='phone.discardCall').length,1);
+},{eitaaNative:true}));
 test('Rubika accounts seal private keys independently and restore without creating another login or touching the other providers',()=>fixture(async({request,dir,calls})=>{
  assert.equal((await request('/api/rubika/1/start',{country:'IR',phone:'09120000001'})).status,423);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});

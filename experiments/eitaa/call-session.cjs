@@ -206,8 +206,19 @@ class CallSession{
  stop(){this.#finish('stopped',null,true);}
  close(){this.stop();}
  get remotePending(){return this.#remotePending;}
+ terminalCheckpoint(){
+  return this.#remotePending&&this.#call&&this.#cursor?
+   {callId:this.#call.id,cursor:{...this.#cursor}}:null;
+ }
  get state(){return {provider:'eitaa',phase:this.#phase,reason:this.#reason,listening:!!this.#client,callId:this.#call?String(this.#call.id):null,peerId:this.#peer?String(this.#peer):null,
   direction:this.#call?(this.#outgoing?'outgoing':'incoming'):null,keyNegotiated:!!this.#cipher,busy:this.#working,queued:this.#queue.length,ignoredEvents:this.#ignored,
   mediaConnected:false,peerAuthenticated:false,proxyReady:false,providerPathVerified:false,billingVerified:false};}
 }
-module.exports={CallSession,CallError};
+function confirmsTerminal(result,{callId,cursor:before}){
+ if(result?._!=='updates.difference'||!Array.isArray(result.other_updates)||result.other_updates.length>256)return false;
+ const after=cursor(result.state);
+ if(['pts','qts','date','seq'].some(key=>after[key]<before[key]))return false;
+ return result.other_updates.some(update=>update?._==='updatePhoneCall'&&
+  update.phone_call?._==='phoneCallDiscarded'&&update.phone_call.id===callId);
+}
+module.exports={CallSession,CallError,confirmsTerminal};

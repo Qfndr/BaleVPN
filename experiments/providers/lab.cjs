@@ -118,13 +118,14 @@ async function startLab({directory,port=37131,bridgeExecutable,openBridge,nasimB
     if(action==='dial'&&rubikaCalls.getCall(body.slot).phase==='ready')await ensureCallPrivacy('rubika');
     const result=action==='prepare'?await rubikaCalls.prepare(body):await rubikaCalls[action](body.slot);return json({ok:true,...result});
    }
-   const eitaaMedia=url.pathname.match(/^\/api\/eitaa\/media\/(prepare|dial|accept|end|reset)$/);
+   const eitaaMedia=url.pathname.match(/^\/api\/eitaa\/media\/(prepare|dial|accept|end|reset|recover)$/);
    if(eitaaMedia){
     if(!vault.unlocked)throw error('vault_locked',423);if(!eitaaCalls.state.available)throw error('native_bridge_unavailable',503);
-    const action=eitaaMedia[1],allowed=action==='prepare'?['clientSlot','socksPort','throughput']:action==='reset'?[]:['slot'];
+    const action=eitaaMedia[1],allowed=action==='prepare'?['clientSlot','socksPort','throughput']:['reset','recover'].includes(action)?[]:['slot'];
     if(Object.keys(body).some(k=>!allowed.includes(k)))throw error('invalid_media_options');
     if([1,2].some(slot=>eitaaOperations.has(slot)||eitaaSessions.get(slot).state.busy)&&!['reset','end'].includes(action))throw error('account_busy',409);
     if(action==='reset'){eitaaCalls.reset();return json({ok:true});}
+    if(action==='recover')return json({ok:true,...await eitaaCalls.recover()});
     if(!['prepare','reset'].includes(action)&&![1,2].includes(body.slot))throw error('invalid_call_target');
     if(action==='dial'&&eitaaCalls.getCall(body.slot).phase==='ready')await ensureCallPrivacy('eitaa');
     const result=action==='prepare'?await eitaaCalls.prepare(body):await eitaaCalls[action](body.slot);return json({ok:true,...result});

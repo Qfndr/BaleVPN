@@ -1,6 +1,7 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {CallPair}=require('../experiments/eitaa/call-pair.cjs'),{fixture}=require('./eitaa-lab-call-fixture.cjs');
+const {state:serviceState}=require('./eitaa-call-fixtures.cjs');
 function create(t,{open}={}){const f=fixture(),accounts=new Map([1,2].map(slot=>[slot,{signed:true,get state(){return {provider:'eitaa',signedIn:this.signed,selfConfirmed:this.signed,userId:String(8000000+slot)};},exportSession(){return {provider:'eitaa',userId:String(8000000+slot),token:'fixture-eitaa-token-'+slot,imei:(slot===1?'0123456789abcde':'fedcba987654321')+'__web'};}}])),pair=new CallPair(accounts,{executable:'fixture',open:open?()=>open(f):f.open,createClient:f.createClient,createAccountClient:f.createAccountClient});t.after(()=>pair.invalidate());return {...f,accounts,pair};}
 test('local pair resolves caller-specific targets, privately pairs fresh identities and requires explicit call and acceptance',async t=>{
  const f=create(t);await f.pair.prepare({clientSlot:1,socksPort:1091});assert.equal(f.pair.state.phase,'ready');assert.equal(f.api.calls.some(c=>c.method==='phone.requestCall'),false);f.api.override=({self,method,input})=>{if(method==='phone.requestCall')assert.equal(input.user_id.access_hash,-1001n);};await f.pair.dial(1);assert.equal(f.pair.getCall(2).phase,'ringing');assert.equal(f.api.calls.some(c=>c.method==='phone.acceptCall'),false);await f.pair.accept(2);assert.equal(f.pair.state.phase,'connected');assert.equal(f.pair.getCall(1).media.socksAddress,'127.0.0.1:1091');assert.equal(f.pair.getCall(2).media.proxyReady,false);assert.equal(f.pair.getCall(2).media.serverReady,true);
@@ -15,6 +16,32 @@ test('unconfirmed remote end still closes local media and preserves a visible un
  const f=create(t);await f.pair.prepare();await f.pair.dial(1);await f.pair.accept(2);f.api.override=({method})=>{if(method==='phone.discardCall')throw Object.assign(Error('private backend detail'),{reason:'network_error'});};await assert.rejects(f.pair.end(1));assert.equal(f.pair.state.phase,'uncertain');assert.equal(f.pair.state.reason,'call_end_uncertain');assert.ok(f.natives.every(n=>n.state.phase==='closed'));assert.ok(!JSON.stringify(f.pair.state).includes('private backend'));
  assert.equal(f.pair.state.canPrepare,false);assert.throws(()=>f.pair.reset(),{reason:'call_end_uncertain'});
  await assert.rejects(f.pair.prepare(),{reason:'call_end_uncertain'});
+ assert.equal(f.pair.state.canRecover,true);
+ const id=f.api.call.base.id,discarded=id=>({_:'updatePhoneCall',phone_call:{_:'phoneCallDiscarded',id}});
+ for(const result of [{_:'updates.differenceEmpty'},{_:'updates.differenceTooLong',pts:30},
+  {_:'updates.differenceSlice',other_updates:[discarded(id)]},
+  {_:'updates.difference',state:{...serviceState,pts:0,seq:0},other_updates:[discarded(id)]},
+  {_:'updates.difference',state:{...serviceState,pts:30,seq:30},other_updates:[discarded(id+1n)]}]){
+  f.api.override=({method})=>{assert.equal(method,'updates.getDifference');return result;};
+  await assert.rejects(f.pair.recover(),{reason:'call_end_uncertain'});
+  assert.equal(f.pair.state.canPrepare,false);
+ }
+ f.api.override=({method,input})=>{
+  assert.equal(method,'updates.getDifference');assert.equal(input.date,serviceState.date);
+  return {_:'updates.difference',state:{...serviceState,pts:30,seq:30},other_updates:[discarded(id)]};
+ };
+ f.accounts.get(2).signed=false;
+ const before=f.api.calls.length;await assert.rejects(f.pair.recover(),{reason:'both_accounts_required'});
+ assert.equal(f.api.calls.length,before);
+ f.accounts.get(2).signed=true;
+ const account=f.accounts.get(2),exportSession=account.exportSession;
+ account.exportSession=()=>({...exportSession(),token:'fixture-replacement-token'});
+ await assert.rejects(f.pair.recover(),{reason:'account_binding_changed'});
+ assert.equal(f.api.calls.length,before);
+ account.exportSession=exportSession;
+ assert.deepEqual(await f.pair.recover(),{ended:true,remoteConfirmed:true});
+ assert.equal(f.pair.state.canPrepare,true);assert.equal(f.pair.state.canRecover,false);
+ assert.equal(f.api.calls.filter(call=>call.method==='phone.discardCall').length,1);
 });
 test('in-flight dial rejects end and reset, and a lost request response fences another call',async t=>{
  const f=create(t);await f.pair.prepare();
@@ -32,6 +59,8 @@ test('in-flight dial rejects end and reset, and a lost request response fences a
  }finally{release();}
  await assert.rejects(dialing,{reason:'network_error'});
  assert.equal(f.pair.state.phase,'uncertain');assert.equal(f.pair.state.canPrepare,false);
+ assert.equal(f.pair.state.canRecover,false);
+ await assert.rejects(f.pair.recover(),{reason:'call_end_uncertain'});
  f.pair.invalidate();assert.equal(f.pair.state.phase,'uncertain');
  await assert.rejects(f.pair.prepare(),{reason:'call_end_uncertain'});
  assert.equal(f.api.calls.filter(call=>call.method==='phone.requestCall').length,1);
