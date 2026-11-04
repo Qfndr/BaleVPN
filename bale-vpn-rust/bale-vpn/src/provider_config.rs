@@ -53,6 +53,7 @@ pub struct NativeProviderConfig {
     pub trusted_certificates: Vec<String>,
     pub throughput: bool,
     pub relay_only: bool,
+    pub auto_reconnect: bool,
 }
 pub type Config = NativeProviderConfig;
 
@@ -76,6 +77,8 @@ struct RawConfig {
     throughput: bool,
     #[serde(default)]
     relay_only: bool,
+    #[serde(default)]
+    auto_reconnect: bool,
 }
 impl Default for NativeProviderConfig {
     fn default() -> Self {
@@ -88,6 +91,7 @@ impl Default for NativeProviderConfig {
             trusted_certificates: vec![],
             throughput: false,
             relay_only: false,
+            auto_reconnect: false,
         }
     }
 }
@@ -103,6 +107,7 @@ impl TryFrom<RawConfig> for NativeProviderConfig {
             trusted_certificates: raw.trusted_certificates,
             throughput: raw.throughput,
             relay_only: raw.relay_only,
+            auto_reconnect: raw.auto_reconnect,
         };
         result.validate()?;
         Ok(result)
@@ -301,6 +306,7 @@ mod tests {
         assert_eq!(config.validate_ready(), Err(ConfigError::NotReady));
         assert!(!config.throughput);
         assert!(!config.relay_only);
+        assert!(!config.auto_reconnect);
         assert_eq!(config.socks5_port, 18080);
         let copy: Config = serde_json::from_value(serde_json::to_value(config).unwrap()).unwrap();
         assert!(copy.mode.is_none() && copy.peer_id.is_none());
@@ -310,11 +316,13 @@ mod tests {
         let legacy = serde_json::json!({"format":1,"provider":"igap","throughput":true});
         let mut config: Config = serde_json::from_value(legacy).unwrap();
         assert!(!config.relay_only);
+        assert!(!config.auto_reconnect);
+        config.auto_reconnect = true;
         config.relay_only = true;
         let encoded = serde_json::to_value(config).unwrap();
         assert_eq!(encoded["relayOnly"], true);
         let restored: Config = serde_json::from_value(encoded).unwrap();
-        assert!(restored.relay_only && restored.throughput);
+        assert!(restored.relay_only && restored.throughput && restored.auto_reconnect);
         assert!(serde_json::from_value::<Config>(serde_json::json!({
             "format":1,"provider":"igap","relayOnly":"true"
         })).is_err());

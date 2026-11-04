@@ -228,10 +228,11 @@ mod tests {
             reopened.record().unwrap().unwrap().token,
             "fixture-private-token"
         );
-        let config = Config { relay_only: true, ..Config::default() };
+        let config = Config { relay_only: true, auto_reconnect: true, ..Config::default() };
         store.save_config(&config).unwrap();
         assert_eq!(store.config().unwrap().socks5_port, 18080);
-        assert!(Store::open(dir.path()).unwrap().config().unwrap().relay_only);
+        let restored = Store::open(dir.path()).unwrap().config().unwrap();
+        assert!(restored.relay_only && restored.auto_reconnect);
     }
     #[test]
     fn failed_rotation_keeps_private_pending_record_for_local_retry() {

@@ -40,7 +40,7 @@ test('iGap visible labels, tooltips and accessible controls have Persian and Eng
 
 test('iGap connection failures explain media, authentication, storage and port errors in Persian',()=>{
  const context=providerTranslations();
- for(const key of ['auth_expired','authentication_timeout','media_failed','media_closed','signaling_disconnected','proxy_bind_failed','provider_storage_failed','invalid_response']){
+ for(const key of ['auth_expired','authentication_timeout','media_failed','media_closed','signaling_disconnected','proxy_bind_failed','provider_storage_failed','invalid_response','call_rejected','call_timeout','call_network_error']){
   assert.match(context.errors[key]?.[0]||'',/[آ-ی]/,key);
   assert.ok(context.errors[key]?.[1]?.trim(),key);
  }
