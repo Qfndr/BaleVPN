@@ -13,14 +13,12 @@ jobs:
   regression:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      CARGO_HOME: ${{ runner.temp }}/ice-cargo
-      CARGO_TARGET_DIR: ${{ runner.temp }}/ice-target
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v4
+      - name: Configure isolated temporary storage
+        shell: bash
+        run: |
+          printf '%s\n' "CARGO_HOME=$RUNNER_TEMP/ice-cargo" "CARGO_TARGET_DIR=$RUNNER_TEMP/ice-target" "TEMP=$RUNNER_TEMP" "TMP=$RUNNER_TEMP" "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify source provenance and prepare original-code control
         run: python3 scripts/check-ice-nomination-backport.py --prepare-baseline "$RUNNER_TEMP/ice-original-control"
