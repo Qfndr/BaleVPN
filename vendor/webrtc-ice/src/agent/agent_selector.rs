@@ -17,6 +17,56 @@ use crate::control::*;
 use crate::priority::*;
 use crate::use_candidate::*;
 
+/// Counter-only snapshot. No candidate addresses, credentials, or IDs.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct NominationDiagnostic {
+    pub(super) accepted: u64,
+    pub(super) pending: u32,
+    pub(super) selected: bool,
+    pub(super) truncated: bool,
+}
+impl AgentInternal {
+    pub(super) async fn nomination_diagnostic(&self) -> NominationDiagnostic {
+        let pairs = self.agent_conn.checklist.lock().await;
+        let mut accepted = 0u64;
+        let mut pending = 0u32;
+        for pair in pairs.iter().take(4096) {
+            accepted =
+                accepted.saturating_add(pair.accepted_use_candidates.load(Ordering::Relaxed));
+            if pair.nominate_on_binding_success.load(Ordering::SeqCst)
+                && pair.state.load(Ordering::SeqCst) != CandidatePairState::Succeeded as u8
+                && !pair.nominated.load(Ordering::SeqCst)
+            {
+                pending += 1;
+            }
+        }
+        NominationDiagnostic {
+            accepted,
+            pending,
+            selected: self.agent_conn.get_selected_pair().is_some(),
+            truncated: pairs.len() > 4096,
+        }
+    }
+    async fn trace_nomination(&self, event: &'static str) {
+        if !log::log_enabled!(target: "webrtc_ice::nomination", log::Level::Trace) {
+            return;
+        }
+        if self
+            .nomination_trace_events
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                (count < 64).then_some(count.saturating_add(1))
+            })
+            .is_err()
+        {
+            return;
+        }
+        let snapshot = self.nomination_diagnostic().await;
+        log::trace!(target: "webrtc_ice::nomination",
+            "event={} accepted={} pending={} selected={} truncated={}",
+            event, snapshot.accepted, snapshot.pending, snapshot.selected, snapshot.truncated);
+    }
+}
+
 #[async_trait]
 trait ControllingSelector {
     async fn start(&self);
@@ -485,6 +535,8 @@ impl ControlledSelector for AgentInternal {
             );
 
             if let Some(p) = self.find_pair(local, remote).await {
+                let was_pending = p.nominate_on_binding_success.load(Ordering::SeqCst)
+                    && p.state.load(Ordering::SeqCst) != CandidatePairState::Succeeded as u8;
                 p.state
                     .store(CandidatePairState::Succeeded as u8, Ordering::SeqCst);
                 log::trace!("Found valid candidate pair: {}", p);
@@ -493,6 +545,9 @@ impl ControlledSelector for AgentInternal {
                     && self.agent_conn.get_selected_pair().is_none()
                 {
                     self.set_selected_pair(Some(Arc::clone(&p))).await;
+                }
+                if was_pending {
+                    self.trace_nomination("check_succeeded").await;
                 }
             } else {
                 // This shouldn't happen
@@ -519,6 +574,13 @@ impl ControlledSelector for AgentInternal {
 
         if let Some(p) = self.find_pair(local, remote).await {
             let use_candidate = m.contains(ATTR_USE_CANDIDATE);
+            let first_nomination = use_candidate
+                && p.accepted_use_candidates
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                        Some(count.saturating_add(1))
+                    })
+                    .unwrap_or(u64::MAX)
+                    == 0;
             if use_candidate {
                 // https://tools.ietf.org/html/rfc8445#section-7.3.1.5
 
@@ -543,6 +605,9 @@ impl ControlledSelector for AgentInternal {
                 }
             }
 
+            if first_nomination {
+                self.trace_nomination("accepted").await;
+            }
             self.send_binding_success(m, local, remote).await;
             self.ping_candidate(local, remote).await;
         }

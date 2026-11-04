@@ -1,32 +1,124 @@
+--- webrtc-ice-0.11.0/src/agent/agent_internal.rs
++++ webrtc-ice-0.11.0-patched/src/agent/agent_internal.rs
+@@ -49,6 +49,7 @@
+     pub(crate) nominated_pair: Mutex<Option<Arc<CandidatePair>>>,
+ 
+     pub(crate) connection_state: AtomicU8, //ConnectionState,
++    pub(crate) nomination_trace_events: AtomicU8,
+ 
+     pub(crate) started_ch_tx: Mutex<Option<broadcast::Sender<()>>>,
+ 
+@@ -120,6 +121,7 @@
+             nominated_pair: Mutex::new(None),
+ 
+             connection_state: AtomicU8::new(ConnectionState::New as u8),
++            nomination_trace_events: AtomicU8::new(0),
+ 
+             insecure_skip_verify: config.insecure_skip_verify,
+ 
 --- webrtc-ice-0.11.0/src/candidate/mod.rs
 +++ webrtc-ice-0.11.0-patched/src/candidate/mod.rs
-@@ -234,6 +234,7 @@
+@@ -21,7 +21,7 @@
+ 
+ use async_trait::async_trait;
+ use candidate_base::*;
+-use portable_atomic::{AtomicBool, AtomicU16, AtomicU8};
++use portable_atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8};
+ use serde::{Deserialize, Serialize};
+ use tokio::sync::{broadcast, Mutex};
+ 
+@@ -234,6 +234,8 @@
      pub(crate) binding_request_count: AtomicU16,
      pub(crate) state: AtomicU8, // convert it to CandidatePairState,
      pub(crate) nominated: AtomicBool,
 +    pub(crate) nominate_on_binding_success: AtomicBool,
++    pub(crate) accepted_use_candidates: AtomicU64,
  }
  
  impl Default for CandidatePair {
-@@ -245,6 +246,7 @@
+@@ -245,6 +247,8 @@
              state: AtomicU8::new(CandidatePairState::Waiting as u8),
              binding_request_count: AtomicU16::new(0),
              nominated: AtomicBool::new(false),
 +            nominate_on_binding_success: AtomicBool::new(false),
++            accepted_use_candidates: AtomicU64::new(0),
          }
      }
  }
-@@ -297,6 +299,7 @@
+@@ -297,6 +301,8 @@
              state: AtomicU8::new(CandidatePairState::Waiting as u8),
              binding_request_count: AtomicU16::new(0),
              nominated: AtomicBool::new(false),
 +            nominate_on_binding_success: AtomicBool::new(false),
++            accepted_use_candidates: AtomicU64::new(0),
          }
      }
  
 --- webrtc-ice-0.11.0/src/agent/agent_selector.rs
 +++ webrtc-ice-0.11.0-patched/src/agent/agent_selector.rs
-@@ -488,6 +488,12 @@
+@@ -16,6 +16,56 @@
+ use crate::control::*;
+ use crate::priority::*;
+ use crate::use_candidate::*;
++
++/// Counter-only snapshot. No candidate addresses, credentials, or IDs.
++#[derive(Debug, PartialEq, Eq)]
++pub(super) struct NominationDiagnostic {
++    pub(super) accepted: u64,
++    pub(super) pending: u32,
++    pub(super) selected: bool,
++    pub(super) truncated: bool,
++}
++impl AgentInternal {
++    pub(super) async fn nomination_diagnostic(&self) -> NominationDiagnostic {
++        let pairs = self.agent_conn.checklist.lock().await;
++        let mut accepted = 0u64;
++        let mut pending = 0u32;
++        for pair in pairs.iter().take(4096) {
++            accepted =
++                accepted.saturating_add(pair.accepted_use_candidates.load(Ordering::Relaxed));
++            if pair.nominate_on_binding_success.load(Ordering::SeqCst)
++                && pair.state.load(Ordering::SeqCst) != CandidatePairState::Succeeded as u8
++                && !pair.nominated.load(Ordering::SeqCst)
++            {
++                pending += 1;
++            }
++        }
++        NominationDiagnostic {
++            accepted,
++            pending,
++            selected: self.agent_conn.get_selected_pair().is_some(),
++            truncated: pairs.len() > 4096,
++        }
++    }
++    async fn trace_nomination(&self, event: &'static str) {
++        if !log::log_enabled!(target: "webrtc_ice::nomination", log::Level::Trace) {
++            return;
++        }
++        if self
++            .nomination_trace_events
++            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
++                (count < 64).then_some(count.saturating_add(1))
++            })
++            .is_err()
++        {
++            return;
++        }
++        let snapshot = self.nomination_diagnostic().await;
++        log::trace!(target: "webrtc_ice::nomination",
++            "event={} accepted={} pending={} selected={} truncated={}",
++            event, snapshot.accepted, snapshot.pending, snapshot.selected, snapshot.truncated);
++    }
++}
+ 
+ #[async_trait]
+ trait ControllingSelector {
+@@ -485,9 +535,20 @@
+             );
+ 
+             if let Some(p) = self.find_pair(local, remote).await {
++                let was_pending = p.nominate_on_binding_success.load(Ordering::SeqCst)
++                    && p.state.load(Ordering::SeqCst) != CandidatePairState::Succeeded as u8;
                  p.state
                      .store(CandidatePairState::Succeeded as u8, Ordering::SeqCst);
                  log::trace!("Found valid candidate pair: {}", p);
@@ -36,10 +128,27 @@
 +                {
 +                    self.set_selected_pair(Some(Arc::clone(&p))).await;
 +                }
++                if was_pending {
++                    self.trace_nomination("check_succeeded").await;
++                }
              } else {
                  // This shouldn't happen
                  log::error!("Success response from invalid candidate pair");
-@@ -524,7 +530,6 @@
+@@ -513,6 +574,13 @@
+ 
+         if let Some(p) = self.find_pair(local, remote).await {
+             let use_candidate = m.contains(ATTR_USE_CANDIDATE);
++            let first_nomination = use_candidate
++                && p.accepted_use_candidates
++                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
++                        Some(count.saturating_add(1))
++                    })
++                    .unwrap_or(u64::MAX)
++                    == 0;
+             if use_candidate {
+                 // https://tools.ietf.org/html/rfc8445#section-7.3.1.5
+ 
+@@ -524,7 +592,6 @@
                      if self.agent_conn.get_selected_pair().is_none() {
                          self.set_selected_pair(Some(Arc::clone(&p))).await;
                      }
@@ -47,7 +156,7 @@
                  } else {
                      // If the received Binding request triggered a new check to be
                      // enqueued in the triggered-check queue (Section 7.3.1.4), once the
-@@ -534,12 +539,12 @@
+@@ -534,12 +601,15 @@
                      // MUST remove the candidate pair from the valid list, set the
                      // candidate pair state to Failed, and set the checklist state to
                      // Failed.
@@ -60,6 +169,9 @@
 -            }
 +            }
 +
++            if first_nomination {
++                self.trace_nomination("accepted").await;
++            }
 +            self.send_binding_success(m, local, remote).await;
 +            self.ping_candidate(local, remote).await;
          }

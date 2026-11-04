@@ -143,3 +143,72 @@ async fn controlled_early_nomination_rejects_invalid_integrity_before_selector()
     assert!(agent.agent_conn.get_selected_pair().is_none());
     Ok(())
 }
+// Nomination diagnostics regression below.
+#[tokio::test]
+async fn nomination_diagnostics_count_only_authenticated_requests_and_pending_checks() -> Result<()> {
+    let (agent, _packets, local, remote) = negative_fixture()?;
+    {
+        let mut credentials = agent.ufrag_pwd.lock().await;
+        credentials.local_ufrag = "local-fixture".into();
+        credentials.remote_ufrag = "remote-fixture".into();
+        credentials.local_pwd = "local".into();
+        credentials.remote_pwd = "remote".into();
+    }
+    agent.add_pair(local.clone(), remote.clone()).await;
+    agent
+        .remote_candidates
+        .lock()
+        .await
+        .insert(remote.network_type(), vec![remote.clone()]);
+    let request = |password: &str| -> Result<Message> {
+        let mut message = Message::new();
+        message.build(&[
+            Box::new(BINDING_REQUEST),
+            Box::new(TransactionId::new()),
+            Box::new(Username::new(
+                ATTR_USERNAME,
+                "local-fixture:remote-fixture".into(),
+            )),
+            Box::new(UseCandidateAttr::new()),
+            Box::new(AttrControlling(7)),
+            Box::new(PriorityAttr(remote.priority())),
+            Box::new(MessageIntegrity::new_short_term_integrity(
+                password.to_owned(),
+            )),
+            Box::new(FINGERPRINT),
+        ])?;
+        Ok(message)
+    };
+    let mut invalid = request("wrong")?;
+    agent.handle_inbound(&mut invalid, &local, remote.addr()).await;
+    let snapshot = agent.nomination_diagnostic().await;
+    assert_eq!(
+        (snapshot.accepted, snapshot.pending, snapshot.selected),
+        (0, 0, false),
+    );
+    for _ in 0..2 {
+        let mut valid = request("local")?;
+        agent.handle_inbound(&mut valid, &local, remote.addr()).await;
+    }
+    let snapshot = agent.nomination_diagnostic().await;
+    assert_eq!(
+        (snapshot.accepted, snapshot.pending, snapshot.selected),
+        (2, 1, false),
+    );
+    assert!(!snapshot.truncated);
+    let transaction = agent.pending_binding_requests.lock().await[0].transaction_id;
+    let mut success = Message::new();
+    success.build(&[
+        Box::new(BINDING_SUCCESS),
+        Box::new(transaction),
+        Box::new(MessageIntegrity::new_short_term_integrity("remote".into())),
+        Box::new(FINGERPRINT),
+    ])?;
+    agent.handle_inbound(&mut success, &local, remote.addr()).await;
+    let snapshot = agent.nomination_diagnostic().await;
+    assert_eq!(
+        (snapshot.accepted, snapshot.pending, snapshot.selected),
+        (2, 0, true),
+    );
+    Ok(())
+}

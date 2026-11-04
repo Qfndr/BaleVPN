@@ -16,11 +16,13 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 VENDOR = ROOT / "vendor" / "webrtc-ice"
-PRODUCTION = ("src/candidate/mod.rs", "src/agent/agent_selector.rs")
+PRODUCTION = ("src/candidate/mod.rs", "src/agent/agent_selector.rs", "src/agent/agent_internal.rs")
 BASE_SHA256 = "4d4f0ca6d4df8d1bdd34eece61b51b62540840b7a000397bcfb53a7bfcf347c8"
 UPSTREAM_SHA256 = "69cb13fd1a373e68addc4bba0c8ca058627518e54342583d024bdcbb8ae5d97d"
 TEST_PATH = "src/agent/agent_nomination_test.rs"
-TEST_SHA256 = "b0906d3b6d2f505263c8a201a5df5495a1f0b9a98783f18589b1933e310903ed"
+TEST_SHA256 = "e8cb2ab9a75f40d03f4cb5e57c5e979f7374e9ae40ee3292910ccc76d9f94c62"
+BASE_TEST_SHA256 = "b0906d3b6d2f505263c8a201a5df5495a1f0b9a98783f18589b1933e310903ed"
+DIAGNOSTIC_TEST_MARKER = b"// Nomination diagnostics regression below.\n"
 ADDITIONS = {"PATCH-PROVENANCE.json", "PENDING-NOMINATION.patch", "PATCH-NOTES.md", TEST_PATH}
 
 
@@ -104,6 +106,13 @@ def main():
         shutil.copytree(VENDOR, target, ignore=shutil.ignore_patterns("target", ".git"))
         for path in PRODUCTION:
             (target / path).write_bytes(original.extractfile(f"webrtc-ice-0.11.0/{path}").read())
+        # The original-code control retains the original nomination regression,
+        # while additive diagnostics tests require the patched implementation.
+        test_source = (VENDOR / TEST_PATH).read_bytes()
+        assert test_source.count(DIAGNOSTIC_TEST_MARKER) == 1
+        baseline_tests = test_source.split(DIAGNOSTIC_TEST_MARKER)[0]
+        assert digest(baseline_tests) == BASE_TEST_SHA256
+        (target / TEST_PATH).write_bytes(baseline_tests)
     print("Verified both crate archives and preserved source; original-code control prepared.")
 
 

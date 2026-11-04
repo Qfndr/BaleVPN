@@ -21,7 +21,7 @@ use std::time::SystemTime;
 
 use async_trait::async_trait;
 use candidate_base::*;
-use portable_atomic::{AtomicBool, AtomicU16, AtomicU8};
+use portable_atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, Mutex};
 
@@ -235,6 +235,7 @@ pub struct CandidatePair {
     pub(crate) state: AtomicU8, // convert it to CandidatePairState,
     pub(crate) nominated: AtomicBool,
     pub(crate) nominate_on_binding_success: AtomicBool,
+    pub(crate) accepted_use_candidates: AtomicU64,
 }
 
 impl Default for CandidatePair {
@@ -247,6 +248,7 @@ impl Default for CandidatePair {
             binding_request_count: AtomicU16::new(0),
             nominated: AtomicBool::new(false),
             nominate_on_binding_success: AtomicBool::new(false),
+            accepted_use_candidates: AtomicU64::new(0),
         }
     }
 }
@@ -300,6 +302,7 @@ impl CandidatePair {
             binding_request_count: AtomicU16::new(0),
             nominated: AtomicBool::new(false),
             nominate_on_binding_success: AtomicBool::new(false),
+            accepted_use_candidates: AtomicU64::new(0),
         }
     }
 

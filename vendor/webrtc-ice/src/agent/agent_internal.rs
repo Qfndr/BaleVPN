@@ -49,6 +49,7 @@ pub struct AgentInternal {
     pub(crate) nominated_pair: Mutex<Option<Arc<CandidatePair>>>,
 
     pub(crate) connection_state: AtomicU8, //ConnectionState,
+    pub(crate) nomination_trace_events: AtomicU8,
 
     pub(crate) started_ch_tx: Mutex<Option<broadcast::Sender<()>>>,
 
@@ -120,6 +121,7 @@ impl AgentInternal {
             nominated_pair: Mutex::new(None),
 
             connection_state: AtomicU8::new(ConnectionState::New as u8),
+            nomination_trace_events: AtomicU8::new(0),
 
             insecure_skip_verify: config.insecure_skip_verify,
 

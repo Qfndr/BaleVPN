@@ -22,16 +22,22 @@
       "path": "src/candidate/mod.rs",
       "originalSha256": "d6952cbf56d28d22c82feec308d2c0a2c799ba1e5079e71fca61fca0f7b9585e",
       "upstream014Sha256": "20bd5450da0e035ef77ef6c44b11bd004d8b9a1f4ce443a9b2813172f6ecfc79",
-      "patchedSha256": "20bd5450da0e035ef77ef6c44b11bd004d8b9a1f4ce443a9b2813172f6ecfc79"
+      "patchedSha256": "bfc960bbdff125226c1991178a61a5a073278e59efb98218fd3f18e3020e9961"
     },
     {
       "path": "src/agent/agent_selector.rs",
       "originalSha256": "b516689fa3727235879365ab64fcac3f31afe379ae376692a1dc2e010ac5c89b",
       "upstream014Sha256": "ae09174755df9631a3baa59dd817e288c40d4bacf462ba5baeca97eeafcb4f8a",
-      "patchedSha256": "3a0e9055916c31d27cbcbdb9879e8bd0955dac0be47b37cc85802544e0d79d3b"
+      "patchedSha256": "4edfc464360806e4e0ce907f730409875b57b5189094414979a692efcec378be"
+    },
+    {
+      "path": "src/agent/agent_internal.rs",
+      "originalSha256": "9dd6faba4d0abd28c25757641073e6bf6c7260c9f74dd8bb31bf811f681af9df",
+      "upstream014Sha256": "4819677f940fb9303802b5e39882db3a21687dd0d0e4300fd99ff60a7d85b9ac",
+      "patchedSha256": "1a94fbd21393e6e879e5bbcd39002ed97914acfed6bc5e06164bde6cdccc1b0a"
     }
   ],
-  "scope": "Only pending controlled-agent nomination changes backported; no role override, protocol relaxation, dependency or manifest changes.",
+  "scope": "Pending controlled-agent nomination behavior backported from 0.14.0, plus bounded counter-only trace diagnostics. No role override or protocol relaxation.",
   "regression": "src/agent/agent_nomination_test.rs",
   "nonProductionRedactions": [
     {
@@ -40,5 +46,21 @@
       "redactedSha256": "7d16911e82b7fb8edf8fe4a594914bcd760619cc95f76d00f2d5c747af0822f1",
       "reason": "Remove unused upstream coverage upload credential; no token retained in source or provenance."
     }
-  ]
+  ],
+  "diagnostics": {
+    "target": "webrtc_ice::nomination",
+    "events": [
+      "accepted",
+      "check_succeeded"
+    ],
+    "maxEventsPerAgent": 64,
+    "maxPairsSummarized": 4096,
+    "fields": [
+      "accepted",
+      "pending",
+      "selected",
+      "truncated"
+    ],
+    "identifiersEmitted": false
+  }
 }
