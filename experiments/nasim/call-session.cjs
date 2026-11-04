@@ -76,7 +76,8 @@ class CallSession {
    }catch(e){this.#finish('uncertain',e instanceof CallError?e.reason:'call_connection_changed',true);}
   },1000);this.#timer.unref();
  }
- #mediaReady(media){return media?.mediaConnected===true&&media.relayPair===true&&media.peerAuthenticated===true&&
+ #mediaReady(media){return media?.mediaConnected===true&&(media.relayPair===true||
+  this.#bridge?.experimentalRoute==='client-relay/server-public'&&media.routeProof==='client-relay/server-public')&&media.peerAuthenticated===true&&
   (this.#options?.role==='server'?media.phase==='connected':media.proxyReady===true);}
  #finish(phase,reason=null,disconnect=false,terminal=null){
   if(phase==='idle'){this.#terminal=null;this.#terminalSnapshot=null;}
@@ -87,6 +88,7 @@ class CallSession {
     localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
     media:media?{phase:['prepared','configured','gathering','connecting','connected','failed','closed'].includes(media.phase)?media.phase:null,
      reason:SAFE.has(media.reason)?media.reason:null,relayPair:media.relayPair===true,mediaConnected:media.mediaConnected===true,
+     ...media.routeProof==='client-relay/server-public'||media.routeProof==='unverified'?{routeProof:media.routeProof}:{},
      peerAuthenticated:media.peerAuthenticated===true,proxyReady:media.proxyReady===true,...media.ice?{ice:iceDiagnostics(media.ice)}:{}}:null};
   }
   this.#epoch++;if(this.#call){this.#retired.add(this.#call);while(this.#retired.size>128)this.#retired.delete(this.#retired.values().next().value);}
@@ -231,7 +233,8 @@ class CallSession {
   }
   if(event.type==='ice'){
    const c=event.candidate;
-   if(!this.#remote||!c||c.clientID!==null&&c.clientID!==this.#client||typeof c.sdpCandidate!=='string'||c.sdpCandidate.split(/\s+/)[7]!=='relay'){this.#ignored++;return;}
+   if(!this.#remote||!c||c.clientID!==null&&c.clientID!==this.#client||typeof c.sdpCandidate!=='string'||
+    !(typeof this.#bridge?.acceptsCandidate==='function'?this.#bridge.acceptsCandidate(c.sdpCandidate):c.sdpCandidate.split(/\s+/)[7]==='relay')){this.#ignored++;return;}
    if(this.#iceSeen.has(c.sdpCandidate))return;if(this.#iceSeen.size>=64){this.#ignored++;return;}this.#iceSeen.add(c.sdpCandidate);
    this.#ice.push({candidate:c.sdpCandidate,sdpMid:c.sdpMid,sdpMLineIndex:c.sdpMLineIndex});await this.#flushIce(guard);return;
   }

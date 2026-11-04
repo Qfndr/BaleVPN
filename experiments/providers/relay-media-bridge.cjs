@@ -2,8 +2,13 @@
 // signaling operation; state never contains SDP, TURN credentials or raw errors.
 const path=require('node:path'),{spawn}=require('node:child_process');
 const {iceDiagnostics}=require('./ice-diagnostics.cjs');
-function createBridge(provider){
+function createBridge(provider,options={}){
 if(!['nasim','eitaa','rubika'].includes(provider))throw Error('Unsupported media provider');
+if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).some(key=>key!=='nasimAsymmetric'))throw Error('Unsupported experimental route');
+const {nasimAsymmetric=false}=options;
+if(typeof nasimAsymmetric!=='boolean'||nasimAsymmetric&&provider!=='nasim')throw Error('Unsupported experimental route');
+const asym=nasimAsymmetric?require('../nasim/asymmetric-route.cjs'):null;
+const ASYM_PROOF=asym?.PROOF;
 const MAX=192*1024;
 const REASONS=new Set(['arguments_not_allowed','unsafe_environment','identity_failed','bridge_panic','config_timeout',
  'input_closed','invalid_command','invalid_config','invalid_role','invalid_pairing','invalid_port','invalid_profile','invalid_relay',
@@ -15,12 +20,13 @@ function keys(v,allowed){return v&&typeof v==='object'&&!Array.isArray(v)&&Objec
 function cert(v){return typeof v==='string'&&v.length>=128&&v.length<=16384&&v.length%2===0&&/^[a-f0-9]+$/.test(v);}
 function id(v){return provider==='rubika'?typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v):typeof v==='string'&&/^[1-9]\d{0,18}$/.test(v)&&BigInt(v)<=(provider==='eitaa'?(1n<<63n)-1n:BigInt(Number.MAX_SAFE_INTEGER));}
 function uuid(v){return typeof v==='string'&&/^[-A-Za-z0-9_:]{1,128}$/.test(v);}
-function description(v,type){
+function description(v,type,role,local=false){
  if(!keys(v,['type','sdp'])||v.type!==type||typeof v.sdp!=='string'||Buffer.byteLength(v.sdp)>65535||v.sdp.includes('\0'))throw fail('invalid_description');
  const lines=v.sdp.split(/\r?\n/);if(!v.sdp.startsWith('v=0')||lines.filter(l=>l.startsWith('m=')).length!==1||
   !lines.some(l=>/^m=audio .* UDP\/TLS\/RTP\/SAVPF /.test(l))||
   !lines.some(l=>/^a=fingerprint:sha-256 (?:[a-fA-F0-9]{2}:){31}[a-fA-F0-9]{2}$/.test(l))||
-  lines.some(l=>l.startsWith('a=crypto:')||l.startsWith('a=candidate:')&&l.trim().split(/\s+/)[7]!=='relay'))throw fail('invalid_description');
+  lines.some(l=>l.startsWith('a=crypto:')||l.startsWith('a=candidate:')&&(asym?!asym.allows(l.slice(2),role,local):l.trim().split(/\s+/)[7]!=='relay')))throw fail('invalid_description');
+ if(asym&&lines.filter(l=>l.startsWith('a=candidate:')).length>64)throw fail('invalid_description');
  return {type:v.type,sdp:v.sdp};
 }
 function relay(value){
@@ -30,6 +36,11 @@ function relay(value){
  if(!Array.isArray(urls)||!urls.length||urls.length>4||urls.some(u=>typeof u!=='string'||u.length>512||
   !/^turn:(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::[0-9]{1,5})?(?:\?transport=udp)?$/.test(u)))throw fail('invalid_relay');
  return {urls:[...urls],username:value.username,credential:value.credential};
+}
+function stun(value){
+ if(!keys(value,['urls'])||typeof value.urls!=='string'||value.urls.length>512||
+  !/^stun:(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+)(?::[0-9]{1,5})?$/.test(value.urls))throw fail('invalid_relay');
+ return {urls:[value.urls],username:'',credential:''};
 }
 class NativeMediaBridge {
  #child;#buffer=Buffer.alloc(0);#phase='starting';#role;#context;#certificate;#pending;#prepare;#timer;#killTimer;#reason=null;#latest={};#stderr=false;
@@ -85,13 +96,15 @@ class NativeMediaBridge {
    const pending=this.#pending;if(!pending||v.event!==pending.expected)throw Error();
    let result;
    if(v.event==='configured'){if(!keys(v,['event','provider'])||v.provider!==provider)throw Error();this.#phase='configured';}
-   else if(v.event==='description'){if(!keys(v,['event','description']))throw Error();result=description(v.description,pending.type);this.#phase='connecting';}
+   else if(v.event==='description'){if(!keys(v,['event','description']))throw Error();result=description(v.description,pending.type,this.#role,true);this.#phase='connecting';}
    else if(!keys(v,['event']))throw Error();
    this.#pending=null;clearTimeout(pending.timer);pending.resolve(result);return;
   }
   if(!['connecting','connected'].includes(this.#phase))throw Error();
   const common=['event','mediaConnected','relayPair','peerAuthenticated','proxyReady','providerPathVerified','billingVerified'];
-  if(![v.mediaConnected,v.peerAuthenticated,v.proxyReady].every(x=>typeof x==='boolean')||v.relayPair!==true||v.providerPathVerified!==false||v.billingVerified!==false||
+  if(asym)common.push('routeProof');
+  const routeValid=asym?v.relayPair===false&&[ASYM_PROOF,'unverified'].includes(v.routeProof)&&(!v.mediaConnected||v.routeProof===ASYM_PROOF):v.relayPair===true;
+  if(![v.mediaConnected,v.peerAuthenticated,v.proxyReady].every(x=>typeof x==='boolean')||!routeValid||v.providerPathVerified!==false||v.billingVerified!==false||
    v.proxyReady&&(!v.mediaConnected||!v.peerAuthenticated))throw Error();
   if(v.event==='connected'){
    if(this.#phase!=='connecting'||!keys(v,[...common,'provider','socksAddress'])||v.provider!==provider||!v.mediaConnected||
@@ -104,6 +117,7 @@ class NativeMediaBridge {
    this.#latest.receivedBytes=v.receivedBytes;this.#latest.sentBytes=v.sentBytes;this.#latest.quic=q?{...q}:null;
   }else throw Error();
   for(const k of ['mediaConnected','peerAuthenticated','proxyReady','relayPair'])this.#latest[k]=v[k];
+  if(asym)this.#latest.routeProof=v.routeProof;
  }
  #request(command,expected,type){
   if(this.#pending)throw fail('operation_busy');
@@ -116,26 +130,32 @@ class NativeMediaBridge {
   });
  }
  get publicCertificate(){if(this.#phase!=='prepared')throw fail('not_prepared');return this.#certificate;}
+ get experimentalRoute(){return asym?ASYM_PROOF:null;}
+ acceptsCandidate(value){return asym?asym.allows(value,this.#role,false):typeof value==='string'&&value.trim().split(/\s+/)[7]==='relay';}
  async configure(call,{role,trustedCertificates,socksPort=1089,throughput=false}={}){
   if(this.#phase!=='prepared')throw fail('not_prepared');
   if(!keys(call,['provider','callUUID','selfId','peerId','iceServers'])||call.provider!==provider||!uuid(call.callUUID)||!id(call.selfId)||!id(call.peerId)||call.selfId===call.peerId||
    !Array.isArray(call.iceServers)||!call.iceServers.length||call.iceServers.length>4)throw fail('invalid_call');
-  // STUN from the provider config is not forwarded to this relay-only driver.
-  const servers=call.iceServers.filter(s=>typeof s?.urls==='string'&&s.urls.startsWith('stun:')?false:true).map(relay);
-  if(!servers.length)throw fail('invalid_relay');
+  // Only the explicit server experiment uses the STUN entry from the
+  // authenticated call. The strict path still forwards only TURN credentials.
+  const stunOnly=!!asym&&role==='server';
+  const isStun=s=>typeof s?.urls==='string'&&s.urls.startsWith('stun:');
+  const servers=stunOnly?call.iceServers.filter(isStun).map(stun):call.iceServers.filter(s=>!isStun(s)).map(relay);
+  if(!stunOnly&&!servers.length)throw fail('invalid_relay');
   if(!['client','server'].includes(role)||typeof throughput!=='boolean'||!Number.isInteger(socksPort)||socksPort<0||socksPort>65535||socksPort>0&&socksPort<1024||
    !Array.isArray(trustedCertificates)||!trustedCertificates.length||trustedCertificates.length>8||new Set(trustedCertificates).size!==trustedCertificates.length||
    trustedCertificates.some(c=>!cert(c)||c===this.#certificate))throw fail('invalid_pairing');
   this.#role=role;this.#context={selfId:call.selfId,peerId:call.peerId,callUUID:call.callUUID};this.#phase='configuring';
-  await this.#request({command:'configure',provider,role,trustedCertificates,socksPort,throughput,iceServers:servers},'configured');
+  await this.#request({command:'configure',provider,role,trustedCertificates,socksPort,throughput,iceServers:servers,
+   ...asym?{experimentalRoute:asym.MODE}:{}},'configured');
  }
  async offer(){if(this.#phase!=='configured')throw fail('not_configured');this.#phase='connecting';return this.#request({command:'offer'},'description','offer');}
- async answer(offer){if(this.#phase!=='configured')throw fail('not_configured');const sdp=description(offer,'offer');this.#phase='connecting';return this.#request({command:'answer',description:sdp},'description','answer');}
- async setAnswer(answer){if(this.#phase!=='connecting')throw fail('not_connecting');return this.#request({command:'setAnswer',description:description(answer,'answer')},'negotiated');}
+ async answer(offer){if(this.#phase!=='configured')throw fail('not_configured');const sdp=description(offer,'offer',this.#role);this.#phase='connecting';return this.#request({command:'answer',description:sdp},'description','answer');}
+ async setAnswer(answer){if(this.#phase!=='connecting')throw fail('not_connecting');return this.#request({command:'setAnswer',description:description(answer,'answer',this.#role)},'negotiated');}
  async addCandidate(candidate){
   if(!['connecting','connected'].includes(this.#phase))throw fail('not_connecting');
   if(!keys(candidate,['candidate','sdpMid','sdpMLineIndex','usernameFragment'])||typeof candidate.candidate!=='string'||candidate.candidate.length>4096||/[\r\n]/.test(candidate.candidate)||
-   candidate.candidate.trim().split(/\s+/)[7]!=='relay'||typeof candidate.sdpMid!=='string'||candidate.sdpMid.length>128||
+   !this.acceptsCandidate(candidate.candidate)||typeof candidate.sdpMid!=='string'||candidate.sdpMid.length>128||
    !Number.isInteger(candidate.sdpMLineIndex)||candidate.sdpMLineIndex<0||candidate.sdpMLineIndex>32||
    candidate.usernameFragment!==undefined&&candidate.usernameFragment!==null&&(typeof candidate.usernameFragment!=='string'||candidate.usernameFragment.length>256))throw fail('invalid_description');
   return this.#request({command:'candidate',candidate},'candidateAdded');

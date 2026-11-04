@@ -2,6 +2,8 @@
 // by the separate binary, never chosen by a control message.
 use lktunnel::{
     carrier,
+    nasim_route_policy::{NasimRoutePolicy, Role as NasimRole},
+    peer_media::RelayRoute,
     peer_media::{IceDiagnostics, MediaDisconnectStage, MediaError, RelayMedia},
     security::Identity,
     EventKind, TunnelRole,
@@ -32,8 +34,12 @@ fn output(value: Value) -> Result<(), &'static str> {
         .and_then(|_| stream.flush())
         .map_err(|_| "output_closed")
 }
-async fn bounded_ice_diagnostics(future: impl Future<Output = IceDiagnostics>) -> Option<IceDiagnostics> {
-    tokio::time::timeout(Duration::from_millis(250), future).await.ok()
+async fn bounded_ice_diagnostics(
+    future: impl Future<Output = IceDiagnostics>,
+) -> Option<IceDiagnostics> {
+    tokio::time::timeout(Duration::from_millis(250), future)
+        .await
+        .ok()
 }
 async fn output_ice(media: &RelayMedia) -> Result<(), &'static str> {
     // Terminal diagnostics must not delay teardown indefinitely. Missing
@@ -56,16 +62,24 @@ mod ice_diagnostic_deadline_tests {
     use super::*;
     #[tokio::test(start_paused = true)]
     async fn stalled_stats_are_cancelled_without_fabricating_counts() {
-        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
         struct DropMarker(Arc<AtomicBool>);
-        impl Drop for DropMarker { fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); } }
+        impl Drop for DropMarker {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
         let dropped = Arc::new(AtomicBool::new(false));
         let marker = DropMarker(dropped.clone());
         let started = tokio::time::Instant::now();
         let result = bounded_ice_diagnostics(async move {
             let _marker = marker;
             std::future::pending::<IceDiagnostics>().await
-        }).await;
+        })
+        .await;
         assert!(result.is_none());
         assert!(dropped.load(Ordering::SeqCst));
         assert_eq!(started.elapsed(), Duration::from_millis(250));
@@ -101,6 +115,7 @@ struct Config {
     port: u16,
     throughput: bool,
     servers: Vec<RTCIceServer>,
+    nasim_policy: Option<NasimRoutePolicy>,
 }
 fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
     if !keys(
@@ -113,6 +128,7 @@ fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
             "socksPort",
             "throughput",
             "iceServers",
+            "experimentalRoute",
         ],
     ) || value["command"] != "configure"
         || value["provider"] != PROVIDER
@@ -123,6 +139,18 @@ fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
         Some("client") => TunnelRole::Client,
         Some("server") => TunnelRole::Server,
         _ => return Err("invalid_role"),
+    };
+    let nasim_policy = if let Some(route) = value.get("experimentalRoute") {
+        if PROVIDER != "nasim" || route.as_str() != Some("nasim-client-relay-server-public") {
+            return Err("invalid_config");
+        }
+        Some(NasimRoutePolicy::new(if role == TunnelRole::Client {
+            NasimRole::Client
+        } else {
+            NasimRole::Server
+        }))
+    } else {
+        None
     };
     let items = value["trustedCertificates"]
         .as_array()
@@ -144,7 +172,8 @@ fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
         .ok_or("invalid_port")? as u16;
     let throughput = value["throughput"].as_bool().ok_or("invalid_profile")?;
     let servers = value["iceServers"].as_array().ok_or("invalid_relay")?;
-    if servers.is_empty() || servers.len() > 4 {
+    let stun_only = nasim_policy.is_some() && role == TunnelRole::Server;
+    if (!stun_only && servers.is_empty()) || servers.len() > 4 {
         return Err("invalid_relay");
     }
     let mut ice = Vec::new();
@@ -172,12 +201,25 @@ fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
                 .map(str::to_owned)
                 .ok_or("invalid_relay")
         };
-        ice.push(RTCIceServer {
-            urls,
-            username: secret("username")?,
-            credential: secret("credential")?,
-            credential_type: RTCIceCredentialType::Password,
-        });
+        if stun_only {
+            if item["username"].as_str() != Some("")
+                || item["credential"].as_str() != Some("")
+                || urls.iter().any(|url| !url.starts_with("stun:"))
+            {
+                return Err("invalid_relay");
+            }
+            ice.push(RTCIceServer {
+                urls,
+                ..Default::default()
+            });
+        } else {
+            ice.push(RTCIceServer {
+                urls,
+                username: secret("username")?,
+                credential: secret("credential")?,
+                credential_type: RTCIceCredentialType::Password,
+            });
+        }
     }
     Ok(Config {
         role,
@@ -185,6 +227,7 @@ fn config(value: Value, own: &[u8]) -> Result<Config, &'static str> {
         port,
         throughput,
         servers: ice,
+        nasim_policy,
     })
 }
 fn description(value: &Value, kind: &str) -> Result<RTCSessionDescription, &'static str> {
@@ -280,12 +323,14 @@ async fn run(
     identity.private_key.fill(0);
     let (tunnel, input, output_carrier) =
         carrier::authenticated(config.role, options).map_err(|_| "invalid_pairing")?;
-    let Some(media) = controlled(
-        RelayMedia::new(input, output_carrier, config.servers),
-        &mut commands,
-    )
-    .await?
-    else {
+    let media_setup = async {
+        if let Some(policy) = config.nasim_policy {
+            RelayMedia::new_nasim_asymmetric(input, output_carrier, config.servers, policy).await
+        } else {
+            RelayMedia::new(input, output_carrier, config.servers).await
+        }
+    };
+    let Some(media) = controlled(media_setup, &mut commands).await? else {
         return Ok(());
     };
     let mut events = tunnel.events().ok_or("event_stream_unavailable")?;
@@ -335,20 +380,27 @@ async fn run(
                 match event.kind {
                     EventKind::Connected=>{
                         if connected{return Err("transport_failed");}connected=true;
+                        if config.nasim_policy.is_some() && media.selected_route().await!=RelayRoute::ClientRelayServerPublic {return Err("relay_route_failed");}
                         if config.role==TunnelRole::Server {tunnel.start_server().map_err(|_|"server_setup_failed")?;}
                         else {address=Some(tunnel.enable_socks5_server(config.port).await.map_err(|_|"proxy_bind_failed")?.to_string());}
-                        output(json!({"event":"connected","provider":PROVIDER,"mediaConnected":true,"relayPair":true,
+                        let mut status=json!({"event":"connected","provider":PROVIDER,"mediaConnected":true,"relayPair":config.nasim_policy.is_none(),
                             "socksAddress":address,"peerAuthenticated":tunnel.is_peer_authenticated(),"proxyReady":tunnel.is_proxy_ready(),
-                            "providerPathVerified":false,"billingVerified":false}))?;
+                            "providerPathVerified":false,"billingVerified":false});
+                        if config.nasim_policy.is_some(){status["routeProof"]=json!("client-relay/server-public");}
+                        output(status)?;
                     },
                     EventKind::Disconnected|EventKind::PeerLeft=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected"));},
                     EventKind::Error=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_failed"));},_=>{},
                 }
             },
             _=interval.tick(),if connected=>{
-                let stats=tunnel.stats();output(json!({"event":"metrics","mediaConnected":tunnel.is_connected(),"relayPair":true,
-                    "peerAuthenticated":tunnel.is_peer_authenticated(),"proxyReady":tunnel.is_proxy_ready(),"receivedBytes":stats[1],"sentBytes":stats[3],
-                    "quic":tunnel.connection_metrics(),"providerPathVerified":false,"billingVerified":false}))?;
+                let stats=tunnel.stats();
+                let route_verified=config.nasim_policy.is_none()||media.selected_route().await==RelayRoute::ClientRelayServerPublic;
+                let mut status=json!({"event":"metrics","mediaConnected":tunnel.is_connected()&&route_verified,"relayPair":config.nasim_policy.is_none(),
+                    "peerAuthenticated":tunnel.is_peer_authenticated(),"proxyReady":tunnel.is_proxy_ready()&&route_verified,"receivedBytes":stats[1],"sentBytes":stats[3],
+                    "quic":tunnel.connection_metrics(),"providerPathVerified":false,"billingVerified":false});
+                if config.nasim_policy.is_some(){status["routeProof"]=json!(if route_verified{"client-relay/server-public"}else{"unverified"});}
+                output(status)?;
             },
         }
     }
@@ -395,6 +447,21 @@ mod tests {
     fn sample() -> Value {
         json!({"command":"configure","provider":PROVIDER,"role":"client","trustedCertificates":["aa".repeat(80)],
         "socksPort":1089,"throughput":true,"iceServers":[{"urls":["turn:relay.example.test:3478"],"username":"fixture","credential":"fixture-secret"}]})
+    }
+    #[test]
+    fn asymmetric_route_is_explicit_nasim_only_without_endpoint_configuration() {
+        assert!(config(sample(), &[1, 2]).unwrap().nasim_policy.is_none());
+        let mut value = sample();
+        value["experimentalRoute"] = json!("nasim-client-relay-server-public");
+        assert_eq!(config(value.clone(), &[1, 2]).is_ok(), PROVIDER == "nasim");
+        value["role"] = json!("server");
+        assert!(config(value.clone(), &[1, 2]).is_err()); // Server must not allocate TURN.
+        value["iceServers"] =
+            json!([{"urls":["stun:fixture.example.test:3478"],"username":"","credential":""}]);
+        assert_eq!(config(value.clone(), &[1, 2]).is_ok(), PROVIDER == "nasim");
+        value["experimentalRoute"] =
+            json!({"mode":"nasim-client-relay-server-public","serverEndpoint":"8.8.8.8:37000"});
+        assert!(config(value, &[1, 2]).is_err());
     }
     #[test]
     fn independent_provider_and_strict_pairing_are_required() {
