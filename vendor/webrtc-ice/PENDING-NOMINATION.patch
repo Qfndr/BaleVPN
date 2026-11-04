@@ -1,0 +1,67 @@
+--- webrtc-ice-0.11.0/src/candidate/mod.rs
++++ webrtc-ice-0.11.0-patched/src/candidate/mod.rs
+@@ -234,6 +234,7 @@
+     pub(crate) binding_request_count: AtomicU16,
+     pub(crate) state: AtomicU8, // convert it to CandidatePairState,
+     pub(crate) nominated: AtomicBool,
++    pub(crate) nominate_on_binding_success: AtomicBool,
+ }
+ 
+ impl Default for CandidatePair {
+@@ -245,6 +246,7 @@
+             state: AtomicU8::new(CandidatePairState::Waiting as u8),
+             binding_request_count: AtomicU16::new(0),
+             nominated: AtomicBool::new(false),
++            nominate_on_binding_success: AtomicBool::new(false),
+         }
+     }
+ }
+@@ -297,6 +299,7 @@
+             state: AtomicU8::new(CandidatePairState::Waiting as u8),
+             binding_request_count: AtomicU16::new(0),
+             nominated: AtomicBool::new(false),
++            nominate_on_binding_success: AtomicBool::new(false),
+         }
+     }
+ 
+--- webrtc-ice-0.11.0/src/agent/agent_selector.rs
++++ webrtc-ice-0.11.0-patched/src/agent/agent_selector.rs
+@@ -488,6 +488,12 @@
+                 p.state
+                     .store(CandidatePairState::Succeeded as u8, Ordering::SeqCst);
+                 log::trace!("Found valid candidate pair: {}", p);
++
++                if p.nominate_on_binding_success.load(Ordering::SeqCst)
++                    && self.agent_conn.get_selected_pair().is_none()
++                {
++                    self.set_selected_pair(Some(Arc::clone(&p))).await;
++                }
+             } else {
+                 // This shouldn't happen
+                 log::error!("Success response from invalid candidate pair");
+@@ -524,7 +530,6 @@
+                     if self.agent_conn.get_selected_pair().is_none() {
+                         self.set_selected_pair(Some(Arc::clone(&p))).await;
+                     }
+-                    self.send_binding_success(m, local, remote).await;
+                 } else {
+                     // If the received Binding request triggered a new check to be
+                     // enqueued in the triggered-check queue (Section 7.3.1.4), once the
+@@ -534,12 +539,12 @@
+                     // MUST remove the candidate pair from the valid list, set the
+                     // candidate pair state to Failed, and set the checklist state to
+                     // Failed.
+-                    self.ping_candidate(local, remote).await;
++                    p.nominate_on_binding_success.store(true, Ordering::SeqCst);
+                 }
+-            } else {
+-                self.send_binding_success(m, local, remote).await;
+-                self.ping_candidate(local, remote).await;
+-            }
++            }
++
++            self.send_binding_success(m, local, remote).await;
++            self.ping_candidate(local, remote).await;
+         }
+     }
+ }

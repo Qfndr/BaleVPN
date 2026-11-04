@@ -1,0 +1,44 @@
+name: ICE nomination backport regression
+
+# Deliberately isolated: this does not patch or build any application workspace.
+on:
+  push:
+    branches: [codex/ice-nomination-regression]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_HOME: ${{ runner.temp }}/ice-cargo
+      CARGO_TARGET_DIR: ${{ runner.temp }}/ice-target
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify source provenance and prepare original-code control
+        run: python3 scripts/check-ice-nomination-backport.py --prepare-baseline "$RUNNER_TEMP/ice-original-control"
+      - name: Patched implementation passes
+        run: cargo test --manifest-path vendor/webrtc-ice/Cargo.toml --locked --lib controlled_early_nomination -- --nocapture
+      - name: Original implementation fails the same runtime assertion
+        shell: bash
+        run: |
+          set +e
+          cargo test --manifest-path "$RUNNER_TEMP/ice-original-control/Cargo.toml" --locked --lib controlled_early_nomination -- --nocapture > "$RUNNER_TEMP/ice-original-control.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/ice-original-control.log"
+          test "$status" -eq 101
+          grep -F 'test agent::agent_nomination_test::controlled_early_nomination_selects_only_after_triggered_check_success ... FAILED' "$RUNNER_TEMP/ice-original-control.log"
+          grep -F 'acknowledge the nomination and send its triggered connectivity check' "$RUNNER_TEMP/ice-original-control.log"
+          grep -F 'test result: FAILED. 2 passed; 1 failed;' "$RUNNER_TEMP/ice-original-control.log"
+          if grep -E '^error\[|^error: could not compile|^error: failed to (download|resolve|select)' "$RUNNER_TEMP/ice-original-control.log"; then
+            echo 'Compiler or dependency failure is not an acceptable regression control.' >&2
+            exit 1
+          fi

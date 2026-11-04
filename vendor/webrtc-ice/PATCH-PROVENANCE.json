@@ -1,0 +1,44 @@
+{
+  "base": {
+    "crate": "webrtc-ice",
+    "version": "0.11.0",
+    "sha256": "4d4f0ca6d4df8d1bdd34eece61b51b62540840b7a000397bcfb53a7bfcf347c8",
+    "url": "https://static.crates.io/crates/webrtc-ice/webrtc-ice-0.11.0.crate"
+  },
+  "upstream": {
+    "version": "0.14.0",
+    "sha256": "69cb13fd1a373e68addc4bba0c8ca058627518e54342583d024bdcbb8ae5d97d",
+    "url": "https://static.crates.io/crates/webrtc-ice/webrtc-ice-0.14.0.crate",
+    "vcs": {
+      "git": {
+        "sha1": "a1f8f1919235d8452835852e018efd654f2f8366"
+      },
+      "path_in_vcs": "ice"
+    }
+  },
+  "verification": "Both archive SHA-256 values verified against HTTPS crates.io version checksum metadata before extraction.",
+  "files": [
+    {
+      "path": "src/candidate/mod.rs",
+      "originalSha256": "d6952cbf56d28d22c82feec308d2c0a2c799ba1e5079e71fca61fca0f7b9585e",
+      "upstream014Sha256": "20bd5450da0e035ef77ef6c44b11bd004d8b9a1f4ce443a9b2813172f6ecfc79",
+      "patchedSha256": "20bd5450da0e035ef77ef6c44b11bd004d8b9a1f4ce443a9b2813172f6ecfc79"
+    },
+    {
+      "path": "src/agent/agent_selector.rs",
+      "originalSha256": "b516689fa3727235879365ab64fcac3f31afe379ae376692a1dc2e010ac5c89b",
+      "upstream014Sha256": "ae09174755df9631a3baa59dd817e288c40d4bacf462ba5baeca97eeafcb4f8a",
+      "patchedSha256": "3a0e9055916c31d27cbcbdb9879e8bd0955dac0be47b37cc85802544e0d79d3b"
+    }
+  ],
+  "scope": "Only pending controlled-agent nomination changes backported; no role override, protocol relaxation, dependency or manifest changes.",
+  "regression": "src/agent/agent_nomination_test.rs",
+  "nonProductionRedactions": [
+    {
+      "path": "codecov.yml",
+      "originalSha256": "95c614af5a739145ac9b6e4ac5d609595819133aebb7df0c3d891c87cb550a46",
+      "redactedSha256": "7d16911e82b7fb8edf8fe4a594914bcd760619cc95f76d00f2d5c747af0822f1",
+      "reason": "Remove unused upstream coverage upload credential; no token retained in source or provenance."
+    }
+  ]
+}

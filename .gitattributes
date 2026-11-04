@@ -2,3 +2,6 @@
 vendor/glib/** -text whitespace=cr-at-eol
 # The upstream license's final blank line is preserved verbatim.
 vendor/glib/LICENSE whitespace=cr-at-eol,-blank-at-eof
+vendor/webrtc-ice/** -text whitespace=cr-at-eol
+# Unified-diff context markers on empty lines are significant.
+vendor/webrtc-ice/PENDING-NOMINATION.patch whitespace=cr-at-eol,-blank-at-eol
