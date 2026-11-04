@@ -1,0 +1,74 @@
+name: Provider UI browser
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bale-vpn-rust/bale-vpn/assets/**'
+      - 'scripts/test-ui-*.cjs'
+      - 'scripts/test-production-provider-ui.cjs'
+      - '.github/workflows/provider-ui.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'bale-vpn-rust/bale-vpn/assets/**'
+      - 'scripts/test-ui-*.cjs'
+      - 'scripts/test-production-provider-ui.cjs'
+      - '.github/workflows/provider-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  provider-ui:
+    name: Provider UI browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Configure isolated browser storage
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/provider-ui-temp" "$RUNNER_TEMP/provider-ui-node-cache"
+          {
+            printf 'TEMP=%s\n' "$RUNNER_TEMP/provider-ui-temp"
+            printf 'TMP=%s\n' "$RUNNER_TEMP/provider-ui-temp"
+            printf 'TMPDIR=%s\n' "$RUNNER_TEMP/provider-ui-temp"
+            printf 'NODE_COMPILE_CACHE=%s\n' "$RUNNER_TEMP/provider-ui-node-cache"
+            printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$RUNNER_TEMP/provider-ui-browsers"
+            printf 'BALEVPN_SCREENSHOTS=%s\n' "$RUNNER_TEMP/provider-ui-screenshots"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare isolated browser harness
+        shell: bash
+        run: |
+          mkdir -p "$TMPDIR" "$NODE_COMPILE_CACHE"
+          npm install --prefix "$RUNNER_TEMP/provider-ui-runtime" --cache "$RUNNER_TEMP/provider-ui-npm-cache" --ignore-scripts --no-audit --no-fund --package-lock=false playwright@1.62.1
+          browser=$(command -v google-chrome || command -v google-chrome-stable || true)
+          if [ -z "$browser" ]; then echo 'Preinstalled Chrome is required for the UI fixture'; exit 1; fi
+          echo "BALEVPN_BROWSER_EXECUTABLE=$browser" >> "$GITHUB_ENV"
+          echo "BALEVPN_PLAYWRIGHT_MODULE=$RUNNER_TEMP/provider-ui-runtime/node_modules/playwright" >> "$GITHUB_ENV"
+      - name: Check local UI behavior and translations
+        run: node --test scripts/test-ui-security.cjs scripts/test-ui-traffic.cjs scripts/test-ui-workspace.cjs scripts/test-ui-aggregate.cjs scripts/test-ui-localization.cjs scripts/test-ui-polling.cjs scripts/test-ui-pool-telemetry.cjs
+      - name: Check browser settings persistence and active connection locks
+        run: node scripts/test-production-provider-ui.cjs
+      - name: Retain fixture-only UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-ui-fixture-screenshots
+          path: ${{ runner.temp }}/provider-ui-screenshots
+          if-no-files-found: ignore
+          retention-days: 7
+
