@@ -34,7 +34,10 @@ async function installFixture(page,available) {
     const command = url.pathname.slice(prefix.length);
     const respond = value => route.fulfill({json:value});
     if (command === '/info') return respond({available,csrfToken:token});
-    if (command === '/state') return respond(state);
+    if (command === '/state') {
+      if (state.metrics) state.metrics.receivedBytes += 512;
+      return respond(state);
+    }
     if (!available || request.method() !== 'POST' || request.headers()['x-provider-csrf'] !== token)
       return route.fulfill({status:403,json:{ok:false}});
     const input = request.postDataJSON();
@@ -49,6 +52,7 @@ async function installFixture(page,available) {
       case '/dial':
       case '/accept':
         state = {...state,phase:'connected',peerAuthenticated:true,routeProof:'client-relay/server-public',proxyReady:state.role === 'client'};
+        if (state.role === 'client') state.metrics = {receivedBytes:1024,sentBytes:512,quic:{rttMs:25,lostPackets:1,sentPackets:20}};
         break;
       case '/stop':
         state = {phase:'stopped',cleanupPending:false};
@@ -58,7 +62,7 @@ async function installFixture(page,available) {
     }
     return respond(state);
   });
-  return {posts,external,errors};
+  return {posts,external,errors,patchState:patch=>Object.assign(state,patch)};
 }
 
 async function start(page,role) {
@@ -92,6 +96,16 @@ async function main() {
     await page.locator('#dial').click();
     await page.locator('#proxy').waitFor();
     assert.equal(await page.locator('#proxy').textContent(),'SOCKS5 · 127.0.0.1:1098');
+    await page.locator('#carrierMetrics').waitFor();
+    assert.equal(await page.locator('#carrierRttField').isVisible(),true);
+    assert.equal(await page.locator('#carrierLossField').isVisible(),true);
+    await page.waitForFunction(() => document.getElementById('carrierRxRate').textContent.endsWith('/s'));
+    fixture.patchState({routeProof:'unverified'});
+    await page.locator('#carrierMetrics').waitFor({state:'hidden'});
+    fixture.patchState({routeProof:'client-relay/server-public',metrics:undefined});
+    await page.waitForFunction(() => document.getElementById('status').dataset.tone === 'good');
+    assert.equal(await page.locator('#carrierMetrics').isHidden(),true);
+    assert.equal(await page.locator('#proxy').isVisible(),true);
     assert.deepEqual(fixture.posts[0].input,{role:'client',slot:1,peerUserId:'42',vaultPassword:'fixture-vault-password',socksPort:1098});
     assert.deepEqual(fixture.posts[1].input,{publicCertificate:peerCertificate});
     assert.equal(await page.evaluate(() => JSON.stringify(localStorage).includes('fixture-vault-password')),false);
@@ -109,6 +123,11 @@ async function main() {
     await page.locator('#accept').click();
     await page.waitForFunction(() => document.getElementById('status').dataset.tone === 'good');
     assert.equal(await page.locator('#proxy').isHidden(),true);
+    assert.equal(await page.locator('#carrierMetrics').isHidden(),true);
+    fixture.patchState({metrics:{receivedBytes:0,sentBytes:512,quic:{rttMs:25,sentPackets:20,lostPackets:1}}});
+    await page.locator('#carrierMetrics').waitFor();
+    assert.equal(await page.locator('#carrierRttField').isHidden(),true);
+    assert.equal(await page.locator('#carrierLossField').isHidden(),true);
     assert.equal(Object.hasOwn(fixture.posts[4].input,'socksPort'),false);
     await page.locator('#stop').click();
     await page.locator('#pairing').waitFor({state:'hidden'});
@@ -132,7 +151,7 @@ async function main() {
     assert.deepEqual(disabledFixture.posts,[]);
     assert.deepEqual(disabledFixture.external,[]);
     assert.deepEqual(disabledFixture.errors,[]);
-    console.log('Nasim browser fixture passed client/server controls, disabled mode, responsive layout and appearance persistence.');
+    console.log('Nasim browser fixture passed client/server controls, disabled mode, responsive layout, appearance persistence and optional authenticated carrier metrics.');
   } finally {
     await browser.close();
   }

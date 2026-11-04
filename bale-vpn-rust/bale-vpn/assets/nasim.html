@@ -46,6 +46,11 @@
     .status[data-tone=wait]{color:var(--accent)}
     .connection{margin-bottom:14px}
     .connection .actions:not([hidden]){margin-top:12px}
+    #carrierMetrics{margin-top:12px}
+    #carrierMetrics dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px;margin:0 0 6px}
+    #carrierMetrics dl>div{padding:8px 10px;background:var(--input);border-radius:8px}
+    #carrierMetrics dt,#carrierMetrics small{color:var(--muted);font-size:.8rem}
+    #carrierMetrics dd{margin:0;font-variant-numeric:tabular-nums}
     #notice:not(:empty){margin-top:12px}
     [hidden]{display:none!important}
     @media(max-width:700px){.grid{grid-template-columns:1fr}}
@@ -79,6 +84,15 @@
     </div>
     <p class="muted" id="detail"></p>
     <p class="technical" id="proxy" hidden></p>
+    <div id="carrierMetrics" hidden>
+      <dl>
+        <div><dt data-text="carrierRx"></dt><dd><bdi id="carrierRx"></bdi> <small><bdi id="carrierRxRate"></bdi></small></dd></div>
+        <div><dt data-text="carrierTx"></dt><dd><bdi id="carrierTx"></bdi> <small><bdi id="carrierTxRate"></bdi></small></dd></div>
+        <div id="carrierRttField" hidden><dt data-text="carrierRtt"></dt><dd><bdi id="carrierRtt"></bdi></dd></div>
+        <div id="carrierLossField" hidden><dt data-text="carrierLoss"></dt><dd><bdi id="carrierLoss"></bdi></dd></div>
+      </dl>
+      <small data-text="carrierHint"></small>
+    </div>
     <div class="actions" id="callActions">
       <button type="button" id="dial" class="primary" data-text="dial">تماس بگیر</button>
       <button type="button" id="accept" class="primary" data-text="accept">پذیرش تماس</button>

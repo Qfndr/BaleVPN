@@ -44,13 +44,25 @@ function validateStart(value){
  if(!Number.isInteger(port)||port<0||port>65535||value.role==='client'&&port<1024)throw fail('invalid_input');
  return {...value,socksPort:port};
 }
-function safeState(controller){
+const counter=value=>Number.isSafeInteger(value)&&value>=0;
+function safeMetrics(call,role){
+ const media=call.media;
+ if(call.phase!=='connected'||media?.mediaConnected!==true||media.routeProof!==proof||
+    media.peerAuthenticated!==true||(role==='client'&&media.proxyReady!==true)||
+    !counter(media.receivedBytes)||!counter(media.sentBytes))return undefined;
+ const q=media.quic;
+ const quic=role==='client'&&q&&Number.isFinite(q.rttMs)&&q.rttMs>=0&&q.rttMs<=120000&&
+    counter(q.sentPackets)&&counter(q.lostPackets)&&q.lostPackets<=q.sentPackets
+    ?{rttMs:q.rttMs,sentPackets:q.sentPackets,lostPackets:q.lostPackets}:null;
+ return {receivedBytes:media.receivedBytes,sentBytes:media.sentBytes,quic};
+}
+function safeState(controller,role){
  const call=controller.state,media=call.media;
  return {event:'state',phase:call.phase,busy:call.busy===true,localAccepted:call.localAccepted===true,remoteAccepted:call.remoteAccepted===true,
   configured:call.signaling?.configured===true,negotiated:call.signaling?.negotiated===true,
   routeProof:[proof,'unverified'].includes(media?.routeProof)?media.routeProof:null,
   peerAuthenticated:media?.peerAuthenticated===true,proxyReady:media?.proxyReady===true,
-  cleanupPending:call.cleanup?.pending===true};
+  cleanupPending:call.cleanup?.pending===true,metrics:safeMetrics(call,role)};
 }
 
 async function runEndpoint(read,write,dependencies){
@@ -93,7 +105,7 @@ async function runEndpoint(read,write,dependencies){
     default:throw fail('invalid_command');
    }
    if(ended)break;
-   write(safeState(controller));
+   write(safeState(controller,start.role));
   }
  }finally{
   start.vaultPassword='';let endCompleted=false,cleanupAcknowledged=false,pending=true;
@@ -160,6 +172,15 @@ async function selfTest(){
  assert.equal(outputs.at(-1).cleanupPending,false);
  const blocked=[{...start,vaultPassword:'fixture-pass'},{command:'dial'},{command:'dial'}];
  await assert.rejects(runEndpoint(async()=>blocked.shift()??null,()=>{},deps),e=>e.safeReason==='call_already_attempted');
+ const connected={phase:'connected',media:{mediaConnected:true,routeProof:proof,peerAuthenticated:true,proxyReady:true,
+  receivedBytes:1024,sentBytes:512,quic:{rttMs:25,sentPackets:10,lostPackets:1,private:'fixture-secret'}}};
+ const totals={receivedBytes:1024,sentBytes:512};
+ assert.deepEqual(safeMetrics(connected,'client'),{...totals,quic:{rttMs:25,sentPackets:10,lostPackets:1}});
+ assert.deepEqual(safeMetrics(connected,'server'),{...totals,quic:null});
+ connected.media.quic.lostPackets=11;
+ assert.deepEqual(safeMetrics(connected,'client'),{...totals,quic:null});
+ connected.media.routeProof='unverified';
+ assert.equal(safeMetrics(connected,'client'),undefined);
  emit({event:'selfTest',passed:true,networkRequests:0,liveCalls:0});
 }
 

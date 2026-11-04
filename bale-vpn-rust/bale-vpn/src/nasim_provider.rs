@@ -258,6 +258,59 @@ struct Empty {}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct QuicMetrics {
+    rtt_ms: f64,
+    lost_packets: u64,
+    sent_packets: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CarrierMetrics {
+    received_bytes: u64,
+    sent_bytes: u64,
+    quic: Option<QuicMetrics>,
+}
+
+fn metric_counter(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .filter(|count| *count <= 9_007_199_254_740_991)
+}
+
+impl CarrierMetrics {
+    fn from_worker(value: &Value, client: bool) -> Option<Self> {
+        let received_bytes = metric_counter(&value["receivedBytes"])?;
+        let sent_bytes = metric_counter(&value["sentBytes"])?;
+        let quic = if client {
+            Self::quic_from_worker(&value["quic"])
+        } else {
+            None
+        };
+        Some(Self {
+            received_bytes,
+            sent_bytes,
+            quic,
+        })
+    }
+
+    fn quic_from_worker(value: &Value) -> Option<QuicMetrics> {
+        let rtt_ms = value["rttMs"]
+            .as_f64()
+            .filter(|rtt| (0.0..=120_000.0).contains(rtt))?;
+        let sent_packets = metric_counter(&value["sentPackets"])?;
+        let lost_packets =
+            metric_counter(&value["lostPackets"]).filter(|lost| *lost <= sent_packets)?;
+        Some(QuicMetrics {
+            rtt_ms,
+            sent_packets,
+            lost_packets,
+        })
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Snapshot {
     phase: &'static str,
     role: Option<Role>,
@@ -266,6 +319,8 @@ struct Snapshot {
     route_proof: Option<&'static str>,
     peer_authenticated: bool,
     proxy_ready: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metrics: Option<CarrierMetrics>,
     cleanup_pending: bool,
     error: Option<&'static str>,
 }
@@ -279,6 +334,7 @@ impl Default for Snapshot {
             route_proof: None,
             peer_authenticated: false,
             proxy_ready: false,
+            metrics: None,
             cleanup_pending: false,
             error: None,
         }
@@ -499,6 +555,15 @@ impl Runtime {
         self.snapshot.route_proof = route_proof;
         self.snapshot.peer_authenticated = peer_authenticated;
         self.snapshot.proxy_ready = peer_authenticated && event["proxyReady"] == true;
+        self.snapshot.metrics = match self.snapshot.role {
+            Some(Role::Client) if self.snapshot.proxy_ready => {
+                CarrierMetrics::from_worker(&event["metrics"], true)
+            }
+            Some(Role::Server) if peer_authenticated => {
+                CarrierMetrics::from_worker(&event["metrics"], false)
+            }
+            _ => None,
+        };
         self.snapshot.cleanup_pending = event["cleanupPending"] == true;
         self.snapshot.error = (phase == "failed").then_some("endpoint_failed");
         Ok(self.snapshot.clone())
@@ -832,6 +897,42 @@ mod tests {
             .contains("fixture-secret"));
         event["phase"] = json!("fixture-secret");
         assert!(runtime.update(&event).is_err());
+    }
+
+    #[test]
+    fn optional_carrier_metrics_follow_route_and_worker_compatibility() {
+        let mut runtime = Runtime::default();
+        runtime.snapshot.role = Some(Role::Client);
+        let mut event = json!({
+            "phase": "connected", "routeProof": "client-relay/server-public",
+            "peerAuthenticated": true, "proxyReady": true
+        });
+        assert!(runtime.update(&event).unwrap().metrics.is_none());
+        event["metrics"] = json!({
+            "receivedBytes": 1024, "sentBytes": 512,
+            "quic": {"rttMs": 12.5, "lostPackets": 1, "sentPackets": 10, "private": "ignored"}
+        });
+        let state = serde_json::to_value(runtime.update(&event).unwrap()).unwrap();
+        assert_eq!(
+            state["metrics"],
+            json!({
+                "receivedBytes": 1024, "sentBytes": 512,
+                "quic": {"rttMs": 12.5, "lostPackets": 1, "sentPackets": 10}
+            })
+        );
+        event["metrics"]["quic"]["lostPackets"] = json!(11);
+        assert!(runtime
+            .update(&event)
+            .unwrap()
+            .metrics
+            .unwrap()
+            .quic
+            .is_none());
+        event["metrics"]["sentBytes"] = json!(9_007_199_254_740_992_u64);
+        assert!(runtime.update(&event).unwrap().metrics.is_none());
+        event["metrics"]["sentBytes"] = json!(512);
+        event["routeProof"] = json!("unverified");
+        assert!(runtime.update(&event).unwrap().metrics.is_none());
     }
 
     #[test]

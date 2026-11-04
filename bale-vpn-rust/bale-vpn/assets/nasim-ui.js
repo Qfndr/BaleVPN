@@ -16,6 +16,8 @@ const labels = {
     stopped:'متوقف شد', closed:'متوقف شد', failed:'اتصال برقرار نشد',
     limits:'هر اجرا یک تماس تا ۹۰ ثانیه دارد و گواهی تازه‌ای می‌سازد.',
     route:'مسیر رلهٔ کلاینت و احراز هویت دوطرفه تأیید شد.',
+    carrierRx:'دریافت حامل', carrierTx:'ارسال حامل', carrierRtt:'زمان رفت‌وبرگشت',
+    carrierLoss:'افت تجمعی بسته‌های QUIC', carrierHint:'حجم و نرخ در حامل QUIC اندازه‌گیری می‌شوند.',
     cleanup:'پاک‌سازی تماس قبلی هنوز تأیید نشده است.',
     copied:'گواهی کپی شد.', selectCopy:'گواهی انتخاب شد. آن را کپی کنید.',
     invalidCertificate:'گواهی عمومی طرف مقابل را بررسی کنید.',
@@ -37,6 +39,8 @@ const labels = {
     stopped:'Stopped', closed:'Stopped', failed:'Connection failed',
     limits:'Each run supports one call for up to 90 seconds and creates a fresh certificate.',
     route:'Client relay route and mutual authentication verified.',
+    carrierRx:'Carrier received', carrierTx:'Carrier sent', carrierRtt:'Round-trip time',
+    carrierLoss:'Cumulative QUIC packet loss', carrierHint:'Traffic totals and rates are measured at the QUIC carrier.',
     cleanup:'Cleanup of the previous call is still unconfirmed.',
     copied:'Certificate copied.', selectCopy:'Certificate selected. Copy it now.',
     invalidCertificate:'Check the peer’s public certificate.',
@@ -55,6 +59,63 @@ let prefs = {language:'fa',theme:'system'};
 let lang = 'fa', csrf = '', configured = false, busy = false, pollTask = null;
 let state = {phase:'idle'};
 let notice = null;
+let sample = null, rates = null;
+
+const counter = value => Number.isSafeInteger(value) && value >= 0;
+const authenticatedRoute = value => value.phase === 'connected' && value.peerAuthenticated === true &&
+  value.routeProof === 'client-relay/server-public';
+
+function metricsFor(value) {
+  const metrics = value.metrics;
+  if (!authenticatedRoute(value) || !(value.role === 'server' || value.role === 'client' && value.proxyReady === true) ||
+      !counter(metrics?.receivedBytes) || !counter(metrics?.sentBytes)) return null;
+  return metrics;
+}
+
+function setState(value) {
+  const metrics = metricsFor(value);
+  const now = performance.now();
+  const elapsed = sample ? (now - sample.at) / 1000 : 0;
+  rates = null;
+  if (metrics && sample && state.role === value.role && elapsed >= 0.25 && elapsed <= 5 &&
+      metrics.receivedBytes >= sample.rx && metrics.sentBytes >= sample.tx) {
+    rates = {
+      rx:(metrics.receivedBytes - sample.rx) / elapsed,
+      tx:(metrics.sentBytes - sample.tx) / elapsed
+    };
+  }
+  sample = metrics ? {at:now,rx:metrics.receivedBytes,tx:metrics.sentBytes} : null;
+  state = value;
+}
+
+function renderMetrics() {
+  const metrics = sample && metricsFor(state);
+  $('carrierMetrics').hidden = !metrics;
+  if (!metrics) return;
+  const number = new Intl.NumberFormat(lang,{maximumFractionDigits:1});
+  const bytes = value => {
+    const units = ['B','KiB','MiB','GiB','TiB','PiB'];
+    let unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return number.format(value) + ' ' + units[unit];
+  };
+  $('carrierRx').textContent = bytes(metrics.receivedBytes);
+  $('carrierTx').textContent = bytes(metrics.sentBytes);
+  $('carrierRxRate').textContent = rates ? bytes(rates.rx) + '/s' : '';
+  $('carrierTxRate').textContent = rates ? bytes(rates.tx) + '/s' : '';
+  const q = state.role === 'client' ? metrics.quic : null;
+  const rtt = Number.isFinite(q?.rttMs) && q.rttMs >= 0 && q.rttMs <= 120000;
+  const loss = counter(q?.sentPackets) && q.sentPackets > 0 && counter(q.lostPackets) && q.lostPackets <= q.sentPackets;
+  $('carrierRttField').hidden = !rtt;
+  $('carrierRtt').textContent = rtt ? number.format(q.rttMs) + ' ms' : '';
+  $('carrierLossField').hidden = !loss;
+  $('carrierLoss').textContent = loss
+    ? new Intl.NumberFormat(lang,{style:'percent',maximumFractionDigits:2}).format(q.lostPackets / q.sentPackets)
+    : '';
+}
 
 try {
   const saved = JSON.parse(localStorage.getItem('bale_appearance') || '{}');
@@ -95,8 +156,7 @@ function render() {
   const role = active ? state.role : $('startForm').elements.role.value;
   const certificate = typeof state.publicCertificate === 'string' && hexCertificate.test(state.publicCertificate)
     ? state.publicCertificate : '';
-  const authenticated = state.phase === 'connected' && state.peerAuthenticated === true &&
-    state.routeProof === 'client-relay/server-public';
+  const authenticated = authenticatedRoute(state);
   $('setupHint').hidden = configured;
   $('workspace').hidden = !configured;
   $('connection').hidden = !configured;
@@ -117,6 +177,7 @@ function render() {
     Number.isInteger(state.proxyPort) && state.proxyPort >= 1024 && state.proxyPort <= 65535;
   $('proxy').hidden = !proxyReady;
   $('proxy').textContent = proxyReady ? 'SOCKS5 · 127.0.0.1:' + state.proxyPort : '';
+  renderMetrics();
   $('callActions').hidden = !active;
   $('dial').hidden = role !== 'client' || state.phase !== 'ready';
   $('dial').disabled = busy || state.phase !== 'ready';
@@ -146,11 +207,12 @@ async function action(path,body) {
   render();
   try {
     await pollTask;
-    state = await api(path,body);
+    setState(await api(path,body));
     if (badPhases.has(state.phase)) setNotice('requestFailed',true);
   } catch {
+    sample = rates = null;
     setNotice('requestFailed',true);
-    try { state = await api('/state'); } catch {}
+    try { setState(await api('/state')); } catch {}
   } finally {
     busy = false;
     render();
@@ -161,9 +223,10 @@ function poll() {
   if (!configured || busy || pollTask || document.hidden || !activePhases.has(state.phase)) return;
   pollTask = (async () => {
     try {
-      state = await api('/state');
+      setState(await api('/state'));
       if (badPhases.has(state.phase)) setNotice('requestFailed',true);
     } catch {
+      sample = rates = null;
       setNotice('unavailable',true);
     } finally {
       pollTask = null;
@@ -213,7 +276,7 @@ appearance();
     configured = info.available === true && typeof info.csrfToken === 'string' && info.csrfToken.length > 0;
     if (configured) {
       csrf = info.csrfToken;
-      state = await api('/state');
+      setState(await api('/state'));
       setInterval(poll,1200);
     }
   } catch {
