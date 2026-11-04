@@ -365,5 +365,57 @@
     "originalLabAccountsRestored": true,
     "remainingTrackedCalls": false,
     "limits": "The absence of a peer leave notification is not classified as a protocol defect. The observed pre-join leave can be processed after the correlated reply by independent native task queues; the receive-order regression checks that scheduling case."
+  },
+  "receiveOrderTrial": {
+    "sourceCommit": "7074d9fd4963b222145cd46e88774e56576ffa74",
+    "firstCycle": {
+      "bothPayloadHashesMatched": true,
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "stableAfterTransferSeconds": 20,
+      "serverReturnedToListening": true
+    },
+    "secondCycle": {
+      "success": false,
+      "client": {
+        "terminalReason": "server_leave",
+        "serviceReason": 14,
+        "serviceAction": 1,
+        "publisherIceState": "connected",
+        "subscriberIceState": "checking",
+        "selectedPairPresent": false,
+        "dtlsState": "new",
+        "candidatePairs": 18,
+        "pairsSucceeded": 4,
+        "pairsFailed": 14,
+        "nominatedPairs": 0,
+        "remoteCandidatesApplied": 4,
+        "remoteCandidateErrors": 0,
+        "subscriberOfferCount": 1,
+        "subscriberAudioSections": 0,
+        "peerCount": 1,
+        "quicClientStarted": true
+      },
+      "server": {
+        "publisherIceState": "connected",
+        "subscriberIceState": "connected",
+        "subscriberOfferCount": 2,
+        "subscriberAudioSections": 1,
+        "peerCount": 1,
+        "quicServerStarted": true,
+        "serviceLeave": {
+          "actor": "self",
+          "phase": "joining",
+          "deferred": true,
+          "metadataTimestampOrder": "equal"
+        }
+      }
+    },
+    "delayedSelfLeaveAfterJoinedBranchObserved": false,
+    "newOtpRequested": false,
+    "newRegistrationRequested": false,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "interpretation": "One transfer cycle passed; repeated startup remains intermittent. The failed client did not select an ICE pair despite four successfully applied remote candidates. The delayed self-leave branch was not exercised, so this live trial does not validate or refute that branch."
   }
 }

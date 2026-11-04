@@ -30,7 +30,7 @@ condition = "AND"
 targetRules = ["generic-api-key"]
 regexTarget = "secret"
 paths = ['''^experiments/providers/video\-carrier\-evidence\-2026\-11\-04\.json$''', '''^scripts/rsa\-public\-only\-review\.json$''']
-regexes = ['''^3a09f6e9582bded377c777076c6e9bdac872d71e90ecb6a31bb530e2384d1fec$''', '''^5485d4cdaa0993586792154b0d94c205cc20de3a702955b387ce404108f4c063$''', '''^efe2a7eb7e5195609b6bb621dc1f336d2fcb651a378172052234a1c6d7c6527e$''']
+regexes = ['''^3a09f6e9582bded377c777076c6e9bdac872d71e90ecb6a31bb530e2384d1fec$''', '''^5485d4cdaa0993586792154b0d94c205cc20de3a702955b387ce404108f4c063$''', '''^efe2a7eb7e5195609b6bb621dc1f336d2fcb651a378172052234a1c6d7c6527e$''', '''^ea419f1a9dd28a72172b8c35d845589270fc754a9fc8e2e7ec7ac9e2339e84c6$''']
 
 [[allowlists]]
 description = "Literal RSA algorithm name in public source audit prose"
