@@ -93,5 +93,36 @@
     "scope": "Existing native and local relay interoperability suites with RTP diagnostic source compiled; new terminal RTP unit tests await the separate core workflow.",
     "liveProviderCallsVerified": false,
     "operatorBillingVerified": false
+  },
+  "retainedCandidateFollowup": {
+    "sourceCommit": "6ea8a93ea4961b7c0ea759c7afe41ef58345ea81",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41771950018",
+    "platforms": [
+      {
+        "platform": "Linux x64",
+        "jobId": 126383804233,
+        "artifactId": 13295417445,
+        "archiveSha256": "846c69584d738e66075c69c18ee3f2cd8c0b02353b27a973ed5882b0ac3d34d2",
+        "nasimHelperSha256": "f4a10b46c85b7eaa3da286faac9d8a3ad4b66dcf1a64484e40a9000003fa1a05"
+      },
+      {
+        "platform": "Windows x64",
+        "jobId": 126383803820,
+        "artifactId": 13294964738,
+        "archiveSha256": "d26cad50cdaf1380baa706ed4a5cbc56ef84936e01c1925de51cadd419a583f6",
+        "nasimHelperSha256": "cdb4dca577981baeb39fee9221e58fc2afe11b233fd87a08d9f5791f2dd7ffe8"
+      }
+    ],
+    "bothJobsSucceeded": true,
+    "nativeTestsPerPlatform": 48,
+    "rustInteropTestsPerPlatform": 8,
+    "explicitRetainedCandidateRegressionPerPlatform": 1,
+    "failed": 0,
+    "skipped": 0,
+    "allHelperAndReportHashesVerifiedInMemory": true,
+    "archiveWrittenToDisk": false,
+    "scope": "Three provider IPC suites, four adapter cases, three actual helper interoperability cases, and the explicit real relay test asserting candidate counts survive close.",
+    "liveProviderCallsVerified": false,
+    "operatorBillingVerified": false
   }
 }
