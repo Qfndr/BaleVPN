@@ -60,6 +60,57 @@ test('initial media failure preserves both captured intents after the call conte
  }finally{f.close();}
 });
 
+test('established call clears only the receiver intent after a bound peer bye',async()=>{
+ const saved=new Map(),cleared=[];
+ const f=callFixture({cleanupFactory:account=>{
+  const slot=account.state.userId;
+  return new CleanupIntent(account,{
+   async saveIntent(value,guard){guard();saved.set(slot,structuredClone(value));},
+   async loadIntent(){return saved.get(slot)||null;},
+   async clearIntent(value,guard){guard();assert.deepEqual(value,saved.get(slot));saved.delete(slot);cleared.push(slot);},
+  });
+ }});
+ try{
+  const {a,b}=await f.prepare();
+  await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  assert.deepEqual([...saved.keys()].sort(),['41','42']);
+  const senderIntent=structuredClone(saved.get('41'));
+  const receiverIntent=structuredClone(saved.get('42'));
+  const bye=f.raw('41','bye','fixture-call-1',null);
+  const ignored=b.state.ignoredEvents;
+  f.deliver('42',f.raw('43','bye','fixture-call-1',null));
+  f.deliver('42',{...bye,senderClientID:'different-device'});
+  f.deliver('42',f.raw('41','bye','different-call',null));
+  await waitFor(()=>b.state.ignoredEvents>=ignored+3&&!b.state.busy);
+  assert.equal(b.state.phase,'connected');
+  assert.equal(f.natives[1].state.phase,'connected');
+  assert.deepEqual(saved.get('41'),senderIntent);
+  assert.deepEqual(saved.get('42'),receiverIntent);
+  assert.deepEqual(cleared,[]);
+
+  f.deliver('42',bye);
+  await waitFor(()=>b.state.phase==='ended'&&!b.state.busy);
+  assert.equal(b.state.terminal.signal,'bye');
+  assert.equal(b.state.terminal.actor,'peer');
+  assert.ok(['negotiating','connected'].includes(b.state.terminal.phaseBeforeEnd));
+  assert.equal(f.natives[1].state.phase,'closed');
+  assert.equal(b.state.cleanup.pending,false);
+  assert.equal(a.state.phase,'connected');
+  assert.deepEqual(saved.get('41'),senderIntent);
+  assert.equal(saved.has('42'),false);
+  assert.deepEqual(cleared,['42']);
+
+  const afterBye=b.state.ignoredEvents;
+  f.deliver('42',bye);
+  await waitFor(()=>b.state.ignoredEvents>afterBye&&!b.state.busy);
+  assert.equal(b.state.phase,'ended');
+  assert.deepEqual(cleared,['42']);
+  assert.equal(f.sent.filter(({signal})=>signal.type==='callRequest').length,1);
+  assert.equal(f.sent.some(({signal})=>signal.type==='bye'),false);
+ }finally{f.close();}
+});
+
 test('event stream loss during an established call closes media and preserves bound cleanup',async()=>{
  const saved=new Map();
  const f=callFixture({cleanupFactory:account=>new CleanupIntent(account,{
