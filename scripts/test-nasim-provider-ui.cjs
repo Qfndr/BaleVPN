@@ -154,7 +154,7 @@ async function main() {
     assert.equal(await page.locator('#detail').textContent(),'The connection to the Nasim event stream was lost.');
     await page.locator('#language').click();
     fixture.patchState({termination:'<script>fixture provider private text</script>'});
-    await page.waitForFunction(() => document.getElementById('detail').textContent.includes('۹۰ ثانیه'));
+    await page.waitForFunction(() => document.getElementById('detail').textContent === 'برای هر تماس یک گواهی تازه ساخته می‌شود.');
     assert.equal((await page.locator('body').innerText()).includes('fixture provider private text'),false);
     fixture.patchState({phase:'uncertain',cleanupPending:true,termination:'event_stream_not_connected'});
     await page.waitForFunction(() => document.getElementById('detail').textContent.includes('پاک‌سازی تماس قبلی'));
