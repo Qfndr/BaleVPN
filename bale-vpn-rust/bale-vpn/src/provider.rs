@@ -290,6 +290,11 @@ impl Backend {
                     break;
                 }
                 let result = this.connection(config.clone(), &mut rx).await;
+                let last_tunnel=this.tunnel.lock().clone();
+                if let Some(tunnel)=last_tunnel {
+                    tunnel.capture_media_stats().await;
+                    if let Some(terminal)=this.media_terminal.lock().as_mut() {terminal["rtc"]=tunnel.media_diagnostic().unwrap_or(Value::Null);}
+                }
                 this.capture_media_terminal(
                     "control",
                     &result.as_ref().err().map(|e| e.0).unwrap_or("local_stop"),

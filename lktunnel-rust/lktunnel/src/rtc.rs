@@ -36,6 +36,7 @@ use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
+use webrtc::ice_transport::ice_role::RTCIceRole;
 use webrtc::ice_transport::ice_credential_type::RTCIceCredentialType;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
@@ -125,6 +126,7 @@ pub struct Engine {
     local_ice: Vec<Arc<LocalIceGate>>,
     force_relay_setting: &'static str,
     ice_policy: &'static str,
+    terminal_ice_stats: Mutex<serde_json::Value>,
     /// Remote participants currently present (identities). Updated by the
     /// signal task from `ParticipantUpdate`.
     peers: Arc<Mutex<HashSet<String>>>,
@@ -140,6 +142,25 @@ struct NegotiationState {
     stale_answers: AtomicU32,
     subscriber_offer_summary: Mutex<serde_json::Value>,
     subscriber_answer_summary: Mutex<serde_json::Value>,
+    remote_publisher: RemoteIceCounters,
+    remote_subscriber: RemoteIceCounters,
+}
+#[derive(Default)]
+struct RemoteIceCounters {
+    received:AtomicU32,parsed:AtomicU32,parse_failed:AtomicU32,queued:AtomicU32,
+    duplicate:AtomicU32,applied:AtomicU32,add_failed:AtomicU32,fragment_dropped:AtomicU32,
+    fragment_present:AtomicU32,fragment_blank:AtomicU32,end_markers:AtomicU32,final_messages:AtomicU32,oversized:AtomicU32,
+}
+fn increment(counter:&AtomicU32) {let _=counter.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|Some(n.saturating_add(1)));}
+impl RemoteIceCounters {
+    fn snapshot(&self)->serde_json::Value {
+        let read=|n:&AtomicU32|n.load(Ordering::Relaxed);
+        serde_json::json!({"received":read(&self.received),"parsed":read(&self.parsed),"parseFailed":read(&self.parse_failed),
+            "queued":read(&self.queued),"duplicate":read(&self.duplicate),"applied":read(&self.applied),"addFailed":read(&self.add_failed),
+            "fragmentDropped":read(&self.fragment_dropped),"fragmentPresent":read(&self.fragment_present),"fragmentBlank":read(&self.fragment_blank),
+            "endMarkers":read(&self.end_markers),"finalMessages":read(&self.final_messages),"oversized":read(&self.oversized)})
+    }
+    fn added(&self,success:bool) {increment(if success{&self.applied}else{&self.add_failed});}
 }
 impl NegotiationState {
     fn next_offer(&self) -> Result<u32,String> {
@@ -161,6 +182,7 @@ impl NegotiationState {
             "stalePublisherAnswers":self.stale_answers.load(Ordering::Relaxed),
             "subscriberOffer":self.subscriber_offer_summary.lock().clone(),
             "subscriberAnswer":self.subscriber_answer_summary.lock().clone(),
+            "remoteIce":{"publisher":self.remote_publisher.snapshot(),"subscriber":self.remote_subscriber.snapshot()},
         })
     }
 }
@@ -171,12 +193,14 @@ fn sdp_summary(sdp:&str) -> serde_json::Value {
     if sdp.len()>128*1024 {return serde_json::json!({"status":"oversized"});}
     let (mut audio,mut video,mut application,mut other,mut active,mut candidates)=(0u32,0u32,0u32,0u32,0u32,0u32);
     let (mut version,mut ufrag,mut password,mut fingerprint)=(false,false,false,false);
+    let (mut in_media,mut session_lite,mut media_lite)=(false,false,false);
     let mut malformed=false;
     for (index,line) in sdp.lines().enumerate() {
         if index>=1024 || line.len()>16*1024 {return serde_json::json!({"status":"oversized"});}
         let increment=|n:&mut u32|*n=n.saturating_add(1).min(256);
         if line=="v=0" {version=true;}
         if let Some(media)=line.strip_prefix("m=") {
+            in_media=true;
             let mut fields=media.split_whitespace();
             match fields.next() {Some("audio")=>increment(&mut audio),Some("video")=>increment(&mut video),Some("application")=>increment(&mut application),Some(_)=>increment(&mut other),None=>malformed=true};
             match fields.next().and_then(|p|p.split('/').next()).and_then(|p|p.parse::<u16>().ok()) {
@@ -187,10 +211,12 @@ fn sdp_summary(sdp:&str) -> serde_json::Value {
         if let Some(value)=line.strip_prefix("a=ice-pwd:") {password|=!value.trim().is_empty();}
         if let Some(value)=line.strip_prefix("a=fingerprint:") {fingerprint|=!value.trim().is_empty();}
         if line.starts_with("a=candidate:") {increment(&mut candidates);}
+        if line=="a=ice-lite" {if in_media {media_lite=true;}else{session_lite=true;}}
     }
     serde_json::json!({"status":if version&&!malformed{"ok"}else{"malformed"},"audioSections":audio,"videoSections":video,
         "applicationSections":application,"otherSections":other,"activeSections":active,"candidateCount":candidates,
-        "hasIceUfrag":ufrag,"hasIcePassword":password,"hasFingerprint":fingerprint})
+        "hasIceUfrag":ufrag,"hasIcePassword":password,"hasFingerprint":fingerprint,
+        "hasSessionIceLite":session_lite,"hasMediaIceLite":media_lite})
 }
 
 /// Register before AddTrack so an immediate acknowledgement cannot be lost.
@@ -459,6 +485,7 @@ impl Engine {
             local_ice:vec![local_publisher_ice,local_subscriber_ice],
             force_relay_setting,
             ice_policy:if ice_transport_policy==RTCIceTransportPolicy::Relay {"relay"}else{"default"},
+            terminal_ice_stats:Mutex::new(serde_json::Value::Null),
             peers,
             event_task: Mutex::new(startup.task.take()),
         });
@@ -483,7 +510,14 @@ impl Engine {
             "peerCount": self.peers.lock().len(),
             "serverForceRelay": self.force_relay_setting,
             "iceTransportPolicy": self.ice_policy,
+            "candidateStats": self.terminal_ice_stats.lock().clone(),
         })
+    }
+    pub(crate) async fn capture_ice_stats(&self) {
+        if !self.terminal_ice_stats.lock().is_null(){return;}
+        let (publisher,subscriber)=tokio::join!(peer_ice_stats(&self.publisher),peer_ice_stats(&self.subscriber));
+        let mut first=self.terminal_ice_stats.lock();
+        if first.is_null(){*first=serde_json::json!({"publisher":publisher,"subscriber":subscriber});}
     }
 
     /// Idempotent teardown.
@@ -526,6 +560,37 @@ fn ice_state_name(state: RTCIceConnectionState) -> &'static str {
         RTCIceConnectionState::Disconnected=>"disconnected",RTCIceConnectionState::Failed=>"failed",
         RTCIceConnectionState::Closed=>"closed",_=>"unknown",
     }
+}
+async fn peer_ice_stats(pc:&RTCPeerConnection)->serde_json::Value {
+    let (report,role)=tokio::join!(
+        tokio::time::timeout(Duration::from_millis(250),pc.get_stats()),
+        tokio::time::timeout(Duration::from_millis(250),async {let transport=pc.sctp().transport();transport.ice_transport().role().await})
+    );
+    let role=match role {Ok(RTCIceRole::Controlling)=>"controlling",Ok(RTCIceRole::Controlled)=>"controlled",Ok(_)=>"unspecified",Err(_)=>"unavailable"};
+    let report=match report {
+        Ok(report)=>report,Err(_)=>return serde_json::json!({"status":"timeout","configuredTransportRole":role}),
+    };
+    use webrtc::stats::StatsReportType;
+    use webrtc::ice::candidate::{CandidatePairState,CandidateType};
+    let (mut local,mut remote,mut pairs,mut nominated,mut deleted)=(0u32,0u32,0u32,0u32,0u32);
+    let mut states=[0u32;5];let mut local_types=[0u32;5];let mut remote_types=[0u32;5];
+    let kind=|value:CandidateType|match value {CandidateType::Host=>0,CandidateType::ServerReflexive=>1,CandidateType::PeerReflexive=>2,CandidateType::Relay=>3,_=>4};
+    for value in report.reports.values().take(16384) {
+        match value {
+            StatsReportType::LocalCandidate(candidate)=>{local+=1;local_types[kind(candidate.candidate_type)]+=1;if candidate.deleted{deleted+=1;}},
+            StatsReportType::RemoteCandidate(candidate)=>{remote+=1;remote_types[kind(candidate.candidate_type)]+=1;if candidate.deleted{deleted+=1;}},
+            StatsReportType::CandidatePair(pair)=>{
+                pairs+=1;if pair.nominated{nominated+=1;}
+                states[match pair.state {CandidatePairState::Waiting=>0,CandidatePairState::InProgress=>1,CandidatePairState::Succeeded=>2,CandidatePairState::Failed=>3,_=>4}]+=1;
+            },
+            _=>{},
+        }
+    }
+    let kinds=|values:[u32;5]|serde_json::json!({"host":values[0],"serverReflexive":values[1],"peerReflexive":values[2],"relay":values[3],"unknown":values[4]});
+    serde_json::json!({"status":"ok","configuredTransportRole":role,"truncated":report.reports.len()>16384,"localCandidates":local,"remoteCandidates":remote,
+        "candidatePairs":pairs,"nominatedPairs":nominated,"deletedCandidates":deleted,
+        "pairsWaiting":states[0],"pairsInProgress":states[1],"pairsSucceeded":states[2],"pairsFailed":states[3],"pairsUnknown":states[4],
+        "localTypes":kinds(local_types),"remoteTypes":kinds(remote_types),"requestCountersSupported":false})
 }
 
 impl Drop for Engine {
@@ -776,6 +841,9 @@ impl PendingRemoteIce {
         Ok(())
     }
     async fn flush(&mut self, pc: &RTCPeerConnection) -> usize {
+        self.flush_observed(pc,None).await
+    }
+    async fn flush_observed(&mut self, pc: &RTCPeerConnection, counters:Option<&RemoteIceCounters>) -> usize {
         let Some(remote) = pc.remote_description().await else { return 0; };
         let mut applied = 0;
         while let Some((init, size)) = self.entries.pop_front() {
@@ -784,19 +852,31 @@ impl PendingRemoteIce {
             // initial queue. Legacy candidates without a fragment are retained.
             if init.username_fragment.as_ref().is_some_and(|fragment|
                 !remote.sdp.lines().any(|line| line.strip_prefix("a=ice-ufrag:") == Some(fragment.as_str()))) {
+                if let Some(c)=counters {increment(&c.fragment_dropped);}
                 continue;
             }
-            if pc.add_ice_candidate(init).await.is_ok() { applied += 1; }
+            let accepted=pc.add_ice_candidate(init).await.is_ok();
+            if let Some(c)=counters {c.added(accepted);}
+            if accepted { applied += 1; }
         }
         applied
     }
 }
 async fn add_remote_ice(pc: &RTCPeerConnection, pending: &mut PendingRemoteIce,
     init: RTCIceCandidateInit, size: usize) -> Result<(), &'static str> {
+    add_remote_ice_observed(pc,pending,init,size,None).await
+}
+async fn add_remote_ice_observed(pc: &RTCPeerConnection, pending: &mut PendingRemoteIce,
+    init: RTCIceCandidateInit, size: usize,counters:Option<&RemoteIceCounters>) -> Result<(), &'static str> {
     if size > MAX_REMOTE_ICE_JSON { return Err("ICE candidate size limit"); }
-    if pc.remote_description().await.is_none() { return pending.push(init, size); }
+    if pc.remote_description().await.is_none() {
+        let before=pending.entries.len();let result=pending.push(init,size);
+        if result.is_ok() {if let Some(c)=counters {increment(if pending.entries.len()>before{&c.queued}else{&c.duplicate});}}
+        return result;
+    }
     // Malformed candidates have always been ignored; never log their addresses.
-    let _ = pc.add_ice_candidate(init).await;
+    let accepted=pc.add_ice_candidate(init).await.is_ok();
+    if let Some(c)=counters {c.added(accepted);}
     Ok(())
 }
 
@@ -844,7 +924,7 @@ async fn signal_loop(
                             if let Err(e) = subscriber.set_remote_description(offer).await {
                                 log::warn!("rtc[{id}]: sub set_remote: {e}");
                             } else {
-                              subscriber_ice.flush(&subscriber).await;
+                              subscriber_ice.flush_observed(&subscriber,Some(&negotiation.remote_subscriber)).await;
                               if let Ok(answer) = subscriber.create_answer(None).await {
                                 if let Err(e) = subscriber.set_local_description(answer.clone()).await {
                                     log::warn!("rtc[{id}]: sub set_local: {e}");
@@ -876,27 +956,36 @@ async fn signal_loop(
                             if let Err(e) = publisher.set_remote_description(answer).await {
                                 log::warn!("rtc[{id}]: pub set_remote: {e}");
                             } else {
-                                publisher_ice.flush(&publisher).await;
+                                publisher_ice.flush_observed(&publisher,Some(&negotiation.remote_publisher)).await;
                             }
                         }
                         Err(e) => log::warn!("rtc[{id}]: parse answer: {e}"),
                     }
                 }
                 proto::signal_response::Message::Trickle(t) => {
-                    let (pc, pending) = if t.target == proto::SignalTarget::Publisher as i32 {
-                        (&publisher, &mut publisher_ice)
+                    let (pc, pending,counters) = if t.target == proto::SignalTarget::Publisher as i32 {
+                        (&publisher, &mut publisher_ice,&negotiation.remote_publisher)
                     } else if t.target == proto::SignalTarget::Subscriber as i32 {
-                        (&subscriber, &mut subscriber_ice)
+                        (&subscriber, &mut subscriber_ice,&negotiation.remote_subscriber)
                     } else { continue; };
+                    increment(&counters.received);
+                    if t.r#final {increment(&counters.final_messages);}
                     if t.candidate_init.len() > MAX_REMOTE_ICE_JSON {
+                        increment(&counters.oversized);
                         let _ = event_tx.send(EngineEvent::Disconnected("ICE candidate size limit".into()));
                         return;
                     }
-                    if let Ok(init) = serde_json::from_str::<RTCIceCandidateInit>(&t.candidate_init) {
-                        if let Err(reason) = add_remote_ice(pc, pending, init, t.candidate_init.len()).await {
-                            let _ = event_tx.send(EngineEvent::Disconnected(reason.into()));
-                            return;
-                        }
+                    if t.r#final && t.candidate_init.is_empty() {continue;}
+                    match serde_json::from_str::<RTCIceCandidateInit>(&t.candidate_init) {
+                        Ok(init)=>{
+                            increment(&counters.parsed);
+                            if init.candidate.is_empty(){increment(&counters.end_markers);}
+                            if let Some(fragment)=&init.username_fragment {increment(&counters.fragment_present);if fragment.is_empty(){increment(&counters.fragment_blank);}}
+                            if let Err(reason) = add_remote_ice_observed(pc, pending, init, t.candidate_init.len(),Some(counters)).await {
+                                let _ = event_tx.send(EngineEvent::Disconnected(reason.into()));return;
+                            }
+                        },
+                        Err(_)=>increment(&counters.parse_failed),
                     }
                 }
                 proto::signal_response::Message::Update(update) => {
@@ -942,7 +1031,10 @@ mod remote_ice_tests {
         assert!(!state.accept_answer(2));
         assert_eq!(state.next_offer().unwrap(),2);
         assert!(!state.accept_answer(1));
-        assert_eq!(state.snapshot(),serde_json::json!({"publisherOfferId":2,"subscriberOfferId":0,"subscriberAnswerId":0,"subscriberOfferCount":0,"stalePublisherAnswers":2,"subscriberOffer":null,"subscriberAnswer":null}));
+        let snapshot=state.snapshot();
+        for (key,value) in [("publisherOfferId",2),("subscriberOfferId",0),("subscriberAnswerId",0),("subscriberOfferCount",0),("stalePublisherAnswers",2)] {assert_eq!(snapshot[key],value);}
+        assert_eq!(snapshot["remoteIce"]["publisher"]["received"],0);
+        assert!(snapshot["subscriberOffer"].is_null());
         state.publisher_offer.store(u32::MAX,Ordering::Release);
         assert!(state.next_offer().is_err());
         assert_eq!(state.publisher_offer.load(Ordering::Acquire),u32::MAX);
@@ -960,6 +1052,10 @@ mod remote_ice_tests {
         assert_eq!(sdp_summary(&"private".repeat(20000)),serde_json::json!({"status":"oversized"}));
         let many=format!("v=0\n{}","a=candidate:private\n".repeat(300));
         assert_eq!(sdp_summary(&many)["candidateCount"],256);
+        let session_lite=sdp_summary("v=0\na=ice-lite\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\n");
+        assert_eq!(session_lite["hasSessionIceLite"],true);assert_eq!(session_lite["hasMediaIceLite"],false);
+        let media_lite=sdp_summary("v=0\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\na=ice-lite\n");
+        assert_eq!(media_lite["hasSessionIceLite"],false);assert_eq!(media_lite["hasMediaIceLite"],true);
     }
     #[test]
     fn media_state_names_are_fixed_enums() {
@@ -1036,6 +1132,24 @@ mod remote_ice_tests {
         assert_eq!(queue.bytes, 0);
         assert!(queue.entries.is_empty());
         receiver.close().await.unwrap(); source.close().await.unwrap();
+    }
+    #[tokio::test]
+    async fn remote_ice_counters_distinguish_queued_applied_bad_and_dropped_fragments() {
+        let source=pc().await;source.create_data_channel("fixture",None).await.unwrap();
+        let offer=source.create_offer(None).await.unwrap();
+        let receiver=pc().await;let mut queue=PendingRemoteIce::default();let counters=RemoteIceCounters::default();
+        add_remote_ice_observed(&receiver,&mut queue,candidate(5100),100,Some(&counters)).await.unwrap();
+        add_remote_ice_observed(&receiver,&mut queue,candidate(5100),100,Some(&counters)).await.unwrap();
+        let mut bad=candidate(5101);bad.candidate="invalid-candidate".into();
+        add_remote_ice_observed(&receiver,&mut queue,bad,100,Some(&counters)).await.unwrap();
+        let mut stale=candidate(5102);stale.username_fragment=Some("unmatched-fragment".into());
+        add_remote_ice_observed(&receiver,&mut queue,stale,100,Some(&counters)).await.unwrap();
+        receiver.set_remote_description(offer).await.unwrap();
+        assert_eq!(queue.flush_observed(&receiver,Some(&counters)).await,1);
+        let snapshot=counters.snapshot();
+        for (key,value) in [("queued",3),("duplicate",1),("applied",1),("addFailed",1),("fragmentDropped",1)] {assert_eq!(snapshot[key],value);}
+        assert!(!snapshot.to_string().contains("candidate:"));
+        receiver.close().await.unwrap();source.close().await.unwrap();
     }
     #[test]
     fn pending_candidates_preserve_fifo_and_end_marker_with_strict_memory_limits() {

@@ -308,6 +308,9 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     ))).await.unwrap();
     let offer = remote.create_offer(None).await.unwrap();
     remote.set_local_description(offer.clone()).await.unwrap();
+    for candidate_init in ["invalid-json",r#"{"candidate":"invalid-candidate"}"#] {
+        send(&mut socket,proto::signal_response::Message::Trickle(proto::TrickleRequest {candidate_init:candidate_init.into(),target:proto::SignalTarget::Subscriber as i32,..Default::default()})).await;
+    }
     send(&mut socket, proto::signal_response::Message::Offer(proto::SessionDescription {
         r#type: "offer".into(), sdp: offer.sdp, id: 73, ..Default::default()
     })).await;
@@ -363,6 +366,9 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     }
     assert_eq!(diagnostic["subscriberOffer"]["audioSections"],1);
     assert_eq!(diagnostic["subscriberAnswer"]["hasIcePassword"],true);
+    assert_eq!(diagnostic["remoteIce"]["subscriber"]["received"],2);
+    assert_eq!(diagnostic["remoteIce"]["subscriber"]["parseFailed"],1);
+    assert_eq!(diagnostic["remoteIce"]["subscriber"]["addFailed"],1);
     send(&mut socket,proto::signal_response::Message::Answer(proto::SessionDescription {
         r#type:"answer".into(),sdp:publisher_answer.sdp,id:1,..Default::default()
     })).await;
@@ -425,6 +431,14 @@ async fn subscriber_accepts_application_only_offer_without_a_local_data_channel(
     acknowledge(&mut socket,&track.cid,Some(audio_track())).await;
     let (engine,_,_)=timeout(LIMIT,connect).await.unwrap().unwrap().unwrap();
     assert_eq!(engine.subscriber.connection_state(),RTCPeerConnectionState::Connected);
+    engine.capture_ice_stats().await;
+    let stats=engine.media_diagnostic()["candidateStats"]["subscriber"].clone();
+    assert_eq!(stats["status"],"ok");
+    assert!(stats["remoteCandidates"].as_u64().unwrap()>0);
+    assert!(stats["pairsSucceeded"].as_u64().unwrap()>0);
+    assert_eq!(stats["requestCountersSupported"],false);
+    assert_eq!(stats["configuredTransportRole"],"controlled");
+    assert!(!stats.to_string().contains("candidate:"));
     shutdown(&engine,&mut socket).await;
     remote.close().await.unwrap();
 }

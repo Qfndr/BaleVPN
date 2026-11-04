@@ -807,6 +807,10 @@ impl LkTunnel {
         value["quicServerStarted"]=self.quic_server_started.load(Ordering::Acquire).into();
         Some(value)
     }
+    pub async fn capture_media_stats(&self) {
+        let engine=self.engine.lock().clone();
+        if let Some(engine)=engine {engine.capture_ice_stats().await;}
+    }
     pub(crate) fn fail_transport(&self, error: String) { *self.transport_error.lock()=Some(error);self.disconnect(); }
     pub fn is_proxy_ready(&self) -> bool {
         self.is_connected() && self.quic_client.lock().as_ref().is_some_and(|c| c.connection.close_reason().is_none())
@@ -1673,6 +1677,7 @@ async fn run_tunnel_loop(
                     emit_event(&events_tx, EventKind::PeerLeft, id);
                 }
                 EngineEvent::Disconnected(msg) => {
+                    engine.capture_ice_stats().await;
                     log::info!("LkTunnel: disconnected during peer-wait — {msg}");
                     if let Some(inner) = weak.upgrade() {
                         let _ = inner.state_tx.send_replace(TunnelState::Failed(msg.clone()));
@@ -1684,6 +1689,7 @@ async fn run_tunnel_loop(
         }
     };
     if !joined {
+        engine.capture_ice_stats().await;
         log::warn!("LkTunnel: no peer joined within {}s — closing", PEER_WAIT_MS / 1000);
         let e = Arc::clone(&engine);
         tokio::spawn(async move { e.close().await; });
@@ -1752,6 +1758,8 @@ async fn run_tunnel_loop(
                     emit_event(&events_tx, EventKind::PeerLeft, id);
                 }
                 Some(EngineEvent::Disconnected(msg)) => {
+                    connected.store(false,Ordering::Relaxed);
+                    engine.capture_ice_stats().await;
                     log::info!("LkTunnel: engine disconnected — {msg}");
                     emit_event(&events_tx, EventKind::Disconnected, msg);
                     break;
@@ -1759,6 +1767,8 @@ async fn run_tunnel_loop(
             },
             _ = probe.tick() => {
                 if !engine.peer_present() {
+                    connected.store(false,Ordering::Relaxed);
+                    engine.capture_ice_stats().await;
                     log::info!("LkTunnel: room empty — closing (peer left without an update)");
                     let e = Arc::clone(&engine);
                     tokio::spawn(async move { e.close().await; });
@@ -1770,6 +1780,7 @@ async fn run_tunnel_loop(
     }
 
     connected.store(false, Ordering::Relaxed);
+    engine.capture_ice_stats().await;
     if let Some(inner) = weak.upgrade() {
         inner.teardown();
     }

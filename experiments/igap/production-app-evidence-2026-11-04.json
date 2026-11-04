@@ -182,5 +182,34 @@
     "serviceLeaveReason": 14,
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true
+  },
+  "remoteIceCounterTrial": {
+    "binarySha256": "a4c2e320d862eeb9d2347361ac75f076c7249c3d08eb417266b8b1cf655e995e",
+    "firstCycleTransferAndTwentySecondHoldPassed": true,
+    "secondCycleSucceeded": false,
+    "failedSide": "client",
+    "subscriberRemoteIce": {
+      "received": 4,
+      "parsed": 4,
+      "applied": 4,
+      "parseFailed": 0,
+      "addFailed": 0,
+      "fragmentDropped": 0,
+      "fragmentBlank": 0
+    },
+    "subscriberPairs": {
+      "total": 18,
+      "succeeded": 2,
+      "failed": 16,
+      "nominated": 0
+    },
+    "publisherPairs": {
+      "total": 18,
+      "succeeded": 3,
+      "nominated": 1
+    },
+    "requestCountersSupported": false,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
   }
 }
