@@ -232,6 +232,7 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         app.set_allowed_peers(&[]).is_err(),
         "failed leave must still be represented as active"
     );
+    let mut late_end_events = app.events();
     sender
         .send(RpcResponse {
             received_order: None,
@@ -247,6 +248,24 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         })
         .await
         .unwrap();
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(2), late_end_events.recv())
+            .await
+            .unwrap(),
+        Some(SignalingEvent::CallEnded { .. })
+    ));
+    backend.capture_media_terminal("control", "call_ended");
+    let ended = backend.snapshot();
+    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["actor"], "peer");
+    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["phase"], "joined");
+    assert_eq!(
+        ended["mediaDiagnostic"]["serviceLeave"]["metadataTimestampOrder"], "earlier",
+        "metadata ordering is observable and never suppresses a real leave"
+    );
+    assert_eq!(
+        ended["mediaDiagnostic"]["lastEvent"]["serviceLeave"],
+        ended["mediaDiagnostic"]["serviceLeave"]
+    );
     // Ping the ordered push stream with a new offer after the late leave.
     sender.send(incoming()).await.unwrap();
     assert!(tokio::time::timeout(
@@ -260,19 +279,6 @@ async fn http_auth_seals_session_before_ready_and_explicit_restore_uses_only_log
         1,
         "late caller must not be auto-answered by an orphan worker"
     );
-    backend.capture_media_terminal("control", "call_ended");
-    let ended = backend.snapshot();
-    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["actor"], "peer");
-    assert_eq!(ended["mediaDiagnostic"]["serviceLeave"]["phase"], "joined");
-    assert_eq!(
-        ended["mediaDiagnostic"]["serviceLeave"]["metadataTimestampOrder"], "earlier",
-        "metadata ordering is observable and never suppresses a real leave"
-    );
-    assert_eq!(
-        ended["mediaDiagnostic"]["lastEvent"]["serviceLeave"],
-        ended["mediaDiagnostic"]["serviceLeave"]
-    );
-
     rpc.leave_fails.store(false, Ordering::Release);
     assert!(backend.cleanup_connection().await);
     let new_handler = backend.set_admission(Some(peer.clone()));
