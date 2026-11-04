@@ -417,5 +417,64 @@
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true,
     "interpretation": "One transfer cycle passed; repeated startup remains intermittent. The failed client did not select an ICE pair despite four successfully applied remote candidates. The delayed self-leave branch was not exercised, so this live trial does not validate or refute that branch."
+  },
+  "nominationTraceTrial": {
+    "sourceCommit": "40546723b18ab737c678a6271055658461435576",
+    "binarySha256": "2cb63cf0a26d3b37decd53c214b02ab9a3cd911ee9ed90f1ad2319a7956e4984",
+    "traceScope": "Anchored fixed DTLS flight/state and counter-only ICE nomination records",
+    "firstCycle": {
+      "bothPayloadHashesMatched": true,
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "stableAfterTransferSeconds": 20,
+      "serverReturnedToListening": true,
+      "bothSubscriberNominationAcceptedEventsObserved": true,
+      "bothDtlsHandshakesFinished": true
+    },
+    "secondCycle": {
+      "success": false,
+      "client": {
+        "serviceReason": 14,
+        "serviceAction": 1,
+        "subscriberIceState": "checking",
+        "selectedPairPresent": false,
+        "dtlsState": "new",
+        "candidatePairs": 18,
+        "pairsSucceeded": 2,
+        "pairsFailed": 16,
+        "nominatedPairs": 0,
+        "remoteCandidatesApplied": 4,
+        "remoteCandidateErrors": 0,
+        "subscriberOfferCount": 1,
+        "subscriberAudioSections": 0,
+        "nominationAcceptedTraceEventsObserved": 0,
+        "subscriberDtlsStarted": false,
+        "publisherDtlsFinished": true
+      },
+      "server": {
+        "publisherIceState": "connected",
+        "subscriberIceState": "connected",
+        "subscriberOfferCount": 2,
+        "subscriberAudioSections": 1,
+        "nominationTrace": {
+          "accepted": 1,
+          "pending": 0,
+          "selected": true
+        },
+        "bothDtlsHandshakesFinished": true,
+        "serviceLeave": {
+          "actor": "self",
+          "phase": "joining",
+          "deferred": true,
+          "metadataTimestampOrder": "later"
+        }
+      }
+    },
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "remainingTrackedLabCalls": false,
+    "newOtpRequested": false,
+    "newRegistrationRequested": false,
+    "interpretation": "The second client never recorded an accepted incoming nomination and did not select an ICE pair. This separates the failure from a pending nomination whose triggered check is incomplete, but does not determine whether nomination packets were absent or rejected before the controlled selector. No additional transport fix is validated by this trial."
   }
 }
