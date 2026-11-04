@@ -46,5 +46,20 @@
     "scope": "native lifecycle, local TURN/DTLS/RTP/QUIC interoperability, provider codec projection and proxy target filtering",
     "liveProviderCallsVerified": false,
     "operatorBillingVerified": false
+  },
+  "realMediaWindowsFollowup": {
+    "sourceCommit": "802d4b14d0146d64cfc43ebf6c46cbf0b5219461",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41766968279",
+    "platform": "Windows x64",
+    "jobId": 126367474633,
+    "artifactId": 13293930493,
+    "nativeTestsPassed": 45,
+    "realMediaInteropTestsPassed": 7,
+    "failed": 0,
+    "skipped": 0,
+    "helperAndReportHashesVerified": true,
+    "scope": "native lifecycle, local TURN/DTLS/RTP/QUIC interoperability, provider codec projection and proxy target filtering",
+    "liveProviderCallsVerified": false,
+    "operatorBillingVerified": false
   }
 }
