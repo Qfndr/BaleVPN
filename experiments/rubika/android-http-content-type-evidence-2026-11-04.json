@@ -1,0 +1,13 @@
+{
+  "source": "Official Rubika Android APK 4.1.1, classes.dex",
+  "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "owner": "LandroidMessenger/network/ApiRequestMessangerRx;",
+  "references": [
+    {"method": "<init>", "offsets": [10, 12, 16], "observation": "Parses application/json; charset=utf-8 into its JSON OkHttp MediaType field."},
+    {"method": "send", "offsets": [4, 6, 10], "observation": "Creates RequestBody from that MediaType and JSONObject.toString()."},
+    {"method": "sendToUrl", "offsets": [0, 2, 6], "observation": "Uses the same MediaType for explicit destination requests."},
+    {"method": "lambda$new$0", "offsets": [8, 10, 12], "observation": "Application interceptor adds Content-Type application/json; OkHttp body supplies the charset-bearing content type."}
+  ],
+  "change": "Only the explicit Android compatibility profile uses JSON content type for HTTP requests. Web encrypted requests retain text/plain, and Web discovery retains application/json.",
+  "limitation": "This corrects an observed wire-format mismatch; it does not establish the cause of NOT_REGISTERED or prove restored service access. No live request was made."
+}

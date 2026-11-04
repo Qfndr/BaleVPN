@@ -2,6 +2,29 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),crypto=re
 const {HttpClient,endpoint,DISCOVERY}=require('../experiments/rubika/http-client.cjs'),wire=require('../experiments/rubika/wire.cjs');
 const tmp='abcdefghijklmnopqrstuvwxyzabcdef',auth='abcdefghijklmnopqrstuvwxyz012345',guid='u0'+'a'.repeat(32);
 const response=(data,key=tmp)=>new Response(JSON.stringify({data_enc:wire.encrypt({status:'OK',data},key)}));
+
+test('explicit Android JSON content type applies to auth and protected requests without changing Web framing',async()=>{
+ const identity=await wire.createIdentity();
+ for(const mode of ['web','android-4.1.1-compat']){
+  const methods=[],credentials={provider:'rubika',auth,privateKey:identity.privateKey,profile:{protocolProfile:mode}};
+  const retained=JSON.stringify(credentials);
+  const client=new HttpClient({temporarySession:tmp,protocolProfile:mode,fetchImpl:async(url,options)=>{
+   assert.equal(options.headers['content-type'],mode==='web'?'text/plain':'application/json; charset=utf-8');
+   assert.equal(options.headers.origin,mode==='web'?'https://web.rubika.ir':undefined);
+   const body=JSON.parse(options.body),key=body.tmp_session?tmp:auth,payload=wire.decrypt(body.data_enc,key,mode);
+   methods.push(payload.method);
+   assert.equal(payload.client.platform,mode==='web'?'Web':'Android');
+   if(payload.method==='sendCode')assert.equal(body.sign,undefined);
+   else assert.equal(crypto.verify('RSA-SHA256',Buffer.from(body.data_enc),identity.publicKey,Buffer.from(body.sign,'base64')),true);
+   return new Response(JSON.stringify({data_enc:wire.encrypt({status:'OK',data:{}},key,mode)}));
+  }});
+  try{
+   await client.request('sendCode',{phone_number:'989120000001',send_type:'SMS'});
+   await client.request('getMySessions',{}, {credentials});
+   assert.deepEqual(methods,['sendCode','getMySessions']);assert.equal(JSON.stringify(credentials),retained);
+  }finally{client.close();}
+ }
+});
 test('anonymous DC discovery sends no session and cannot select non-provider or credential-bearing destinations',async()=>{
  const seen=[],client=new HttpClient({temporarySession:tmp,fetchImpl:async(url,o)=>{seen.push({url,o});return new Response(JSON.stringify({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}}));}});
  assert.deepEqual(await client.discover(),{apiServerSelected:true});assert.equal(seen.length,1);assert.equal(seen[0].url,DISCOVERY);

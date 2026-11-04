@@ -85,7 +85,10 @@ class HttpClient {
   if(!Number.isInteger(timeout)||timeout<1||timeout>30000)throw new ApiError('invalid_request');
   const controller=new AbortController();this.#pending=controller;const timer=setTimeout(()=>controller.abort(),timeout);
   try{
-   const response=await this.#fetch(url,{method:'POST',headers:{'content-type':json?'application/json':'text/plain',...this.#profile===profiles.WEB?{origin:'https://web.rubika.ir',referer:'https://web.rubika.ir/'}:{}},
+   // The Android APK uses an OkHttp JSON RequestBody (including charset),
+   // while the Web encrypted endpoint intentionally keeps text/plain.
+   const contentType=this.#profile===profiles.ANDROID?'application/json; charset=utf-8':json?'application/json':'text/plain';
+   const response=await this.#fetch(url,{method:'POST',headers:{'content-type':contentType,...this.#profile===profiles.WEB?{origin:'https://web.rubika.ir',referer:'https://web.rubika.ir/'}:{}},
     body:JSON.stringify(body),redirect:'error',cache:'no-store',signal:controller.signal});
    if(controller.signal.aborted||this.#closed)throw new ApiError(this.#closed?'closed':'timeout');
    if(response.status<200||response.status>=300)await response.body?.cancel().catch(()=>{});
