@@ -12,11 +12,16 @@ class CallPair{
   this.#resolver=new TargetResolver(accounts,{...createClient?{createCallClient:createClient}:{},...createAccountClient?{createAccountClient}:{}});
  }
  #guard(epoch){if(epoch!==this.#epoch)fail('call_cancelled');if(this.#records)for(const [slot,record]of this.#records)if(!same(record,binding(this.#accounts.get(slot))))fail('account_binding_changed');}
- #clear(phase,reason=null){this.#epoch++;this.#resolver.close();for(const call of this.#calls.values())call.close();for(const media of this.#media.values())media.close();this.#calls.clear();this.#media.clear();this.#targets=null;this.#records=null;this.#busy=false;this.#phase=phase;this.#reason=reason;}
- reset(){this.#clear('idle');}
+ #pending(confirmedId){return [...this.#calls.values()].some(call=>call.remotePending&&(!confirmedId||call.state.callId!==confirmedId));}
+ #clear(phase,reason=null,confirmedId){
+  const uncertain=this.#phase==='uncertain'||this.#pending(confirmedId);
+  this.#epoch++;this.#resolver.close();for(const call of this.#calls.values())call.close();for(const media of this.#media.values())media.close();this.#calls.clear();this.#media.clear();this.#targets=null;this.#records=null;this.#busy=false;
+  this.#phase=uncertain?'uncertain':phase;this.#reason=uncertain?'call_end_uncertain':reason;
+ }
+ reset(){if(this.#busy&&this.#phase!=='preparing')fail('call_busy');if(this.#pending()||this.#phase==='uncertain')fail('call_end_uncertain');this.#clear('idle');}
  invalidate(){this.#clear('ended');}
  async prepare({clientSlot=1,socksPort=1091,throughput=true}={}){
-  if(!this.#executable)fail('native_bridge_unavailable');if(this.#busy||this.#calls.size)fail('call_busy');
+  if(!this.#executable)fail('native_bridge_unavailable');if(this.#phase==='uncertain')fail('call_end_uncertain');if(this.#busy||this.#calls.size)fail('call_busy');
   if(![1,2].includes(clientSlot)||!Number.isInteger(socksPort)||socksPort<1024||socksPort>65535||typeof throughput!=='boolean')fail('invalid_media_options');
   const records=new Map([1,2].map(slot=>[slot,binding(this.#accounts.get(slot))]));if(records.get(1).userId===records.get(2).userId)fail('distinct_accounts_required');
   const epoch=++this.#epoch;this.#records=records;this.#busy=true;this.#phase='preparing';this.#reason=null;this.#clientSlot=clientSlot;
@@ -40,15 +45,17 @@ class CallPair{
   catch(e){if(epoch===this.#epoch&&['failed','stopped'].includes(this.#calls.get(slot)?.state.phase))this.#clear('failed',e instanceof CallError?e.reason:'call_operation_failed');throw e instanceof CallError?e:new CallError('call_operation_failed');}
   finally{if(epoch===this.#epoch)this.#busy=false;}
  }
- dial(slot=this.#clientSlot){return this.#operate(slot,async(call,guard)=>{const result=await call.dial(this.#targets.get(slot));guard();await this.#calls.get(3-slot).pollOnce();guard();return result;});}
+ dial(slot=this.#clientSlot){return this.#operate(slot,async(call,guard)=>{if(this.#pending())fail('call_busy');const result=await call.dial(this.#targets.get(slot));guard();await this.#calls.get(3-slot).pollOnce();guard();return result;});}
  accept(slot){return this.#operate(slot,async(call,guard)=>{const result=await call.accept();guard();for(const target of [3-slot,slot,3-slot]){await this.#calls.get(target).pollOnce();guard();}return result;});}
  async end(slot=this.#clientSlot){
-  if(![1,2].includes(slot))fail('invalid_call_target');if(this.#busy||!this.#calls.get(slot)?.state.callId){this.#clear('ended');return {ended:true,remoteConfirmed:false};}
-  const epoch=this.#epoch,call=this.#calls.get(slot);this.#busy=true;for(const media of this.#media.values())media.close();
-  try{await call.hangUp();this.#guard(epoch);this.#clear('ended');return {ended:true,remoteConfirmed:true};}
+  if(![1,2].includes(slot))fail('invalid_call_target');if(this.#busy)fail('call_busy');
+  const call=this.#calls.get(slot),callId=call?.state.callId;
+  if(!callId){if(this.#pending()||this.#phase==='uncertain')fail('call_end_uncertain');this.#clear('ended');return {ended:true,remoteConfirmed:false};}
+  const epoch=this.#epoch;this.#busy=true;for(const media of this.#media.values())media.close();
+  try{await call.hangUp();this.#guard(epoch);this.#clear('ended',null,callId);return {ended:true,remoteConfirmed:true};}
   catch(e){if(epoch===this.#epoch)this.#clear('uncertain','call_end_uncertain');throw e instanceof CallError?e:new CallError('call_end_uncertain');}
  }
  getCall(slot){const signaling=this.#calls.get(slot)?.state,media=this.#media.get(slot)?.state;return {provider:'eitaa',slot,phase:!signaling?this.#phase==='idle'?'idle':'ended':media?.phase==='failed'?'failed':media?.phase==='closed'?'ended':media?.ready?'connected':signaling.phase==='listening'?'ready':signaling.phase==='secure'?'negotiating':signaling.phase,signalingPhase:signaling?.phase||null,busy:!!signaling?.busy,callId:signaling?.callId||null,reason:media?.reason||signaling?.reason||null,media:media||null};}
- get state(){const accounts=[1,2].map(slot=>this.getCall(slot));return {available:!!this.#executable,canPrepare:!this.#busy&&this.#calls.size===0,phase:accounts.length===2&&accounts.every(a=>a.phase==='connected')?'connected':accounts.some(a=>a.phase==='failed')?'failed':this.#phase,busy:this.#busy,reason:this.#reason,clientSlot:this.#clientSlot,accounts,liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
+ get state(){const accounts=[1,2].map(slot=>this.getCall(slot));return {available:!!this.#executable,canPrepare:this.#phase!=='uncertain'&&!this.#busy&&this.#calls.size===0,phase:accounts.length===2&&accounts.every(a=>a.phase==='connected')?'connected':accounts.some(a=>a.phase==='failed')?'failed':this.#phase,busy:this.#busy,reason:this.#reason,clientSlot:this.#clientSlot,accounts,liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
 }
 module.exports={CallPair};

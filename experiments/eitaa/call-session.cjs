@@ -20,7 +20,7 @@ function cursor(v){if(v?._!=='updates.state'||!['pts','qts','date','seq','unread
 function signalCopy(value){validateSignal(value);const text=JSON.stringify(value);if(Buffer.byteLength(text)>MAX_PAYLOAD)fail('invalid_signal_size');return JSON.parse(text);}
 class CallSession{
  #account;#create;#callbacks;#client;#binding;#allowed;#self;#cursor;
- #phase='idle';#reason=null;#call;#peer;#outgoing=false;#dh;#commitment;#cipher;#early=[];#earlyBytes=0;
+ #phase='idle';#reason=null;#call;#peer;#outgoing=false;#remotePending=false;#dh;#commitment;#cipher;#early=[];#earlyBytes=0;
  #epoch=0;#queue=[];#queuedBytes=0;#working=false;#timer;#pollQueued=false;#deadline=0;#startedAt=0;#retired=new Set();#ignored=0;#waits=new Set();
  constructor(account,{allowedPeers=[],createClient=options=>new CallClient(options),onSecure=async()=>{},onSignal=async()=>{},onEnd=()=>{}}={}){
   if(!account||typeof createClient!=='function'||![onSecure,onSignal,onEnd].every(v=>typeof v==='function')||!Array.isArray(allowedPeers)||allowedPeers.length>32||allowedPeers.some(v=>typeof v!=='string'||!/^\d{1,19}$/.test(v)||!id(BigInt(v)))||new Set(allowedPeers).size!==allowedPeers.length)fail('invalid_call_options');
@@ -95,6 +95,7 @@ class CallSession{
   return this.#enqueue(async guard=>{
    if(!this.#client)fail('call_not_started');if(this.#phase!=='listening')fail('call_not_listening');if(!this.#allowed.has(userId)||userId===this.#self)fail('call_peer_not_allowed');
    this.#outgoing=true;this.#peer=BigInt(userId);this.#phase='dialing';this.#deadline=Date.now()+60000;this.#reason=null;this.#dh=await this.#generate(guard);
+   this.#remotePending=true;
    const reply=await this.#rpc('phone.requestCall',{user_id:{_:'inputUser',user_id:this.#peer,access_hash:accessHash},g_a_hash:this.#dh.commitment},guard);
    if(reply?._!=='phone.phoneCall'||reply.phone_call?._!=='phoneCallWaiting')fail('invalid_call_response');
    this.#checkCall(reply.phone_call);if(this.#retired.has(String(reply.phone_call.id)))fail('retired_call');this.#call=reply.phone_call;this.#phase='waiting';return {dialing:true};
@@ -133,11 +134,11 @@ class CallSession{
   if(this.#retired.has(String(call?.id))){this.#ignored++;return;}
   if(call?._==='phoneCallRequested'&&!this.#call){
    if(this.#phase!=='listening'||!this.#allowed.has(String(call.admin_id))||call.participant_id!==BigInt(this.#self)){this.#ignored++;return;}
-   this.#peer=this.#checkCall(call,{incoming:true});if(!isBytes(call.g_a_hash,32))fail('invalid_call_response');this.#outgoing=false;this.#call=call;this.#commitment=Buffer.from(call.g_a_hash);this.#phase='ringing';this.#deadline=Date.now()+60000;
+   this.#peer=this.#checkCall(call,{incoming:true});if(!isBytes(call.g_a_hash,32))fail('invalid_call_response');this.#outgoing=false;this.#call=call;this.#remotePending=true;this.#commitment=Buffer.from(call.g_a_hash);this.#phase='ringing';this.#deadline=Date.now()+60000;
    if(await this.#rpc('phone.receivedCall',{peer:this.#peerInput()},guard)!==true)fail('call_receipt_not_confirmed');return;
   }
   if(!this.#call||call.id!==this.#call.id){this.#ignored++;return;}
-  if(call._==='phoneCallDiscarded'){this.#resetCall();this.#phase='listening';this.#reason='remote_call_ended';return;}
+  if(call._==='phoneCallDiscarded'){this.#remotePending=false;this.#resetCall();this.#phase='listening';this.#reason='remote_call_ended';return;}
   this.#checkCall(call);
   if(call._==='phoneCallAccepted')await this.#accepted(call,guard);
   else if(call._==='phoneCall')await this.#active(call,guard);
@@ -204,6 +205,7 @@ class CallSession{
  }
  stop(){this.#finish('stopped',null,true);}
  close(){this.stop();}
+ get remotePending(){return this.#remotePending;}
  get state(){return {provider:'eitaa',phase:this.#phase,reason:this.#reason,listening:!!this.#client,callId:this.#call?String(this.#call.id):null,peerId:this.#peer?String(this.#peer):null,
   direction:this.#call?(this.#outgoing?'outgoing':'incoming'):null,keyNegotiated:!!this.#cipher,busy:this.#working,queued:this.#queue.length,ignoredEvents:this.#ignored,
   mediaConnected:false,peerAuthenticated:false,proxyReady:false,providerPathVerified:false,billingVerified:false};}
