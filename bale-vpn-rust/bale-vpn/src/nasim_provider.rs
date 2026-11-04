@@ -569,12 +569,18 @@ fn clean_closed(event: &Value) -> bool {
     event["event"] == "closed" && event["endCompleted"] == true && event["cleanupPending"] == false
 }
 
-fn close_outcome(event: &Value, successful_exit: bool) -> (bool, bool) {
+fn close_outcome(event: &Value, successful_exit: bool) -> (bool, Option<&'static str>) {
     let clean = successful_exit && clean_closed(event);
-    (
-        clean,
-        clean && event["termination"] == "call_duration_elapsed",
-    )
+    let termination = if clean {
+        match event["termination"].as_str() {
+            Some("call_duration_elapsed") => Some("call_duration_elapsed"),
+            Some("bye") => Some("bye"),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    (clean, termination)
 }
 
 fn cleanup_receipt(event: &Value, successful_exit: bool) -> Snapshot {
@@ -648,14 +654,14 @@ impl Runtime {
     }
 
     async fn failed(&mut self, event: Option<&Value>) -> Snapshot {
-        let (clean, duration_elapsed) = if let Some(worker) = self.worker.take() {
+        let (clean, termination) = if let Some(worker) = self.worker.take() {
             if let Some(event) = event.filter(|event| event["event"] == "closed") {
                 close_outcome(event, worker.wait_for_exit().await)
             } else {
                 worker
                     .drain_close()
                     .await
-                    .map_or((false, false), |(event, success)| {
+                    .map_or((false, None), |(event, success)| {
                         close_outcome(&event, success)
                     })
             }
@@ -663,14 +669,18 @@ impl Runtime {
             (
                 !event.is_some_and(|event| event["event"] == "closed")
                     && !self.snapshot.cleanup_pending,
-                false,
+                None,
             )
         };
         self.snapshot = Snapshot {
-            phase: if duration_elapsed { "ended" } else { "failed" },
+            phase: if termination.is_some() {
+                "ended"
+            } else {
+                "failed"
+            },
             cleanup_pending: !clean,
-            termination: duration_elapsed.then_some("call_duration_elapsed"),
-            error: (!duration_elapsed).then_some("endpoint_failed"),
+            termination,
+            error: termination.is_none().then_some("endpoint_failed"),
             ..Snapshot::default()
         };
         self.snapshot.clone()
@@ -1239,16 +1249,19 @@ mod tests {
     }
 
     #[test]
-    fn only_clean_successful_duration_expiry_is_expected() {
-        let mut event = json!({"event":"closed","endCompleted":true,"cleanupPending":false,
-            "termination":"call_duration_elapsed"});
-        assert_eq!(close_outcome(&event, true), (true, true));
-        assert_eq!(close_outcome(&event, false), (false, false));
-        event["cleanupPending"] = json!(true);
-        assert_eq!(close_outcome(&event, true), (false, false));
+    fn only_clean_successful_expected_termination_is_reported() {
+        let mut event = json!({"event":"closed","endCompleted":true,"cleanupPending":false});
+        for termination in ["call_duration_elapsed", "bye"] {
+            event["termination"] = json!(termination);
+            event["cleanupPending"] = json!(false);
+            assert_eq!(close_outcome(&event, true), (true, Some(termination)));
+            assert_eq!(close_outcome(&event, false), (false, None));
+            event["cleanupPending"] = json!(true);
+            assert_eq!(close_outcome(&event, true), (false, None));
+        }
         event["cleanupPending"] = json!(false);
         event["termination"] = json!("unexpected");
-        assert_eq!(close_outcome(&event, true), (true, false));
+        assert_eq!(close_outcome(&event, true), (true, None));
     }
 
     #[test]

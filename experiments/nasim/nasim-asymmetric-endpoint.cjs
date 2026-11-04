@@ -184,6 +184,9 @@ async function runEndpoint(read,write,dependencies,now=Date.now){
    write(safeState(controller,start.role));
   }
  }finally{
+  const call=controller?.state;
+  const peerEnded=attempted&&call?.phase==='ended'&&call.terminal?.signal==='bye'&&call.terminal.actor==='peer';
+  const termination=durationElapsed?'call_duration_elapsed':peerEnded?'bye':null;
   start.vaultPassword='';let endCompleted=false,cleanupAcknowledged=false,pending=true;
   if(controller){try{await controller.end();endCompleted=true;}catch{}
    // A matching durable intent is the only fallback; no retry after an
@@ -194,7 +197,7 @@ async function runEndpoint(read,write,dependencies,now=Date.now){
   }
   if(vault)try{pending=await vault.hasCleanupIntent('nasim',start.slot);}catch{}
   try{controller?.reset();}catch{}try{session?.close();}catch{}try{vault?.lock();}catch{}
-  write({event:'closed',endCompleted,cleanupAcknowledged,cleanupPending:pending,...durationElapsed?{termination:'call_duration_elapsed'}:{}});
+  write({event:'closed',endCompleted,cleanupAcknowledged,cleanupPending:pending,...termination?{termination}:{}});
   if(pending||controller&&!endCompleted)process.exitCode=1;
  }
 }
@@ -264,8 +267,13 @@ async function selfTest(){
   assert.deepEqual(ops.slice(before),['dial','end','reset','session-close','vault-lock']);
   assert.deepEqual(records.at(-1),{event:'closed',endCompleted:true,cleanupAcknowledged:false,cleanupPending:false,termination:'call_duration_elapsed'});
  }
- for(const [phase,closedInput] of [['ended',false],['connected',true]]){
+ for(const [phase,actor,closedInput,termination] of [
+  ['ended',undefined,false,undefined],['ended','peer',false,'bye'],
+  ['ended','local',false,undefined],['uncertain','peer',false,undefined],
+  ['connected',undefined,true,undefined],
+ ]){
   controller.state.phase=phase;
+  controller.state.terminal=actor?{signal:'bye',actor}:null;
   const input=[{...start,vaultPassword:'fixture-pass'},{command:'dial'}],records=[];
   let now=1000;
   await runEndpoint(async limit=>{
@@ -274,7 +282,7 @@ async function selfTest(){
    if(closedInput)return null;
    throw fail('input_timeout');
   },record=>records.push(record),deps,()=>now);
-  assert.equal(Object.hasOwn(records.at(-1),'termination'),false);
+  assert.equal(records.at(-1).termination,termination);
  }
  for(const invalid of [null,0,299,901,'300'])assert.throws(()=>validateStart({...start,vaultPassword:'fixture-pass',callLimitSeconds:invalid}));
  const cleanupModule=path.join(__dirname,'cleanup-intent.cjs');
