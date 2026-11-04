@@ -67,9 +67,12 @@ Open the Nasim tab, select the role and vault slot, and enter the peer account
 ID and vault password. Use the public certificate shown on each endpoint to
 pair the two sides, then dial from the client and accept on the server.
 The process supervisor keeps the vault locked while its worker is running.
-Each start prepares a single call with a 90-second call budget and a fresh
-certificate. This panel uses retained sessions and the experimental
-asymmetric transport.
+Each start prepares a single call with a fresh certificate. The default
+call limit is 90 seconds. For a longer test, select 5 or 15 minutes at both
+endpoints before preparation. Both applications and endpoint kits must
+support the selected duration. The client timer begins on dial and the
+server timer on accept. Either endpoint can end the call sooner.
+This panel uses retained sessions and the experimental asymmetric transport.
 
 Two BaleVPN processes on one Windows host completed a live Nasim call in
 headless mode. Both endpoints verified the route and authenticated their
