@@ -59,6 +59,41 @@ test('initial media failure preserves both captured intents after the call conte
   b.reset();assert.equal(saved.get('42').callUUID,'fixture-call-1');
  }finally{f.close();}
 });
+
+test('correlated call response wins queued old config and conflicting configs cannot replace cleanup identity',async()=>{
+ const saved=new Map();let writes=0;
+ const codec=require('../experiments/nasim/call-codec.cjs');
+ const f=callFixture({
+  cleanupFactory:account=>new CleanupIntent(account,{
+   async saveIntent(value,guard){guard();writes++;saved.set(account.state.userId,structuredClone(value));},
+   async loadIntent(){return saved.get(account.state.userId)||null;},
+   async clearIntent(value,guard){guard();saved.delete(account.state.userId);},
+  }),
+  sendHook:async({sender,peerId,signal})=>{
+   if(signal.type!=='callRequest')return;
+   f.deliver(sender,f.config(sender,sender,'old-call'));
+   f.deliver(peerId,f.config(peerId,sender,'current-call'));
+   return {acknowledged:true,reply:codec.incoming(f.config(sender,sender,'current-call'),sender)};
+  },
+ });
+ try{
+  const {a,b}=await f.prepare();await a.dial('42');
+  await waitFor(()=>saved.size===2&&!a.state.busy&&b.state.phase==='incoming');
+  assert.equal(a.state.callUUID,'current-call');assert.equal(b.state.callUUID,'current-call');
+  assert.equal(a.state.signaling.requestedCallBound,true);assert.equal(a.state.signaling.wrongCall,1);
+  for(const id of ['41','42']){
+   f.deliver(id,f.config(id,'41','current-call'));
+   f.deliver(id,f.config(id,'41','unrelated-call'));
+  }
+  await waitFor(()=>!a.state.busy&&!b.state.busy&&a.state.signaling.wrongCall===2&&b.state.signaling.wrongCall===1);
+  assert.equal(a.state.phase,'outgoing');assert.equal(b.state.phase,'incoming');
+  assert.equal(writes,2);assert.ok([...saved.values()].every(value=>value.callUUID==='current-call'));
+  assert.ok(f.sent.every(event=>!['bye','reject'].includes(event.signal.type)));
+  await b.accept();await waitFor(()=>a.state.phase==='connected'&&b.state.phase==='connected');
+  assert.equal(a.state.reason,null);assert.equal(b.state.reason,null);
+  a.reset();assert.equal(a.state.signaling.requestedCallBound,false);
+ }finally{f.close();}
+});
 test('intent schema rejects unknown fields and malformed identity without expiry deletion',()=>{
  const record={format:'nasim-cleanup-intent-v1',provider:'nasim',accountBinding:'ab'.repeat(32),selfId:'41',selfClientId:'device',peerId:'42',callUUID:'old-call',capturedAt:1};
  assert.deepEqual(validateIntent(record),record);

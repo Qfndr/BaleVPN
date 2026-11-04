@@ -16,7 +16,7 @@ const signalCounts=()=>({receivedConfig:0,receivedAccept:0,receivedOffer:0,recei
  acceptNoCall:0,acceptOwnEcho:0,acceptWrongDirection:0,acceptWrongCall:0,acceptWrongPeer:0,acceptWrongDevice:0,acceptRetired:0});
 class CallSession {
  #account;#executable;#open;#rpc;#self;#client;#allowed=new Set();#bridge;#own;#trusted=[];#options;
- #phase='idle';#direction;#peer;#call;#remote;#config;#localAccepted=false;#remoteAccepted=false;
+ #phase='idle';#direction;#peer;#call;#requestedCall=null;#remote;#config;#localAccepted=false;#remoteAccepted=false;
  #configured=false;#negotiated=false;#offerSeen=false;#answerSeen=false;#earlyOffers=new Map();#early=[];#earlyBytes=0;#ice=[];#iceSeen=new Set();
  #epoch=0;#queue=[];#working=false;#bytes=0;#timer;#deadline=0;#retired=new Set();#ignored=0;#reason=null;
  #signalCounts=signalCounts();
@@ -55,6 +55,9 @@ class CallSession {
  async #send(type,callData,guard){
   const signal={type,callData,...type==='callRequest'?{}:{callUUID:this.#call}};
   const response=await this.#io(()=>this.#rpc.send(signal,{peerId:this.#peer}),guard);
+  // The response belongs to this exact HTTP call request. Bind it before
+  // queued SSE configs can run, including history delivered during the await.
+  if(type==='callRequest'&&response?.reply?.type==='config'&&uuid(response.reply.callUUID))this.#requestedCall=response.reply.callUUID;
   if(response?.reply)this.handleEvent(response.reply);
  }
  #arm(active=true){
@@ -77,7 +80,7 @@ class CallSession {
   else if(terminal&&!this.#terminal)this.#terminal={...terminal,phaseBeforeEnd:this.#phase};
   if(phase!=='idle'&&!this.#terminalSnapshot){
    const media=this.#bridge?.state;
-   this.#terminalSnapshot={signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
+   this.#terminalSnapshot={signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,requestedCallBound:this.#requestedCall!==null,
     localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
     media:media?{phase:['prepared','configured','gathering','connecting','connected','failed','closed'].includes(media.phase)?media.phase:null,
      reason:SAFE.has(media.reason)?media.reason:null,relayPair:media.relayPair===true,mediaConnected:media.mediaConnected===true,
@@ -88,7 +91,7 @@ class CallSession {
   this.#config=null;this.#earlyOffers.clear();this.#early=[];this.#earlyBytes=0;this.#ice=[];this.#iceSeen.clear();this.#configured=this.#negotiated=false;
   this.#offerSeen=this.#answerSeen=this.#localAccepted=this.#remoteAccepted=false;this.#phase=phase;this.#reason=reason;
   this.#signalCounts=signalCounts();
-  this.#call=null;this.#remote=null;
+  this.#call=null;this.#requestedCall=null;this.#remote=null;
   for(const job of this.#queue)job.reject(error('call_cancelled'));this.#queue=[];this.#bytes=0;
   if(disconnect){
    // Never tear down a newer account subscription when invalidating the one
@@ -173,7 +176,8 @@ class CallSession {
  async #event(event,guard){
   if(this.#retired.has(event.callUUID)){this.#ignored++;return;}
   if(event.type==='config'){
-   if(this.#call===event.callUUID){this.#ignored++;return;}
+   if(this.#requestedCall&&event.callUUID!==this.#requestedCall){this.#countSignal('wrongCall');this.#ignored++;return;}
+   if(this.#call){if(this.#call!==event.callUUID)this.#countSignal('wrongCall');this.#ignored++;return;}
    if(!this.#trusted.length||!this.#allowed.has(event.peerId)||!Array.isArray(event.participantIds)||event.participantIds.length!==2||
     !event.participantIds.includes(this.#self)||!event.participantIds.includes(event.peerId)||event.peerId===this.#self||
     ![this.#self,event.peerId].includes(event.invitedUserId)||event.method!=='audio'){this.#countSignal('configRejected');this.#ignored++;return;}
@@ -254,7 +258,7 @@ class CallSession {
    selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,cleanup:this.#cleanup?.state||null,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,terminal:this.#terminal?{...this.#terminal}:null,
    terminalSnapshot:this.#terminalSnapshot?{signaling:{...this.#terminalSnapshot.signaling},media:this.#terminalSnapshot.media?{...this.#terminalSnapshot.media,...this.#terminalSnapshot.media.ice?{ice:{...this.#terminalSnapshot.media.ice}}:{}}:null}:null,
-   signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
+   signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,requestedCallBound:this.#requestedCall!==null,
     pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
    liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};
  }

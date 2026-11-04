@@ -1,0 +1,38 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "scope": "Outgoing config correlation and immutable active-call identity",
+  "reportedLiveSequence": {
+    "prepared": true,
+    "outgoingRequestCount": 1,
+    "callerReceivedConfigs": 2,
+    "callerFailure": "cleanup_pending",
+    "calleeTerminalSignal": "bye",
+    "calleePhaseBeforeEnd": "incoming",
+    "mediaNegotiationReached": false,
+    "exactCleanupAcknowledged": true,
+    "encryptedIntentsRemaining": false
+  },
+  "sourceFinding": {
+    "previousBehavior": "A different config UUID could replace a caller's current UUID while its phase remained outgoing. Cleanup capture then rejected that second identity as cleanup_pending.",
+    "queueOrdering": "SSE config events received during an outstanding callRequest await can be queued before that request's HTTP config reply.",
+    "fix": "Bind the UUID from the correlated callRequest config reply before queued SSE events run. Ignore a conflicting config before mutating call state or cleanup persistence. Once a call is selected, both roles keep its UUID immutable.",
+    "publicDiagnostic": "requestedCallBound is a boolean; the bound UUID remains private.",
+    "wireProtocolChanged": false,
+    "peerAndDeviceBindingPreserved": true
+  },
+  "validation": {
+    "command": "node --test scripts/test-nasim-call.cjs scripts/test-nasim-call-pair.cjs scripts/test-nasim-cleanup-intent.cjs",
+    "passed": 37,
+    "failed": 0,
+    "skipped": 0,
+    "regression": "A synthetic stale SSE config precedes the current HTTP reply. Both current cleanup identities survive duplicate and conflicting configs, and the original pair completes media negotiation.",
+    "newLiveCallsAfterFix": 0
+  },
+  "limits": [
+    "The live sequence did not retain the raw two config UUIDs or their timestamps, so their origin as stale history is not proven.",
+    "Incoming calls and responses lacking a correlated config UUID still require their existing validation. This change does not establish a general server-side active-call query or timestamp barrier.",
+    "The pre-accept peer bye is recorded independently; no source evidence ties it directly to the cleanup capture failure."
+  ],
+  "privacy": "No account identifiers, call UUIDs, tokens, device IDs, SDP or relay credentials are included."
+}
