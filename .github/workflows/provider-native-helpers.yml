@@ -133,6 +133,8 @@ jobs:
           if not re.search(r'^test peer_media::tests::nasim_stale_verifier_cannot_cancel_new_selection_task \.\.\. ok\s*$', report, re.MULTILINE):
               raise SystemExit('Stale route verifier regression did not execute')
           PY
+      - name: Check that relay-only ICE cannot gather direct candidates without TURN
+        run: cargo test --manifest-path lktunnel-rust/Cargo.toml --locked -p lktunnel --lib rtc::remote_ice_tests::relay_only_gathers_no_direct_candidates_without_turn -- --exact
       - name: Build the three real native helpers
         run: >-
           cargo build --manifest-path lktunnel-rust/Cargo.toml -p lktunnel
