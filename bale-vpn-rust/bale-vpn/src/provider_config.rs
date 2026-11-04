@@ -54,6 +54,7 @@ pub struct NativeProviderConfig {
     pub throughput: bool,
     pub relay_only: bool,
     pub auto_reconnect: bool,
+    pub server_auto_reconnect: bool,
 }
 pub type Config = NativeProviderConfig;
 
@@ -79,6 +80,8 @@ struct RawConfig {
     relay_only: bool,
     #[serde(default)]
     auto_reconnect: bool,
+    #[serde(default)]
+    server_auto_reconnect: bool,
 }
 impl Default for NativeProviderConfig {
     fn default() -> Self {
@@ -92,6 +95,7 @@ impl Default for NativeProviderConfig {
             throughput: false,
             relay_only: false,
             auto_reconnect: false,
+            server_auto_reconnect: false,
         }
     }
 }
@@ -108,6 +112,7 @@ impl TryFrom<RawConfig> for NativeProviderConfig {
             throughput: raw.throughput,
             relay_only: raw.relay_only,
             auto_reconnect: raw.auto_reconnect,
+            server_auto_reconnect: raw.server_auto_reconnect,
         };
         result.validate()?;
         Ok(result)

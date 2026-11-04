@@ -232,7 +232,11 @@ impl Backend {
             .as_ref()
             .and_then(|t| t.media_diagnostic())
             .or_else(|| last_event.as_ref().and_then(|v| v.get("rtc").cloned()));
-        json!({"provider":"igap","phase":*self.phase.lock(),"error":self.error.lock().map(|reason|json!({"reason":reason})),"authenticated":auth.signed_in&&!self.store.failed(),"credentialsSaved":!self.store.failed(),"wsReady":self.app.is_connected(),"hasSession":self.store.record().ok().flatten().is_some(),"authStage":auth.stage,"autoReconnect":self.config.lock().auto_reconnect,"reconnecting":reconnecting,"reconnectAfterSeconds":reconnect_after,"retryAfterSeconds":auth.retry_after,"codeDigits":auth.code_digits,"deliveryMethod":auth.delivery_method,"mode":self.config.lock().mode,"mediaConnected":media,"peerAuthenticated":paired,"proxyReady":ready&&paired,"traffic":traffic,"metrics":metrics,"mediaDiagnostic":{"rtc":rtc,"lastEvent":last_event,"serviceLeave":self.app.service_leave_diagnostic()},"account":self.account(),"publicCode":hex(&self.identity.certificate),"frontendReady":true,"billingVerified":false})
+        let (mode, auto_reconnect, server_auto_reconnect) = {
+            let config = self.config.lock();
+            (config.mode, config.auto_reconnect, config.server_auto_reconnect)
+        };
+        json!({"provider":"igap","phase":*self.phase.lock(),"error":self.error.lock().map(|reason|json!({"reason":reason})),"authenticated":auth.signed_in&&!self.store.failed(),"credentialsSaved":!self.store.failed(),"wsReady":self.app.is_connected(),"hasSession":self.store.record().ok().flatten().is_some(),"authStage":auth.stage,"autoReconnect":auto_reconnect,"serverAutoReconnect":server_auto_reconnect,"reconnecting":reconnecting,"reconnectAfterSeconds":reconnect_after,"retryAfterSeconds":auth.retry_after,"codeDigits":auth.code_digits,"deliveryMethod":auth.delivery_method,"mode":mode,"mediaConnected":media,"peerAuthenticated":paired,"proxyReady":ready&&paired,"traffic":traffic,"metrics":metrics,"mediaDiagnostic":{"rtc":rtc,"lastEvent":last_event,"serviceLeave":self.app.service_leave_diagnostic()},"account":self.account(),"publicCode":hex(&self.identity.certificate),"frontendReady":true,"billingVerified":false})
     }
     async fn stop(&self) {
         {
@@ -343,7 +347,7 @@ impl Backend {
                         _ = tokio::time::sleep(wait) => {},
                     }
                     this.retry.lock().at = None;
-                    if !this.config.lock().auto_reconnect {
+                    if !retry_enabled(&this.config.lock(), role) {
                         *this.phase.lock() = "stopped";
                         break;
                     }
@@ -353,8 +357,9 @@ impl Backend {
                     break;
                 }
                 this.begin_attempt(role);
+                let mut waiting_revision = None;
                 let result = this
-                    .connection(config.clone(), &mut rx, diagnostic_relay_only)
+                    .connection(config.clone(), &mut rx, diagnostic_relay_only, &mut waiting_revision)
                     .await;
                 let last_tunnel = this.tunnel.lock().clone();
                 let established = this.retry.lock().was_authenticated
@@ -382,6 +387,17 @@ impl Backend {
                     *this.phase.lock() = "listening";
                     continue;
                 }
+                if cleared
+                    && !this.app.is_connected()
+                    && !this.store.failed()
+                    && !stop_requested(&mut rx)
+                    && waiting_server_recovery(waiting_revision, this.app.call_revision(), &result)
+                    && this.schedule_retry(Role::Server)
+                {
+                    *this.error.lock() = result.as_ref().err().map(|error| error.0);
+                    delay = Some(Duration::from_secs(5));
+                    continue;
+                }
                 if role == Role::Client && cleared && !this.store.failed() && !stop_requested(&mut rx) {
                     let terminal = this.media_terminal.lock().clone();
                     if let Some(wait) = client_retry_delay(
@@ -391,18 +407,7 @@ impl Backend {
                         &result,
                         terminal.as_ref(),
                     ) {
-                        // Serialize the eligibility check and active marker with
-                        // preference updates so switching off cannot miss a retry.
-                        let enabled = {
-                            let current = this.config.lock();
-                            if current.auto_reconnect {
-                                this.retry.lock().active = true;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        if enabled {
+                        if this.schedule_retry(Role::Client) {
                             *this.error.lock() = result.as_ref().err().map(|error| error.0);
                             delay = Some(wait);
                             continue;
@@ -426,6 +431,16 @@ impl Backend {
         });
         *current = Some(Job { stop, task });
         Ok(())
+    }
+    fn schedule_retry(&self, role: Role) -> bool {
+        // Serialize the eligibility check and active marker with preference
+        // updates so disabling recovery cannot miss a pending retry.
+        let current = self.config.lock();
+        if !retry_enabled(&current, role) {
+            return false;
+        }
+        self.retry.lock().active = true;
+        true
     }
     fn begin_attempt(&self, role: Role) {
         // Keep the last result visible throughout backoff, then scope the next
@@ -494,14 +509,19 @@ impl Backend {
             self.app
                 .set_allowed_peers(&[peer_id.to_owned()])
                 .map_err(igap_failure)?;
+            *self.retry.lock() = RetryStatus::default();
+            *self.error.lock() = None;
         }
         loop {
             tokio::select! {
                 biased;
                 _=&mut *stop=>return Ok(None),
                 value=accepted.recv()=>{let (from,session)=value.ok_or(Failure("signaling_closed"))?;if &from!=peer{return Err(Failure("unexpected_peer"));}if self.app.joined_call_revision(&session).is_some(){return Ok(Some(session));}},
-                _=health.tick()=>if !self.app.is_connected(){return Err(Failure("signaling_disconnected"));},
                 event=signals.recv()=>check_waiting_signal(event)?,
+                _=health.tick()=>{
+                    if !self.app.is_connected(){return Err(Failure("signaling_disconnected"));}
+                    if !self.app.is_authenticated(){return Err(Failure("auth_expired"));}
+                },
             }
         }
     }
@@ -510,6 +530,7 @@ impl Backend {
         config: Config,
         stop: &mut oneshot::Receiver<()>,
         diagnostic_relay_only: bool,
+        waiting_revision: &mut Option<u64>,
     ) -> Result<()> {
         if !self.app.is_connected() {
             let reconnect = tokio::time::timeout(Duration::from_secs(10), self.app.connect());
@@ -537,11 +558,15 @@ impl Backend {
         let mut health = tokio::time::interval(Duration::from_secs(1));
         let role = config.mode.ok_or(Failure("provider_not_configured"))?;
         let session = if role == Role::Server {
+            *waiting_revision = Some(self.app.call_revision());
             match self
                 .accept_session(&peer, peer_id, stop, &mut signals, &mut health)
                 .await?
             {
-                Some(session) => session,
+                Some(session) => {
+                    *waiting_revision = None;
+                    session
+                },
                 None => return Ok(()),
             }
         } else {
@@ -736,6 +761,16 @@ fn client_retry_delay(
         _ => return None,
     };
     recovery.delay(peer, established, error, 5, 0)
+}
+fn retry_enabled(config: &Config, role: Role) -> bool {
+    match role {
+        Role::Client => config.auto_reconnect,
+        Role::Server => config.server_auto_reconnect,
+    }
+}
+fn waiting_server_recovery(waiting_revision: Option<u64>, current_revision: u64, result: &Result<()>) -> bool {
+    waiting_revision == Some(current_revision)
+        && matches!(result, Err(Failure("signaling_disconnected" | "signaling_closed")))
 }
 fn recoverable_server_end(result: &Result<()>) -> bool {
     matches!(
@@ -1119,7 +1154,7 @@ async fn disconnect(State(s): State<Arc<Service>>, Json(value): Json<DisconnectR
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct AutoReconnectRequest { enabled: bool }
+struct AutoReconnectRequest { enabled: bool, role: Option<Role> }
 async fn set_auto_reconnect(
     State(s): State<Arc<Service>>,
     Json(value): Json<AutoReconnectRequest>,
@@ -1130,8 +1165,13 @@ async fn set_auto_reconnect(
         .try_lock()
         .map_err(|_| Failure("account_busy"))?;
     let mut config = b.config.lock().clone();
-    config.auto_reconnect = value.enabled;
+    let role = value.role.unwrap_or(Role::Client);
+    match role {
+        Role::Client => config.auto_reconnect = value.enabled,
+        Role::Server => config.server_auto_reconnect = value.enabled,
+    }
     b.store.save_config(&config).map_err(failure)?;
+    let configured_role = config.mode.unwrap_or(Role::Client);
     *b.config.lock() = config;
     let established = b
         .tunnel
@@ -1139,7 +1179,7 @@ async fn set_auto_reconnect(
         .as_ref()
         .is_some_and(|t| t.is_peer_authenticated());
     let recovering = b.retry.lock().active;
-    if !value.enabled && recovering && !established {
+    if !value.enabled && role == configured_role && recovering && !established {
         b.stop().await;
     }
     Ok(Json(b.snapshot()))

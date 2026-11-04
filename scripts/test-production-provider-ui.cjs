@@ -24,7 +24,7 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
    if(route==='/auth/start'){state.authStage='code';json({ok:true,codeDigits:6});return;}
    if(route==='/auth/verify'){assert.equal(body.code,'123456');Object.assign(state,{authStage:'profile_required',authenticated:false,hasSession:true,wsReady:true,account:{userId:'1001',deviceName:'Desktop fixture',maskedPhone:'•••• 0000'}});json({ok:true});return;}
    if(route==='/auth/profile'){assert.equal(body.name,'Test User');Object.assign(state,{authStage:'authenticated',authenticated:true});json({ok:true});return;}
-   if(route==='/auto-reconnect'){config.autoReconnect=body.enabled;state.autoReconnect=body.enabled;if(!body.enabled&&state.phase==='reconnecting'){state.phase='stopped';state.reconnecting=false;}json({ok:true});return;}
+   if(route==='/auto-reconnect'){const key=body.role==='server'?'serverAutoReconnect':'autoReconnect';config[key]=body.enabled;state[key]=body.enabled;if(!body.enabled&&state.phase==='reconnecting'){state.phase='stopped';state.reconnecting=false;}json({ok:true});return;}
    if(route==='/connect'){Object.assign(state,{phase:'calling',peerAuthenticated:false,proxyReady:false});setTimeout(()=>Object.assign(state,{phase:'connected',peerAuthenticated:true,proxyReady:true,metrics:{rttMs:48,lostPackets:2,sentPackets:200}}),350);json({ok:true});return;}
    if(route==='/disconnect'||route==='/desktop/disconnect-all'){Object.assign(state,{phase:'stopped',peerAuthenticated:false,proxyReady:false,metrics:null});json({ok:true});return;}
    if(route==='/session/restore'){Object.assign(state,{authenticated:true,wsReady:true,authStage:'authenticated'});json({ok:true});return;}
@@ -92,6 +92,17 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
 
   await page.locator('#language').click();const appearanceSaved=page.waitForResponse(r=>r.url().endsWith('/appearance')&&r.request().method()==='POST');await page.locator('#theme').click();await appearanceSaved;const theme=await page.locator('html').getAttribute('data-theme');await page.evaluate(()=>localStorage.removeItem('bale_appearance'));await page.reload();await page.waitForFunction(()=>document.documentElement.lang==='en');assert.equal(await page.locator('html').getAttribute('data-theme'),theme);assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'true');assert.match(await page.locator('#relayOnly').innerText(),/TURN/);assert.equal(await page.locator('#copyPairingCard').textContent(),'Copy public pairing card');
   for(const width of [360,768,1280]){await page.setViewportSize({width,height:900});for(const tab of ['connect','security','account']){await page.locator('#tab-'+tab).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow '+width+' '+tab);if(width===360&&tab==='connect'){const boxes=await Promise.all(['throughput','relayOnly'].map(id=>page.locator('#'+id).boundingBox()));assert.ok(boxes[1].y>=boxes[0].y+boxes[0].height,'narrow switches stack without overlap');}}}
+  await page.locator('#tab-connect').click();
+  await page.locator('[data-role=server]').click();
+  assert.equal(await page.locator('#autoReconnect b').innerText(),'Resume listening automatically');
+  assert.equal(await page.locator('#autoReconnect').getAttribute('aria-checked'),'false');
+  await page.locator('#autoReconnect').click();
+  await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='true');
+  assert.deepEqual(requests.filter(r=>r.route==='/auto-reconnect').at(-1).body,{enabled:true,role:'server'});
+  assert.equal(config.autoReconnect,false);
+  assert.equal(config.serverAutoReconnect,true);
+  await page.locator('[data-role=client]').click();
+  assert.equal(await page.locator('#autoReconnect').getAttribute('aria-checked'),'false');
   await page.locator('#tab-account').click();await page.locator('#checkPrivacy').click();await page.waitForFunction(()=>document.getElementById('privacyValue').textContent==='Call privacy retrieved');
   assert.equal(await page.locator('body').innerText().then(t=>t.includes(token)),false);assert.equal(await page.evaluate(()=>JSON.stringify(localStorage).includes('123456')),false);
   await page.addInitScript(()=>{window.__BALE_DESKTOP__=true;window.__nativeCommands=[];window.ipc={postMessage:s=>window.__nativeCommands.push(JSON.parse(s))};});await page.reload();await page.waitForFunction(()=>document.documentElement.classList.contains('native'));await page.locator('[data-native=maximize]').click();await page.locator('[data-edge=se]').dispatchEvent('mousedown',{button:0});assert.equal(await page.evaluate(()=>window.__nativeCommands.some(x=>x.cmd==='maximize')&&window.__nativeCommands.some(x=>x.cmd==='resize'&&x.edge==='se')),true);

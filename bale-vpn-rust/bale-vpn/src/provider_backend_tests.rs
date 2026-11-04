@@ -479,6 +479,57 @@ async fn wait_phase(service: &Arc<Service>, phase: &str) {
     .unwrap();
 }
 
+async fn wait_for_admission(backend: &Backend) {
+    tokio::time::timeout(Duration::from_secs(8), async {
+        while !backend.admission_permit.lock().load(Ordering::Acquire) || backend.retry.lock().active {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }).await.unwrap();
+}
+
+#[tokio::test]
+async fn server_listening_recovery_is_separate_and_never_places_a_call() {
+    let (_dir, service, rpc) = retry_fixture(igap_signaling::Error::Timeout).await;
+    let backend = service.backend().await.unwrap();
+    backend.config.lock().mode = Some(Role::Server);
+    assert!(backend.config.lock().auto_reconnect);
+    assert!(!backend.config.lock().server_auto_reconnect);
+    backend.start().await.unwrap();
+    wait_for_admission(&backend).await;
+    rpc.ready.store(false, Ordering::Release);
+    wait_phase(&service, "failed").await;
+    assert!(!backend.retry.lock().active);
+    backend.stop().await;
+
+    backend.config.lock().server_auto_reconnect = true;
+    backend.start().await.unwrap();
+    wait_for_admission(&backend).await;
+    rpc.ready.store(false, Ordering::Release);
+    wait_phase(&service, "reconnecting").await;
+    assert!(!backend.admission_permit.lock().load(Ordering::Acquire));
+    wait_for_admission(&backend).await;
+    assert_eq!(backend.snapshot()["phase"], "listening");
+    assert!(!backend.retry.lock().active);
+    rpc.ready.store(false, Ordering::Release);
+    wait_phase(&service, "reconnecting").await;
+    backend.stop().await;
+    assert_eq!(backend.snapshot()["phase"], "stopped");
+    assert!(!backend.admission_permit.lock().load(Ordering::Acquire));
+    assert!(!rpc.actions.lock().contains(&913));
+}
+
+#[test]
+fn server_recovery_rejects_active_or_ambiguous_and_security_failures() {
+    assert!(waiting_server_recovery(Some(1), 1, &Err(Failure("signaling_disconnected"))));
+    assert!(!waiting_server_recovery(Some(1), 2, &Err(Failure("signaling_disconnected"))));
+    assert!(!waiting_server_recovery(None, 1, &Err(Failure("signaling_disconnected"))));
+    assert!(!waiting_server_recovery(Some(1), 1, &Err(Failure("auth_expired"))));
+    assert!(!waiting_server_recovery(Some(1), 1, &Err(Failure("unexpected_peer"))));
+    let old: Config = serde_json::from_value(json!({"format":1,"provider":"igap","mode":"server","autoReconnect":true})).unwrap();
+    assert!(retry_enabled(&old, Role::Client));
+    assert!(!retry_enabled(&old, Role::Server));
+}
+
 #[tokio::test]
 async fn auto_reconnect_retries_serially_and_off_cancels_waiting_or_manual_retry() {
     let (_dir, service, rpc) = retry_fixture(igap_signaling::Error::Timeout).await;

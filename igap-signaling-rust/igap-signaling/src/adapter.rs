@@ -143,6 +143,12 @@ pub struct CodeRequest {
     pub retry_after: u32,
 }
 impl IgapSignaling {
+    /// A revision changes when the adapter starts handling a call, even if
+    /// signaling drops before a joined transport reaches the application.
+    pub fn call_revision(&self) -> u64 {
+        self.inner.call_revision.load(Ordering::Acquire)
+    }
+
     /// Bind a consumer to the exact accepted transport, without retaining its token.
     pub fn joined_call_revision(&self, session: &TransportSession) -> Option<u64> {
         let digest: [u8; 32] = Sha256::digest(session.token.as_bytes()).into();
