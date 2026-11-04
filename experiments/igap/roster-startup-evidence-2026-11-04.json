@@ -1,0 +1,20 @@
+{
+  "source": "https://web.igap.net/assets/CallEngine-D5ybhatj.js",
+  "sha256": "0f42455443331cd85db95adb3adfaea7d186f00f0db12c1f3c6db1890b71bdbf",
+  "primaryReferences": {
+    "initialRosterUsesHandleParticipantUpdates": 378112,
+    "participantUpdateHandler": 383887,
+    "laterUpdatesUseSameHandler": 396139,
+    "participantStateEnum": 43242
+  },
+  "sourceBehavior": "Initial roster and later updates use identical presence handling: JOINING, JOINED and ACTIVE create or retain a participant; DISCONNECTED removes it.",
+  "nativeBug": "Initial roster accepted only ACTIVE, while later updates accepted every non-DISCONNECTED value. The same JOINED participant could therefore unblock client warmup only if a later update happened to arrive.",
+  "fix": "Both native paths now share membership handling for explicit known JOINING, JOINED and ACTIVE states; DISCONNECTED removes peers. Empty, self and unknown-state participants cannot authorize startup.",
+  "securityBoundary": "Roster presence starts media/QUIC negotiation only. It does not grant mutual authentication or proxy access; pinned certificate checks are unchanged.",
+  "causality": "This corrects a source-proven order-dependent startup bug. Whether it resolves the production subscriber timeout requires the next controlled test.",
+  "independentRuledOutHypothesis": "A real local application-only subscriber offer connected ICE/DTLS without a local data channel; no production datachannel workaround was added.",
+  "tests": [
+    "Initial roster and update parity across all four known states, duplicate suppression, self/empty/unknown rejection.",
+    "Initial JOINED participant unblocks actual LkTunnel startup without setting peerAuthenticated."
+  ]
+}

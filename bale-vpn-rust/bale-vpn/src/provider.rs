@@ -508,10 +508,15 @@ fn media_reason(info: &str) -> Value {
         "local_stop" => "local_stop",
         "connect failed" => "engine_connect_failed",
         "no peer joined within timeout" => "peer_wait_timeout",
-        "pub PC failed" => "publisher_failed",
-        "pub PC closed" => "publisher_closed",
-        "sub PC failed" => "subscriber_failed",
-        "sub PC closed" => "subscriber_closed",
+        "publisher PC failed" => "publisher_failed",
+        "publisher PC closed" => "publisher_closed",
+        "subscriber PC failed" => "subscriber_failed",
+        "subscriber PC closed" => "subscriber_closed",
+        "local SDP send failed" => "local_sdp_send_failed",
+        "local ICE send failed" => "local_ice_send_failed",
+        "local ICE candidate queue limit" => "local_ice_queue_limit",
+        "local ICE candidate size limit" => "local_ice_size_limit",
+        "local SDP generation superseded" => "local_sdp_superseded",
         "call_ended" => "call_ended",
         "signaling_disconnected" => "signaling_disconnected",
         "signaling_closed" => "signaling_closed",
@@ -1005,6 +1010,8 @@ mod tests {
     #[test]
     fn media_diagnostics_keep_only_known_codes_and_bounded_service_enums() {
         assert_eq!(super::media_reason("room empty")["code"], "room_empty");
+        assert_eq!(super::media_reason("publisher PC failed")["code"], "publisher_failed");
+        assert_eq!(super::media_reason("subscriber PC closed")["code"], "subscriber_closed");
         assert_eq!(
             super::media_reason("server leave reason=14 action=0 reconnect=0"),
             serde_json::json!({"code":"server_leave","serviceReason":14,"serviceAction":0,"reconnect":false})

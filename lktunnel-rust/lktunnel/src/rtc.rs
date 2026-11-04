@@ -22,25 +22,27 @@
 //! and an [`EngineEvent`] stream; [`Engine::close`] tears it down.
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
 
-use livekit_api::signal_client::{SignalClient, SignalEvent, SignalOptions, SignalSdkOptions};
+use livekit_api::signal_client::{SignalClient, SignalEvent, SignalOptions, SignalSdkOptions, SignalWriteToken};
 use livekit_protocol as proto;
 
 use webrtc::api::interceptor_registry::{configure_nack, configure_rtcp_reports};
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
+use webrtc::ice_transport::ice_connection_state::RTCIceConnectionState;
 use webrtc::ice_transport::ice_credential_type::RTCIceCredentialType;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
+use webrtc::peer_connection::policy::ice_transport_policy::RTCIceTransportPolicy;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
 use webrtc::rtp_transceiver::rtp_codec::RTCRtpCodecCapability;
@@ -116,10 +118,79 @@ pub struct Engine {
     signal: Arc<SignalClient>,
     publisher: Arc<RTCPeerConnection>,
     subscriber: Arc<RTCPeerConnection>,
+    negotiation: Arc<NegotiationState>,
+    initial_roster_peers: usize,
+    initial_roster_entries: usize,
+    initial_roster_unknown_states: usize,
+    local_ice: Vec<Arc<LocalIceGate>>,
+    force_relay_setting: &'static str,
+    ice_policy: &'static str,
     /// Remote participants currently present (identities). Updated by the
     /// signal task from `ParticipantUpdate`.
     peers: Arc<Mutex<HashSet<String>>>,
     event_task: Mutex<Option<tokio::task::AbortHandle>>,
+}
+
+#[derive(Default)]
+struct NegotiationState {
+    publisher_offer: AtomicU32,
+    subscriber_offer: AtomicU32,
+    subscriber_answer: AtomicU32,
+    subscriber_offers: AtomicU32,
+    stale_answers: AtomicU32,
+    subscriber_offer_summary: Mutex<serde_json::Value>,
+    subscriber_answer_summary: Mutex<serde_json::Value>,
+}
+impl NegotiationState {
+    fn next_offer(&self) -> Result<u32,String> {
+        self.publisher_offer.fetch_update(Ordering::AcqRel,Ordering::Acquire,|id|id.checked_add(1))
+            .map(|id|id+1).map_err(|_|"publisher offer sequence exhausted".to_owned())
+    }
+    fn accept_answer(&self,id:u32) -> bool {
+        let current=self.publisher_offer.load(Ordering::Acquire);
+        let accepted=current==0 || id==0 || id==current;
+        if !accepted {let _=self.stale_answers.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|Some(n.saturating_add(1)));}
+        accepted
+    }
+    fn snapshot(&self) -> serde_json::Value {
+        serde_json::json!({
+            "publisherOfferId":self.publisher_offer.load(Ordering::Acquire),
+            "subscriberOfferId":self.subscriber_offer.load(Ordering::Acquire),
+            "subscriberAnswerId":self.subscriber_answer.load(Ordering::Acquire),
+            "subscriberOfferCount":self.subscriber_offers.load(Ordering::Relaxed),
+            "stalePublisherAnswers":self.stale_answers.load(Ordering::Relaxed),
+            "subscriberOffer":self.subscriber_offer_summary.lock().clone(),
+            "subscriberAnswer":self.subscriber_answer_summary.lock().clone(),
+        })
+    }
+}
+
+// Structural diagnostics only. Never retain SDP lines, addresses, credentials,
+// fingerprints, candidate values or identifiers from remote descriptions.
+fn sdp_summary(sdp:&str) -> serde_json::Value {
+    if sdp.len()>128*1024 {return serde_json::json!({"status":"oversized"});}
+    let (mut audio,mut video,mut application,mut other,mut active,mut candidates)=(0u32,0u32,0u32,0u32,0u32,0u32);
+    let (mut version,mut ufrag,mut password,mut fingerprint)=(false,false,false,false);
+    let mut malformed=false;
+    for (index,line) in sdp.lines().enumerate() {
+        if index>=1024 || line.len()>16*1024 {return serde_json::json!({"status":"oversized"});}
+        let increment=|n:&mut u32|*n=n.saturating_add(1).min(256);
+        if line=="v=0" {version=true;}
+        if let Some(media)=line.strip_prefix("m=") {
+            let mut fields=media.split_whitespace();
+            match fields.next() {Some("audio")=>increment(&mut audio),Some("video")=>increment(&mut video),Some("application")=>increment(&mut application),Some(_)=>increment(&mut other),None=>malformed=true};
+            match fields.next().and_then(|p|p.split('/').next()).and_then(|p|p.parse::<u16>().ok()) {
+                Some(0)=>{},Some(_)=>increment(&mut active),None=>malformed=true,
+            }
+        }
+        if let Some(value)=line.strip_prefix("a=ice-ufrag:") {ufrag|=!value.trim().is_empty();}
+        if let Some(value)=line.strip_prefix("a=ice-pwd:") {password|=!value.trim().is_empty();}
+        if let Some(value)=line.strip_prefix("a=fingerprint:") {fingerprint|=!value.trim().is_empty();}
+        if line.starts_with("a=candidate:") {increment(&mut candidates);}
+    }
+    serde_json::json!({"status":if version&&!malformed{"ok"}else{"malformed"},"audioSections":audio,"videoSections":video,
+        "applicationSections":application,"otherSections":other,"activeSections":active,"candidateCount":candidates,
+        "hasIceUfrag":ufrag,"hasIcePassword":password,"hasFingerprint":fingerprint})
 }
 
 /// Register before AddTrack so an immediate acknowledgement cannot be lost.
@@ -155,11 +226,13 @@ struct StartupResources {
     publisher: Option<Arc<RTCPeerConnection>>,
     subscriber: Option<Arc<RTCPeerConnection>>,
     task: Option<tokio::task::AbortHandle>,
+    local_ice: Vec<Arc<LocalIceGate>>,
     armed: bool,
 }
 impl Drop for StartupResources {
     fn drop(&mut self) {
         if !self.armed {return;}
+        for gate in &self.local_ice {gate.close();}
         if let Some(task)=self.task.take(){task.abort();}
         let signal=self.signal.clone();let publisher=self.publisher.take();let subscriber=self.subscriber.take();
         crate::runtime().spawn(async move {
@@ -209,7 +282,7 @@ impl Engine {
             .await
             .map_err(|e| format!("signal connect: {e}"))?;
         let signal = Arc::new(signal);
-        let mut startup=StartupResources {signal:signal.clone(),publisher:None,subscriber:None,task:None,armed:true};
+        let mut startup=StartupResources {signal:signal.clone(),publisher:None,subscriber:None,task:None,local_ice:Vec::new(),armed:true};
         log::info!(
             "rtc[{id}]: joined subscriber_primary={} ice_servers={} peers={}",
             join.subscriber_primary,
@@ -220,7 +293,8 @@ impl Engine {
         // ── Build the two PeerConnections ─────────────────────────────
         let api = make_api()?;
         let ice_servers = map_ice_servers(&join.ice_servers);
-        let mk_config = || RTCConfiguration { ice_servers: ice_servers.clone(), ..Default::default() };
+        let (ice_transport_policy,force_relay_setting)=advertised_ice_policy(join.client_configuration.as_ref());
+        let mk_config = || RTCConfiguration { ice_servers: ice_servers.clone(), ice_transport_policy, ..Default::default() };
 
         let publisher = Arc::new(
             api.new_peer_connection(mk_config())
@@ -237,8 +311,9 @@ impl Engine {
 
         let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<EngineEvent>();
 
-        wire_pc(id, &publisher, true, proto::SignalTarget::Publisher, signal.clone(), event_tx.clone());
-        wire_pc(id, &subscriber, false, proto::SignalTarget::Subscriber, signal.clone(), event_tx.clone());
+        let local_publisher_ice=wire_pc(id, &publisher, true, proto::SignalTarget::Publisher, signal.clone(), event_tx.clone());
+        let local_subscriber_ice=wire_pc(id, &subscriber, false, proto::SignalTarget::Subscriber, signal.clone(), event_tx.clone());
+        startup.local_ice=vec![local_publisher_ice.clone(),local_subscriber_ice.clone()];
 
         // Receive carrier: every remote track funnels into `on_packet`.
         // When a remote carrier track's read loop ends, the peer has
@@ -275,10 +350,14 @@ impl Engine {
         let local_identity=join.participant.as_ref().map(|p|p.identity.clone()).unwrap_or_default();
         let peers=Arc::new(Mutex::new(HashSet::new()));
         seed_peers(&peers,&join.other_participants,&local_identity,&event_tx);
+        let initial_roster_peers=peers.lock().len();
+        let initial_roster_entries=join.other_participants.len();
+        let initial_roster_unknown_states=join.other_participants.iter().filter(|p|proto::participant_info::State::try_from(p.state).is_err()).count();
         let gate=wait_for_track_published.then(||Arc::new(PublicationGate::default()));
+        let negotiation=Arc::new(NegotiationState::default());
         let mut events=Some(events);
         if wait_for_track_published {
-            let task=crate::runtime().spawn(signal_loop(id,events.take().expect("signal events owned"),signal.clone(),publisher.clone(),subscriber.clone(),peers.clone(),local_identity.clone(),event_tx.clone(),gate.clone()));
+            let task=crate::runtime().spawn(signal_loop(id,events.take().expect("signal events owned"),signal.clone(),publisher.clone(),subscriber.clone(),peers.clone(),local_identity.clone(),event_tx.clone(),gate.clone(),negotiation.clone(),local_subscriber_ice.clone()));
             startup.task=Some(task.abort_handle());
         }
         let publication_deadline=tokio::time::Instant::now()+publication_timeout;
@@ -325,6 +404,8 @@ impl Engine {
         }
 
         // Publisher offer — the SFU answers (handled in the signal task).
+        let offer_id=negotiation.next_offer()?;
+        let ice_generation=local_publisher_ice.begin()?;
         let offer = publisher
             .create_offer(None)
             .await
@@ -333,13 +414,12 @@ impl Engine {
             .set_local_description(offer.clone())
             .await
             .map_err(|e| format!("pub set_local: {e}"))?;
-        signal
-            .send(proto::signal_request::Message::Offer(proto::SessionDescription {
+        local_publisher_ice.send_sdp(&signal,ice_generation,proto::signal_request::Message::Offer(proto::SessionDescription {
                 r#type: "offer".to_string(),
                 sdp: offer.sdp,
+                id: offer_id,
                 ..Default::default()
-            }))
-            .await;
+            })).await?;
         log::info!("rtc[{id}]: publisher offer sent ({} track[s])", senders.len());
         Ok::<_,String>(senders)
         };
@@ -361,6 +441,8 @@ impl Engine {
             local_identity,
             event_tx,
             gate,
+            negotiation.clone(),
+            local_subscriber_ice.clone(),
         ));
         startup.task=Some(task.abort_handle());
         }
@@ -370,6 +452,13 @@ impl Engine {
             signal,
             publisher,
             subscriber,
+            negotiation,
+            initial_roster_peers,
+            initial_roster_entries,
+            initial_roster_unknown_states,
+            local_ice:vec![local_publisher_ice,local_subscriber_ice],
+            force_relay_setting,
+            ice_policy:if ice_transport_policy==RTCIceTransportPolicy::Relay {"relay"}else{"default"},
             peers,
             event_task: Mutex::new(startup.task.take()),
         });
@@ -385,6 +474,15 @@ impl Engine {
         serde_json::json!({
             "publisherState": media_state_name(self.publisher.connection_state()),
             "subscriberState": media_state_name(self.subscriber.connection_state()),
+            "publisherIceState": ice_state_name(self.publisher.ice_connection_state()),
+            "subscriberIceState": ice_state_name(self.subscriber.ice_connection_state()),
+            "negotiation": self.negotiation.snapshot(),
+            "initialRosterPeerCount": self.initial_roster_peers,
+            "initialRosterEntryCount": self.initial_roster_entries,
+            "initialRosterUnknownStateCount": self.initial_roster_unknown_states,
+            "peerCount": self.peers.lock().len(),
+            "serverForceRelay": self.force_relay_setting,
+            "iceTransportPolicy": self.ice_policy,
         })
     }
 
@@ -398,6 +496,7 @@ impl Engine {
     /// peer's subscription / fire ParticipantUpdate(Disconnected) —
     /// immediately. (The LiveKit SDK's `room.close()` does the same.)
     pub async fn close(&self) {
+        for gate in &self.local_ice {gate.close();}
         self.signal
             .send(proto::signal_request::Message::Leave(proto::LeaveRequest::default()))
             .await;
@@ -420,9 +519,18 @@ fn media_state_name(state: RTCPeerConnectionState) -> &'static str {
         _ => "unknown",
     }
 }
+fn ice_state_name(state: RTCIceConnectionState) -> &'static str {
+    match state {
+        RTCIceConnectionState::New=>"new",RTCIceConnectionState::Checking=>"checking",
+        RTCIceConnectionState::Connected=>"connected",RTCIceConnectionState::Completed=>"completed",
+        RTCIceConnectionState::Disconnected=>"disconnected",RTCIceConnectionState::Failed=>"failed",
+        RTCIceConnectionState::Closed=>"closed",_=>"unknown",
+    }
+}
 
 impl Drop for Engine {
     fn drop(&mut self) {
+        for gate in &self.local_ice {gate.close();}
         if let Some(h) = self.event_task.lock().take() { h.abort(); }
         // PCs/signal close on their own Arc drop; the explicit async
         // `close()` (called from teardown) is the graceful path.
@@ -466,6 +574,15 @@ fn map_ice_servers(servers: &[proto::IceServer]) -> Vec<RTCIceServer> {
         })
         .collect()
 }
+fn advertised_ice_policy(config:Option<&proto::ClientConfiguration>)->(RTCIceTransportPolicy,&'static str) {
+    match config.map(|config|config.force_relay) {
+        Some(value) if value==proto::ClientConfigSetting::Enabled as i32=>(RTCIceTransportPolicy::Relay,"enabled"),
+        Some(value) if value==proto::ClientConfigSetting::Disabled as i32=>(RTCIceTransportPolicy::default(),"disabled"),
+        Some(value) if value==proto::ClientConfigSetting::Unset as i32=>(RTCIceTransportPolicy::default(),"unset"),
+        None=>(RTCIceTransportPolicy::default(),"absent"),
+        _=>(RTCIceTransportPolicy::default(),"unknown"),
+    }
+}
 
 /// Wire a PC's connection-state + ICE-candidate callbacks. A Failed /
 /// Closed / Disconnected state emits [`EngineEvent::Disconnected`]; local
@@ -477,7 +594,8 @@ fn wire_pc(
     target: proto::SignalTarget,
     signal: Arc<SignalClient>,
     event_tx: tokio::sync::mpsc::UnboundedSender<EngineEvent>,
-) {
+) -> Arc<LocalIceGate> {
+    let gate=Arc::new(LocalIceGate {target:target as i32,state:Mutex::new(LocalIceState::default())});
     let label = if is_publisher { "publisher" } else { "subscriber" };
     {
         let event_tx = event_tx.clone();
@@ -498,24 +616,91 @@ fn wire_pc(
         }));
     }
     {
-        let target = target as i32;
+        let candidate_gate=gate.clone();
         pc.on_ice_candidate(Box::new(move |cand: Option<RTCIceCandidate>| {
             let signal = signal.clone();
+            let gate=candidate_gate.clone();
+            let event_tx=event_tx.clone();
             Box::pin(async move {
                 if let Some(cand) = cand {
                     if let Ok(init) = cand.to_json() {
                         let json = serde_json::to_string(&init).unwrap_or_default();
-                        signal
-                            .send(proto::signal_request::Message::Trickle(proto::TrickleRequest {
-                                candidate_init: json,
-                                target,
-                                ..Default::default()
-                            }))
-                            .await;
+                        match gate.candidate(json) {
+                            Ok(Some((generation,token,json)))=>if LocalIceGate::write(&signal,gate.trickle(json),Some(&token)).await.is_err() {
+                                if gate.close_if_current(generation) {let _=event_tx.send(EngineEvent::Disconnected("local ICE send failed".into()));}
+                            },
+                            Ok(None)=>{},
+                            Err(reason)=>{gate.close();let _=event_tx.send(EngineEvent::Disconnected(reason.into()));},
+                        }
                     }
                 }
             })
         }));
+    }
+    gate
+}
+
+#[derive(Default)]
+struct LocalIceState {generation:u64,accepting:bool,ready:bool,stream:Option<SignalWriteToken>,bytes:usize,pending:VecDeque<String>}
+struct LocalIceGate {target:i32,state:Mutex<LocalIceState>}
+impl LocalIceGate {
+    fn begin(&self)->Result<u64,String> {
+        let mut state=self.state.lock();
+        state.generation=state.generation.checked_add(1).ok_or("local ICE generation exhausted")?;
+        state.accepting=true;state.ready=false;state.stream=None;state.bytes=0;state.pending.clear();
+        Ok(state.generation)
+    }
+    fn candidate(&self,json:String)->Result<Option<(u64,SignalWriteToken,String)>,&'static str> {
+        let mut state=self.state.lock();
+        if !state.accepting {return Ok(None);}
+        if json.len()>MAX_REMOTE_ICE_JSON{return Err("local ICE candidate size limit");}
+        if state.ready {if let Some(token)=&state.stream {return Ok(Some((state.generation,token.clone(),json)));}}
+        if state.pending.contains(&json){return Ok(None);}
+        if state.pending.len()>=MAX_PENDING_REMOTE_ICE || json.len()>MAX_PENDING_REMOTE_ICE_BYTES.saturating_sub(state.bytes) {
+            return Err("local ICE candidate queue limit");
+        }
+        state.bytes+=json.len();state.pending.push_back(json);Ok(None)
+    }
+    fn release(&self,generation:u64,token:SignalWriteToken)->Result<Vec<String>,String> {
+        let mut state=self.state.lock();
+        if !state.accepting || state.generation!=generation{return Err("local SDP generation superseded".into());}
+        state.ready=true;state.stream=Some(token);state.bytes=0;Ok(state.pending.drain(..).collect())
+    }
+    fn close(&self) {
+        let mut state=self.state.lock();Self::invalidate(&mut state);
+    }
+    fn invalidate(state:&mut LocalIceState) {
+        state.generation=state.generation.wrapping_add(1);
+        state.accepting=false;state.ready=false;state.stream=None;state.pending.clear();state.bytes=0;
+    }
+    fn close_if_current(&self,generation:u64)->bool {
+        let mut state=self.state.lock();
+        if state.generation!=generation {return false;}
+        Self::invalidate(&mut state);true
+    }
+    fn trickle(&self,json:String)->proto::signal_request::Message {
+        proto::signal_request::Message::Trickle(proto::TrickleRequest {candidate_init:json,target:self.target,..Default::default()})
+    }
+    async fn write(signal:&SignalClient,message:proto::signal_request::Message,token:Option<&SignalWriteToken>)->Result<SignalWriteToken,String> {
+        tokio::time::timeout(Duration::from_secs(10),signal.send_sdp_or_ice(message,token)).await
+            .map_err(|_|"local signaling write timed out".to_owned())?
+            .map_err(|_|"local signaling write failed".to_owned())
+    }
+    async fn send_sdp(&self,signal:&SignalClient,generation:u64,sdp:proto::signal_request::Message)->Result<(),String> {
+        if self.state.lock().generation!=generation {return Err("local SDP generation superseded".into());}
+        self.finish_sdp(signal,generation,Self::write(signal,sdp,None)).await
+    }
+    async fn finish_sdp<F>(&self,signal:&SignalClient,generation:u64,write:F)->Result<(),String>
+    where F:std::future::Future<Output=Result<SignalWriteToken,String>> {
+        let token=match write.await {
+            Ok(token)=>token,Err(_)=>{self.close_if_current(generation);return Err("local SDP send failed".into());}
+        };
+        for candidate in self.release(generation,token.clone())? {
+            if Self::write(signal,self.trickle(candidate),Some(&token)).await.is_err() {
+                self.close_if_current(generation);return Err("local ICE send failed".into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -557,22 +742,14 @@ fn make_sender(id: u64, index: usize, track: Arc<TrackLocalStaticSample>) -> Rtp
 }
 
 /// Seed the peer set from the join roster and emit a `PeerJoined` for each
-/// active participant (so `lib.rs`'s loop sees them like late joins).
+/// present participant (so `lib.rs`'s loop sees them like late joins).
 fn seed_peers(
     peers: &Arc<Mutex<HashSet<String>>>,
     roster: &[proto::ParticipantInfo],
     local_identity: &str,
     event_tx: &tokio::sync::mpsc::UnboundedSender<EngineEvent>,
 ) {
-    let mut set = peers.lock();
-    for p in roster {
-        if p.identity == local_identity { continue; }
-        if p.state == proto::participant_info::State::Active as i32 {
-            if set.insert(p.identity.clone()) {
-                let _ = event_tx.send(EngineEvent::PeerJoined(p.identity.clone()));
-            }
-        }
-    }
+    apply_participant_update(peers,roster,local_identity,event_tx);
 }
 
 // webrtc-rs rejects (rather than buffers) trickle received before remote SDP.
@@ -636,6 +813,8 @@ async fn signal_loop(
     local_identity: String,
     event_tx: tokio::sync::mpsc::UnboundedSender<EngineEvent>,
     publication: Option<Arc<PublicationGate>>,
+    negotiation: Arc<NegotiationState>,
+    local_subscriber_ice: Arc<LocalIceGate>,
 ) {
     let _publication_scope=PublicationScope(publication.clone());
     let mut publisher_ice = PendingRemoteIce::default();
@@ -653,6 +832,13 @@ async fn signal_loop(
                 },
                 // SFU subscriber offer — answer it.
                 proto::signal_response::Message::Offer(sd) => {
+                    let ice_generation=match local_subscriber_ice.begin() {
+                        Ok(generation)=>generation,
+                        Err(reason)=>{let _=event_tx.send(EngineEvent::Disconnected(reason));return;}
+                    };
+                    negotiation.subscriber_offer.store(sd.id,Ordering::Release);
+                    let _=negotiation.subscriber_offers.fetch_update(Ordering::Relaxed,Ordering::Relaxed,|n|Some(n.saturating_add(1)));
+                    *negotiation.subscriber_offer_summary.lock()=sdp_summary(&sd.sdp);
                     match RTCSessionDescription::offer(sd.sdp) {
                         Ok(offer) => {
                             if let Err(e) = subscriber.set_remote_description(offer).await {
@@ -663,15 +849,16 @@ async fn signal_loop(
                                 if let Err(e) = subscriber.set_local_description(answer.clone()).await {
                                     log::warn!("rtc[{id}]: sub set_local: {e}");
                                 } else {
-                                    signal
-                                        .send(proto::signal_request::Message::Answer(
+                                    *negotiation.subscriber_answer_summary.lock()=sdp_summary(&answer.sdp);
+                                    if let Err(reason)=local_subscriber_ice.send_sdp(&signal,ice_generation,proto::signal_request::Message::Answer(
                                             proto::SessionDescription {
                                                 r#type: "answer".to_string(),
                                                 sdp: answer.sdp,
+                                                id: sd.id,
                                                 ..Default::default()
                                             },
-                                        ))
-                                        .await;
+                                        )).await {let _=event_tx.send(EngineEvent::Disconnected(reason));return;}
+                                    negotiation.subscriber_answer.store(sd.id,Ordering::Release);
                                 }
                               }
                             }
@@ -681,6 +868,9 @@ async fn signal_loop(
                 }
                 // Answer to our publisher offer.
                 proto::signal_response::Message::Answer(sd) => {
+                    // Official SDKs preserve legacy peers which omit IDs, but
+                    // never apply an explicitly stale nonzero answer.
+                    if !negotiation.accept_answer(sd.id) { continue; }
                     match RTCSessionDescription::answer(sd.sdp) {
                         Ok(answer) => {
                             if let Err(e) = publisher.set_remote_description(answer).await {
@@ -736,8 +926,47 @@ fn server_leave_context(leave: &proto::LeaveRequest) -> String {
 mod remote_ice_tests {
     use super::*;
     #[test]
+    fn relay_policy_is_enabled_only_by_explicit_server_setting() {
+        assert_eq!(advertised_ice_policy(None),(RTCIceTransportPolicy::default(),"absent"));
+        for (setting,expected,label) in [(0,RTCIceTransportPolicy::default(),"unset"),(1,RTCIceTransportPolicy::default(),"disabled"),(2,RTCIceTransportPolicy::Relay,"enabled"),(999,RTCIceTransportPolicy::default(),"unknown")] {
+            let config=proto::ClientConfiguration {force_relay:setting,..Default::default()};
+            assert_eq!(advertised_ice_policy(Some(&config)),(expected,label));
+        }
+    }
+    #[test]
+    fn negotiation_counters_are_bounded_and_preserve_legacy_zero_answers() {
+        let state=NegotiationState::default();
+        assert_eq!(state.next_offer().unwrap(),1);
+        assert!(state.accept_answer(0));
+        assert!(state.accept_answer(1));
+        assert!(!state.accept_answer(2));
+        assert_eq!(state.next_offer().unwrap(),2);
+        assert!(!state.accept_answer(1));
+        assert_eq!(state.snapshot(),serde_json::json!({"publisherOfferId":2,"subscriberOfferId":0,"subscriberAnswerId":0,"subscriberOfferCount":0,"stalePublisherAnswers":2,"subscriberOffer":null,"subscriberAnswer":null}));
+        state.publisher_offer.store(u32::MAX,Ordering::Release);
+        assert!(state.next_offer().is_err());
+        assert_eq!(state.publisher_offer.load(Ordering::Acquire),u32::MAX);
+    }
+    #[test]
+    fn sdp_diagnostics_are_structural_bounded_and_never_echo_secrets() {
+        let summary=sdp_summary("v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 0 UDP/DTLS/SCTP webrtc-datachannel\r\na=ice-ufrag:privateufrag\r\na=ice-pwd:privatepassword\r\na=fingerprint:sha-256 privatefingerprint\r\na=candidate:privateaddress\r\n");
+        assert_eq!(summary["audioSections"],1);
+        assert_eq!(summary["applicationSections"],1);
+        assert_eq!(summary["activeSections"],1);
+        assert_eq!(summary["candidateCount"],1);
+        assert_eq!(summary["hasIcePassword"],true);
+        assert!(!summary.to_string().contains("private"));
+        assert_eq!(sdp_summary("v=0\nm=audio privateport\n")["status"],"malformed");
+        assert_eq!(sdp_summary(&"private".repeat(20000)),serde_json::json!({"status":"oversized"}));
+        let many=format!("v=0\n{}","a=candidate:private\n".repeat(300));
+        assert_eq!(sdp_summary(&many)["candidateCount"],256);
+    }
+    #[test]
     fn media_state_names_are_fixed_enums() {
         assert_eq!(media_state_name(RTCPeerConnectionState::default()),"unknown");
+        assert_eq!(ice_state_name(RTCIceConnectionState::default()),"unknown");
+        assert_eq!(ice_state_name(RTCIceConnectionState::Checking),"checking");
+        assert_eq!(ice_state_name(RTCIceConnectionState::Completed),"completed");
         for (state,name) in [(RTCPeerConnectionState::New,"new"),(RTCPeerConnectionState::Connecting,"connecting"),(RTCPeerConnectionState::Connected,"connected"),(RTCPeerConnectionState::Disconnected,"disconnected"),(RTCPeerConnectionState::Failed,"failed"),(RTCPeerConnectionState::Closed,"closed")] {
             assert_eq!(media_state_name(state),name);
         }
@@ -844,20 +1073,53 @@ mod leave_diagnostic_tests {
     }
 }
 
+#[cfg(test)]
+mod participant_roster_tests {
+    use super::*;
+    #[test]
+    fn initial_roster_and_updates_share_known_membership() {
+        let mut roster=Vec::new();
+        for (identity,state) in [("joining",0),("joined",1),("active",2),("gone",3),("unknown",99),("",2),("local",2),("joined",1)] {
+            roster.push(proto::ParticipantInfo {identity:identity.into(),state,..Default::default()});
+        }
+        let seeded=Arc::new(Mutex::new(HashSet::new()));
+        let updated=Arc::new(Mutex::new(HashSet::new()));
+        let (seed_tx,mut seed_rx)=tokio::sync::mpsc::unbounded_channel();
+        let (update_tx,mut update_rx)=tokio::sync::mpsc::unbounded_channel();
+        seed_peers(&seeded,&roster,"local",&seed_tx);
+        apply_participant_update(&updated,&roster,"local",&update_tx);
+        assert_eq!(*seeded.lock(),*updated.lock());
+        assert_eq!(*seeded.lock(),HashSet::from(["joining".into(),"joined".into(),"active".into()]));
+        for expected in ["joining","joined","active"] {
+            assert!(matches!(seed_rx.try_recv().unwrap(),EngineEvent::PeerJoined(id) if id==expected));
+            assert!(matches!(update_rx.try_recv().unwrap(),EngineEvent::PeerJoined(id) if id==expected));
+        }
+        assert!(seed_rx.try_recv().is_err());
+        apply_participant_update(&seeded,&roster,"local",&seed_tx);
+        assert!(seed_rx.try_recv().is_err(),"unchanged presence must not trigger another warmup");
+        apply_participant_update(&seeded,&[proto::ParticipantInfo {identity:"joined".into(),state:3,..Default::default()}],"local",&seed_tx);
+        assert!(matches!(seed_rx.try_recv().unwrap(),EngineEvent::PeerLeft(id) if id=="joined"));
+    }
+}
+
 /// Apply a `ParticipantUpdate`: diff against the known peer set, emitting
-/// `PeerJoined` for newly-active and `PeerLeft` for newly-disconnected.
+/// `PeerJoined` for newly-present and `PeerLeft` for newly-disconnected.
+/// Presence permits media startup, not authenticated proxy readiness.
 fn apply_participant_update(
     peers: &Arc<Mutex<HashSet<String>>>,
     participants: &[proto::ParticipantInfo],
     local_identity: &str,
     event_tx: &tokio::sync::mpsc::UnboundedSender<EngineEvent>,
 ) {
-    let disconnected = proto::participant_info::State::Disconnected as i32;
     let mut set = peers.lock();
     for p in participants {
-        log::info!("rtc: participant update: identity={} state={}", p.identity, p.state);
-        if p.identity == local_identity { continue; }  // skip ourselves (matches the LK SDK)
-        if p.state == disconnected {
+        if p.identity.is_empty() || p.identity == local_identity { continue; }
+        let present=match proto::participant_info::State::try_from(p.state) {
+            Ok(proto::participant_info::State::Joining|proto::participant_info::State::Joined|proto::participant_info::State::Active)=>true,
+            Ok(proto::participant_info::State::Disconnected)=>false,
+            Err(_)=>continue,
+        };
+        if !present {
             if set.remove(&p.identity) {
                 let _ = event_tx.send(EngineEvent::PeerLeft(p.identity.clone()));
             }

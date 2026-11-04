@@ -21,7 +21,7 @@ use futures_util::{
 use livekit_protocol as proto;
 use livekit_runtime::{JoinHandle, TcpStream};
 use prost::Message as ProtoMessage;
-use std::{env, io, time::Duration};
+use std::{env, io, time::Duration, sync::Arc};
 
 use tokio::sync::{mpsc, oneshot};
 
@@ -76,6 +76,7 @@ enum InternalMessage {
 /// It is replaced by [SignalClient] at each reconnection.
 #[derive(Debug)]
 pub(super) struct SignalStream {
+    write_identity: Arc<()>,
     internal_tx: mpsc::Sender<InternalMessage>,
     read_handle: JoinHandle<()>,
     write_handle: JoinHandle<()>,
@@ -335,7 +336,7 @@ impl SignalStream {
             let _ = Abortable::new(Self::read_task(reader_tx, ws_reader, emitter), read_registration).await;
         });
 
-        Ok((Self { internal_tx, read_handle, write_handle, read_abort, write_abort }, events))
+        Ok((Self { write_identity:Arc::new(()), internal_tx, read_handle, write_handle, read_abort, write_abort }, events))
     }
 
     /// Emergency local teardown for a cancelled startup, without waiting for
@@ -343,6 +344,7 @@ impl SignalStream {
     pub(super) fn abort_handles(&self) -> (AbortHandle, AbortHandle) {
         (self.read_abort.clone(), self.write_abort.clone())
     }
+    pub(super) fn write_token(&self) -> super::SignalWriteToken {super::SignalWriteToken(self.write_identity.clone())}
 
     /// Close the websocket
     /// It sends a CloseFrame to the server before closing
@@ -372,6 +374,7 @@ impl SignalStream {
         while let Some(msg) = internal_rx.recv().await {
             match msg {
                 InternalMessage::Signal { signal, response_chn } => {
+                    if response_chn.is_closed() { continue; }
                     let data = proto::SignalRequest { message: Some(signal) }.encode_to_vec();
 
                     if let Err(err) = ws_writer.send(Message::Binary(data.into())).await {

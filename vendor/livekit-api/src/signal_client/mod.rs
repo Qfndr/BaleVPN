@@ -159,6 +159,9 @@ pub struct SignalClient {
     emitter: SignalEmitter,
     handle: Mutex<Option<JoinHandle<()>>>,
 }
+/// Opaque ownership of one physical signaling stream; never a credential.
+#[derive(Clone)]
+pub struct SignalWriteToken(Arc<()>);
 
 // A WebSocket already owns I/O tasks while Join/Reconnect is still pending.
 // Cancellation at that stage has no SignalClient owner to close those tasks.
@@ -259,6 +262,25 @@ impl SignalClient {
     /// The queue is flushed on the next restart
     pub async fn send(&self, signal: proto::signal_request::Message) {
         self.inner.send(signal).await
+    }
+
+    /// Ordered negotiation writes must observe success before releasing ICE.
+    /// Never queues these generation-bound messages for a later connection.
+    pub async fn send_sdp_or_ice(&self, signal: proto::signal_request::Message, expected: Option<&SignalWriteToken>) -> SignalResult<SignalWriteToken> {
+        if !matches!(signal,proto::signal_request::Message::Offer(_)|proto::signal_request::Message::Answer(_)|proto::signal_request::Message::Trickle(_)) {
+            return Err(SignalError::SendError);
+        }
+        livekit_runtime::timeout(SIGNAL_CONNECT_TIMEOUT,async {
+            let stream=self.inner.stream.read().await;
+            let stream=stream.as_ref().ok_or(SignalError::SendError)?;
+            let token=stream.write_token();
+            if self.inner.reconnecting.load(Ordering::Acquire) || expected.is_some_and(|expected|!Arc::ptr_eq(&expected.0,&token.0)) {
+                return Err(SignalError::SendError);
+            }
+            stream.send(signal).await?;
+            if self.inner.reconnecting.load(Ordering::Acquire) {return Err(SignalError::SendError);}
+            Ok(token)
+        }).await.map_err(|_|SignalError::SendError)?
     }
 
     /// Close the connection to the server
@@ -971,6 +993,21 @@ mod tests {
             request_id: AtomicU32::new(1),
             single_pc_mode_active: false,
         })
+    }
+
+    #[cfg(feature = "signal-client-tokio")]
+    #[tokio::test]
+    async fn checked_negotiation_write_bounds_lock_wait_without_queueing() {
+        let inner=make_stub_inner();
+        let (emitter,_events)=mpsc::unbounded_channel();
+        let client=SignalClient {inner:inner.clone(),emitter,handle:Mutex::new(None)};
+        let lock=inner.stream.write().await;
+        let started=std::time::Instant::now();
+        let result=client.send_sdp_or_ice(proto::signal_request::Message::Offer(proto::SessionDescription::default()),None).await;
+        assert!(matches!(result,Err(SignalError::SendError)));
+        assert!(started.elapsed() < SIGNAL_CONNECT_TIMEOUT+Duration::from_secs(5));
+        drop(lock);
+        assert!(inner.queue.lock().await.is_empty());
     }
 
     #[cfg(feature = "signal-client-tokio")]

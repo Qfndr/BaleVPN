@@ -1,0 +1,20 @@
+{
+  "primaryWebSource": "https://web.igap.net/assets/CallEngine-D5ybhatj.js",
+  "primaryWebSha256": "0f42455443331cd85db95adb3adfaea7d186f00f0db12c1f3c6db1890b71bdbf",
+  "officialBehavior": "The browser SDK sends candidates immediately from onicecandidate and sends SDP after awaiting setLocalDescription. It has no explicit outgoing candidate queue; its pendingCandidates queue is for remote candidates.",
+  "primaryNativeSource": "webrtc 0.11.0 src/peer_connection/mod.rs set_local_description calls ice_gatherer.gather().await; gathering spawns candidate callbacks independently before the caller sends SDP.",
+  "nativeHazard": "An available local candidate can be signaled before the SDP which introduces its ICE credentials. The previous callback had no ordering barrier.",
+  "fix": "A bounded per-PC negotiation-generation gate queues local candidates until the corresponding SDP write succeeds. Queue bookkeeping has no await under its mutex. Failed writes and cancelled generations stay closed. Physical stream tokens prevent replay onto another signaling connection.",
+  "bounds": {"candidatesPerPc":128,"candidateBytes":16384,"queuedBytesPerPc":65536},
+  "checkedWriteDeadline": "SIGNAL_CONNECT_TIMEOUT including lock acquisition and WebSocket write",
+  "compatibility": "The legacy SignalClient.send API is unchanged. No candidate gathering wait is added to production; no packet path, certificate checks, or RTP encoding is changed.",
+  "relayPolicy": "As in the primary browser source, join.clientConfiguration.forceRelay=ENABLED selects relay policy. Absent, unset, disabled and unknown settings preserve the previous default. No TURN endpoint is synthesized.",
+  "liveCausality": "Not established by source inspection. The prior intermittent subscriber ICE timeouts are separate observed evidence; the next controlled test must verify behavior.",
+  "fixtureScope": [
+    "Actual publisher and subscriber peer connections finish local gathering before SDP is sent; the local WebSocket must receive no early SDP/ICE, then the SDP before trickle.",
+    "Failed SDP writes cannot flush queued candidates.",
+    "A delayed completion from a cancelled generation cannot reopen it or close a newer generation.",
+    "A physical-stream token from another connection cannot authorize a write.",
+    "Explicit relay-policy table and legacy/nonzero SDP correlation remain covered."
+  ]
+}

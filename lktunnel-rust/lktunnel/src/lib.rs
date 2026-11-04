@@ -211,6 +211,9 @@ pub struct LkTunnel {
     /// in the brief window before that and after teardown takes it.
     engine:      Mutex<Option<Arc<Engine>>>,
     last_media_diagnostic: Mutex<Option<serde_json::Value>>,
+    peer_wait_released: AtomicBool,
+    quic_client_started: AtomicBool,
+    quic_server_started: AtomicBool,
     /// Lifecycle state. Sender lives in the connect task; subscribers
     /// (e.g. [`LkTunnel::await_connected`]) borrow_and_update to wait.
     state_tx:    tokio::sync::watch::Sender<TunnelState>,
@@ -372,6 +375,9 @@ fn build_channel_inner(role: TunnelRole, options: security::TunnelOptions) -> (A
         counters:      Arc::new(counters::Counters::new()),
         engine:        Mutex::new(None),
         last_media_diagnostic: Mutex::new(None),
+        peer_wait_released: AtomicBool::new(false),
+        quic_client_started: AtomicBool::new(false),
+        quic_server_started: AtomicBool::new(false),
         state_tx,
         events_tx,
         events_rx:     Mutex::new(Some(events_rx)),
@@ -546,6 +552,9 @@ impl LkTunnel {
             counters:      Arc::new(counters::Counters::new()),
             engine:        Mutex::new(None),
             last_media_diagnostic: Mutex::new(None),
+            peer_wait_released: AtomicBool::new(false),
+            quic_client_started: AtomicBool::new(false),
+            quic_server_started: AtomicBool::new(false),
             state_tx,
             events_tx,
             events_rx:     Mutex::new(Some(events_rx)),
@@ -790,9 +799,13 @@ impl LkTunnel {
     pub fn transport_error(&self) -> Option<String> { self.transport_error.lock().clone() }
     /// Known WebRTC state enums only; retained before local resource cleanup.
     pub fn media_diagnostic(&self) -> Option<serde_json::Value> {
-        if let Some(engine) = self.engine.lock().as_ref() {
+        let mut value=if let Some(engine) = self.engine.lock().as_ref() {
             Some(engine.media_diagnostic())
-        } else { self.last_media_diagnostic.lock().clone() }
+        } else { self.last_media_diagnostic.lock().clone() }?;
+        value["peerWaitReleased"]=self.peer_wait_released.load(Ordering::Acquire).into();
+        value["quicClientStarted"]=self.quic_client_started.load(Ordering::Acquire).into();
+        value["quicServerStarted"]=self.quic_server_started.load(Ordering::Acquire).into();
+        Some(value)
     }
     pub(crate) fn fail_transport(&self, error: String) { *self.transport_error.lock()=Some(error);self.disconnect(); }
     pub fn is_proxy_ready(&self) -> bool {
@@ -874,6 +887,7 @@ impl LkTunnel {
             Ok(server) => {
                 let handle = socks5_quic::spawn_server_acceptor(server,self.options.authenticated);
                 *self.quic_server_handle.lock() = Some(handle);
+                self.quic_server_started.store(true,Ordering::Release);
                 log::info!("quic stream acceptor up on tunnel {id}");
             }
             Err(e) => {
@@ -1054,6 +1068,7 @@ impl LkTunnel {
                     std::io::Error::new(std::io::ErrorKind::NotConnected,
                         "tunnel disconnected during quic handshake")));
             }
+            self.quic_client_started.store(true,Ordering::Release);
             let attempt = match tokio::time::timeout(Duration::from_secs(20), self.connect_quic_to_peer()).await {
                 Ok(result)=>result,
                 Err(_)=>{ crate::diagnostics::record("client_setup","timeout",None); *self.quic_rx_tx.lock()=None; return Err(quic_tunnel::QuicEndpointError::Io(std::io::Error::new(std::io::ErrorKind::TimedOut,"QUIC authentication timed out; check pairing codes and both versions"))); }
@@ -1683,6 +1698,7 @@ async fn run_tunnel_loop(
     // Peer is in — flip to Connected.
     connected.store(true, Ordering::Relaxed);
     if let Some(inner) = weak.upgrade() {
+        inner.peer_wait_released.store(true,Ordering::Release);
         let _ = inner.state_tx.send_replace(TunnelState::Connected);
     }
     emit_event(&events_tx, EventKind::Connected, String::new());

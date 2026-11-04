@@ -10,6 +10,9 @@ type Socket = WebSocketStream<TcpStream>;
 const LIMIT: Duration = Duration::from_secs(5);
 
 async fn fixture() -> (String, tokio::task::JoinHandle<Socket>) {
+    fixture_with_roster(Vec::new()).await
+}
+async fn fixture_with_roster(roster:Vec<proto::ParticipantInfo>) -> (String, tokio::task::JoinHandle<Socket>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("ws://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {
@@ -17,6 +20,7 @@ async fn fixture() -> (String, tokio::task::JoinHandle<Socket>) {
         let mut socket = accept_async(stream).await.unwrap();
         send(&mut socket, proto::signal_response::Message::Join(proto::JoinResponse {
             participant: Some(proto::ParticipantInfo { identity: "fixture-local".into(), ..Default::default() }),
+            other_participants: roster,
             subscriber_primary: true,
             ping_interval: 60,
             ping_timeout: 120,
@@ -25,6 +29,41 @@ async fn fixture() -> (String, tokio::task::JoinHandle<Socket>) {
         socket
     });
     (url, task)
+}
+
+#[tokio::test]
+async fn joined_initial_roster_unblocks_startup_without_authenticating_the_peer() {
+    let (url,accept)=fixture_with_roster(vec![proto::ParticipantInfo {
+        identity:"fixture-remote".into(),state:proto::participant_info::State::Joined as i32,..Default::default()
+    }]).await;
+    let local=crate::security::Identity::generate().unwrap();
+    let remote=crate::security::Identity::generate().unwrap();
+    let options=local.options(&[remote.certificate],false,false).unwrap();
+    let tunnel=crate::LkTunnel::connect_with_options(url,"fixture-token",crate::TunnelRole::Client,options);
+    let mut events=tunnel.events().unwrap();
+    let mut socket=timeout(LIMIT,accept).await.unwrap().unwrap();
+    add_track(&mut socket).await;
+    timeout(LIMIT,async {
+        loop {
+            match events.recv().await {
+                Some(crate::Event {kind:crate::EventKind::Connected,..})=>break,
+                Some(_)=>{},
+                None=>panic!("tunnel closed before processing initial roster"),
+            }
+        }
+    }).await.expect("initial JOINED participant did not unblock peer wait");
+    assert!(tunnel.is_connected());
+    timeout(LIMIT,async {
+        while tunnel.media_diagnostic().unwrap()["quicClientStarted"]!=true {tokio::task::yield_now().await;}
+    }).await.expect("initial roster did not start cryptographic warmup");
+    let diagnostic=tunnel.media_diagnostic().unwrap();
+    assert_eq!(diagnostic["peerCount"],1);
+    assert_eq!(diagnostic["initialRosterPeerCount"],1);
+    assert_eq!(diagnostic["peerWaitReleased"],true);
+    assert!(!tunnel.is_peer_authenticated(),"roster presence is not cryptographic proof");
+    tunnel.disconnect();
+    assert_eq!(tunnel.media_diagnostic().unwrap()["quicClientStarted"],true,"terminal diagnostics must survive cleanup");
+    timeout(LIMIT,async {while request(&mut socket).await.is_some(){}}).await.unwrap();
 }
 
 async fn send(socket: &mut Socket, message: proto::signal_response::Message) {
@@ -48,6 +87,25 @@ async fn request(socket: &mut Socket) -> Option<proto::signal_request::Message> 
             _ => {}
         }
     }
+}
+async fn no_negotiation(socket:&mut Socket) {
+    let result=timeout(Duration::from_millis(40),async {
+        loop {
+            match request(socket).await {
+                Some(proto::signal_request::Message::Offer(_)|proto::signal_request::Message::Answer(_)|proto::signal_request::Message::Trickle(_))=>return,
+                None=>return,
+                _=>{}, // Normal signaling heartbeat is unrelated to SDP/ICE order.
+            }
+        }
+    }).await;
+    assert!(result.is_err(),"negotiation escaped before its gate opened, or stream closed");
+}
+async fn closed_without_negotiation(socket:&mut Socket) {
+    timeout(LIMIT,async {
+        while let Some(message)=request(socket).await {
+            assert!(!matches!(message,proto::signal_request::Message::Offer(_)|proto::signal_request::Message::Answer(_)|proto::signal_request::Message::Trickle(_)),"negotiation was sent after close");
+        }
+    }).await.unwrap();
 }
 
 async fn add_track(socket: &mut Socket) -> proto::AddTrackRequest {
@@ -102,6 +160,138 @@ async fn shutdown(engine: &Engine, socket: &mut Socket) {
 }
 
 #[tokio::test]
+async fn gathered_local_ice_is_held_until_its_actual_sdp_write() {
+    for target in [proto::SignalTarget::Publisher,proto::SignalTarget::Subscriber] {
+        let (url,accept)=fixture().await;
+        let (signal,_,_events)=SignalClient::connect(&url,"fixture-token",SignalOptions::default()).await.unwrap();
+        let signal=Arc::new(signal);
+        let mut socket=accept.await.unwrap();
+        let pc=Arc::new(super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap());
+        let (events,_)=tokio::sync::mpsc::unbounded_channel();
+        let gate=wire_pc(920,&pc,target==proto::SignalTarget::Publisher,target,signal.clone(),events);
+        let generation=gate.begin().unwrap();
+        let remote=super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap();
+        let mut gathered=pc.gathering_complete_promise().await;
+        let description=if target==proto::SignalTarget::Publisher {
+            pc.create_data_channel("fixture",None).await.unwrap();
+            pc.create_offer(None).await.unwrap()
+        } else {
+            remote.create_data_channel("fixture",None).await.unwrap();
+            pc.set_remote_description(remote.create_offer(None).await.unwrap()).await.unwrap();
+            pc.create_answer(None).await.unwrap()
+        };
+        pc.set_local_description(description.clone()).await.unwrap();
+        timeout(LIMIT,gathered.recv()).await.unwrap();
+        timeout(LIMIT,async {while gate.state.lock().pending.is_empty(){tokio::task::yield_now().await;}}).await.unwrap();
+        no_negotiation(&mut socket).await;
+        let session=proto::SessionDescription {r#type:description.sdp_type.to_string(),sdp:description.sdp,id:37,..Default::default()};
+        let message=if target==proto::SignalTarget::Publisher {proto::signal_request::Message::Offer(session)} else {proto::signal_request::Message::Answer(session)};
+        gate.send_sdp(&signal,generation,message).await.unwrap();
+        match request(&mut socket).await.unwrap() {
+            proto::signal_request::Message::Offer(sdp)|proto::signal_request::Message::Answer(sdp)=>assert_eq!(sdp.id,37),
+            _=>panic!("first negotiation message was not SDP"),
+        }
+        match request(&mut socket).await.unwrap() {
+            proto::signal_request::Message::Trickle(candidate)=>assert_eq!(candidate.target,target as i32),
+            _=>panic!("queued ICE was not forwarded after SDP"),
+        }
+        let previous_stream=gate.state.lock().stream.clone().unwrap();
+        gate.begin().unwrap();
+        assert!(gate.candidate("next-generation".into()).unwrap().is_none());
+        assert!(gate.release(generation,previous_stream).is_err());
+        assert!(!gate.state.lock().ready);
+        assert_eq!(gate.state.lock().pending.len(),1);
+        gate.close();
+        pc.close().await.unwrap();remote.close().await.unwrap();
+        timeout(LIMIT,async {tokio::join!(signal.close(),async {while request(&mut socket).await.is_some(){}});}).await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn failed_sdp_write_never_opens_or_replays_queued_local_ice() {
+    let (url,accept)=fixture().await;
+    let (signal,_,_events)=SignalClient::connect(&url,"fixture-token",SignalOptions::default()).await.unwrap();
+    let mut socket=accept.await.unwrap();
+    let gate=LocalIceGate {target:proto::SignalTarget::Subscriber as i32,state:Mutex::new(LocalIceState::default())};
+    let generation=gate.begin().unwrap();
+    assert!(gate.candidate("fixture".into()).unwrap().is_none());
+    signal.abort().await;
+    let result=timeout(LIMIT,gate.send_sdp(&signal,generation,proto::signal_request::Message::Answer(proto::SessionDescription::default()))).await.unwrap();
+    assert!(result.is_err());
+    assert!(!gate.state.lock().ready);
+    assert!(gate.state.lock().pending.is_empty());
+    closed_without_negotiation(&mut socket).await;
+}
+
+#[test]
+fn local_ice_queue_has_explicit_count_and_byte_bounds() {
+    let gate=LocalIceGate {target:0,state:Mutex::new(LocalIceState::default())};
+    gate.begin().unwrap();
+    assert!(gate.candidate("x".repeat(MAX_REMOTE_ICE_JSON+1)).is_err());
+    for index in 0..MAX_PENDING_REMOTE_ICE {assert!(gate.candidate(format!("candidate-{index}")).unwrap().is_none());}
+    assert!(gate.candidate("overflow".into()).is_err());
+    let next=gate.begin().unwrap();
+    assert_eq!(next,2);
+    assert!(gate.state.lock().pending.is_empty());
+    assert!(!gate.state.lock().ready);
+    for index in 0..4 {assert!(gate.candidate(format!("{index}{}","x".repeat(MAX_REMOTE_ICE_JSON-1))).unwrap().is_none());}
+    assert!(gate.candidate("more".into()).is_err());
+}
+
+#[tokio::test]
+async fn checked_negotiation_write_rejects_another_stream_token_without_sending() {
+    let (url_a,accept_a)=fixture().await;
+    let (a,_,_events_a)=SignalClient::connect(&url_a,"fixture-token",SignalOptions::default()).await.unwrap();
+    let mut socket_a=accept_a.await.unwrap();
+    let token=a.send_sdp_or_ice(proto::signal_request::Message::Offer(proto::SessionDescription::default()),None).await.unwrap();
+    assert!(matches!(request(&mut socket_a).await,Some(proto::signal_request::Message::Offer(_))));
+    let (url_b,accept_b)=fixture().await;
+    let (b,_,_events_b)=SignalClient::connect(&url_b,"fixture-token",SignalOptions::default()).await.unwrap();
+    let mut socket_b=accept_b.await.unwrap();
+    let result=b.send_sdp_or_ice(proto::signal_request::Message::Trickle(proto::TrickleRequest::default()),Some(&token)).await;
+    assert!(result.is_err());
+    no_negotiation(&mut socket_b).await;
+    a.abort().await;b.abort().await;
+    assert!(timeout(LIMIT,LocalIceGate::write(&a,proto::signal_request::Message::Trickle(proto::TrickleRequest::default()),Some(&token))).await.unwrap().is_err());
+    closed_without_negotiation(&mut socket_a).await;
+    closed_without_negotiation(&mut socket_b).await;
+}
+
+#[tokio::test]
+async fn cancelled_sdp_completion_cannot_reopen_gate_or_cancel_a_new_generation() {
+    let (url,accept)=fixture().await;
+    let (signal,_,_events)=SignalClient::connect(&url,"fixture-token",SignalOptions::default()).await.unwrap();
+    let signal=Arc::new(signal);let mut socket=accept.await.unwrap();
+    let token=signal.send_sdp_or_ice(proto::signal_request::Message::Offer(proto::SessionDescription::default()),None).await.unwrap();
+    request(&mut socket).await.unwrap();
+    for fail in [false,true] {
+        let gate=Arc::new(LocalIceGate {target:0,state:Mutex::new(LocalIceState::default())});
+        let generation=gate.begin().unwrap();gate.candidate("old".into()).unwrap();
+        let (started,waiting)=tokio::sync::oneshot::channel();
+        let (release,resume)=tokio::sync::oneshot::channel();
+        let task=tokio::spawn({let gate=gate.clone();let signal=signal.clone();let token=token.clone();async move {
+            gate.finish_sdp(&signal,generation,async move {
+                let _=started.send(());resume.await.unwrap();
+                if fail {Err("write failed".to_owned())}else{Ok(token)}
+            }).await
+        }});
+        waiting.await.unwrap();
+        gate.close();
+        assert!(gate.candidate("late-after-close".into()).unwrap().is_none());
+        assert!(gate.state.lock().pending.is_empty());
+        let next=gate.begin().unwrap();gate.candidate("new".into()).unwrap();
+        release.send(()).unwrap();assert!(task.await.unwrap().is_err());
+        assert_eq!(gate.state.lock().generation,next);
+        assert!(gate.state.lock().accepting);
+        assert!(!gate.state.lock().ready);
+        assert_eq!(gate.state.lock().pending.len(),1);
+        no_negotiation(&mut socket).await;
+        gate.close();
+    }
+    signal.abort().await;closed_without_negotiation(&mut socket).await;
+}
+
+#[tokio::test]
 async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     let (url, accept) = fixture().await;
     let connect = tokio::spawn(async move { Engine::connect_inner(901, &url, "fixture-token", Arc::new(|_| {}), true, LIMIT).await });
@@ -119,7 +309,7 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
     let offer = remote.create_offer(None).await.unwrap();
     remote.set_local_description(offer.clone()).await.unwrap();
     send(&mut socket, proto::signal_response::Message::Offer(proto::SessionDescription {
-        r#type: "offer".into(), sdp: offer.sdp, ..Default::default()
+        r#type: "offer".into(), sdp: offer.sdp, id: 73, ..Default::default()
     })).await;
     let answer = timeout(LIMIT, async {
         loop {
@@ -131,22 +321,55 @@ async fn exact_publication_ack_gates_offer_while_subscriber_negotiates() {
         }
     }).await.unwrap();
     assert_eq!(answer.r#type, "answer");
+    assert_eq!(answer.id, 73, "subscriber answer must echo the SFU offer id");
     remote.set_remote_description(RTCSessionDescription::answer(answer.sdp).unwrap()).await.unwrap();
     no_offer(&mut socket).await;
     acknowledge(&mut socket, &track.cid, Some(audio_track())).await;
-    timeout(LIMIT, async {
+    let publisher_offer=timeout(LIMIT, async {
         loop {
             if let Some(proto::signal_request::Message::Offer(offer)) = request(&mut socket).await {
                 assert_eq!(offer.r#type, "offer");
                 assert!(offer.sdp.contains("m=audio"));
-                break;
+                break offer;
             }
         }
     }).await.unwrap();
     let (engine, senders, _) = timeout(LIMIT, connect).await.unwrap().unwrap().unwrap();
     assert_eq!(senders.len(), rtp::TRACK_COUNT);
+    assert_eq!(publisher_offer.id,1);
+    let publishing_remote=super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap();
+    publishing_remote.set_remote_description(RTCSessionDescription::offer(publisher_offer.sdp).unwrap()).await.unwrap();
+    let publisher_answer=publishing_remote.create_answer(None).await.unwrap();
+    publishing_remote.set_local_description(publisher_answer.clone()).await.unwrap();
+    send(&mut socket,proto::signal_response::Message::Answer(proto::SessionDescription {
+        r#type:"answer".into(),sdp:publisher_answer.sdp.clone(),id:2,..Default::default()
+    })).await;
+    // A second subscriber negotiation is an ordered barrier: when its answer
+    // arrives, the earlier stale publisher answer has necessarily been handled.
+    let next_offer=remote.create_offer(None).await.unwrap();
+    remote.set_local_description(next_offer.clone()).await.unwrap();
+    send(&mut socket,proto::signal_response::Message::Offer(proto::SessionDescription {
+        r#type:"offer".into(),sdp:next_offer.sdp,id:74,..Default::default()
+    })).await;
+    let next_answer=timeout(LIMIT,async {
+        loop { if let Some(proto::signal_request::Message::Answer(answer))=request(&mut socket).await { break answer; } }
+    }).await.unwrap();
+    assert_eq!(next_answer.id,74);
+    remote.set_remote_description(RTCSessionDescription::answer(next_answer.sdp).unwrap()).await.unwrap();
+    assert!(engine.publisher.remote_description().await.is_none(),"stale nonzero publisher answer was applied");
+    let diagnostic=engine.media_diagnostic()["negotiation"].clone();
+    for (key,value) in [("publisherOfferId",1),("subscriberOfferId",74),("subscriberAnswerId",74),("subscriberOfferCount",2),("stalePublisherAnswers",1)] {
+        assert_eq!(diagnostic[key],value);
+    }
+    assert_eq!(diagnostic["subscriberOffer"]["audioSections"],1);
+    assert_eq!(diagnostic["subscriberAnswer"]["hasIcePassword"],true);
+    send(&mut socket,proto::signal_response::Message::Answer(proto::SessionDescription {
+        r#type:"answer".into(),sdp:publisher_answer.sdp,id:1,..Default::default()
+    })).await;
+    timeout(LIMIT,async {while engine.publisher.remote_description().await.is_none(){tokio::task::yield_now().await;}}).await.unwrap();
     shutdown(&engine, &mut socket).await;
     remote.close().await.unwrap();
+    publishing_remote.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -159,6 +382,51 @@ async fn publication_response_without_track_fails_and_closes_socket() {
     let result = timeout(LIMIT, connect).await.unwrap().unwrap();
     assert!(matches!(result, Err(ref reason) if reason == "track publication response invalid"));
     closed_without_offer(&mut socket).await;
+}
+
+#[tokio::test]
+async fn subscriber_accepts_application_only_offer_without_a_local_data_channel() {
+    let (url, accept) = fixture().await;
+    let connect=tokio::spawn(async move {Engine::connect_inner(909,&url,"fixture-token",Arc::new(|_|{}),true,LIMIT).await});
+    let mut socket=timeout(LIMIT,accept).await.unwrap().unwrap();
+    let track=add_track(&mut socket).await;
+    let remote=super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap();
+    remote.create_data_channel("fixture-control",None).await.unwrap();
+    let mut gathering=remote.gathering_complete_promise().await;
+    let offer=remote.create_offer(None).await.unwrap();
+    remote.set_local_description(offer).await.unwrap();
+    timeout(LIMIT,gathering.recv()).await.unwrap();
+    let offer=remote.local_description().await.unwrap();
+    assert!(offer.sdp.contains("m=application"));
+    assert!(!offer.sdp.contains("m=audio"));
+    send(&mut socket,proto::signal_response::Message::Offer(proto::SessionDescription {
+        r#type:"offer".into(),sdp:offer.sdp,id:91,..Default::default()
+    })).await;
+    timeout(LIMIT,async {
+        loop {
+            if remote.connection_state()==RTCPeerConnectionState::Connected {break;}
+            tokio::select! {
+                incoming=request(&mut socket)=>match incoming.expect("subscriber transport socket closed") {
+                    proto::signal_request::Message::Answer(answer)=>{
+                        assert_eq!(answer.id,91);
+                        assert!(answer.sdp.contains("m=application"));
+                        remote.set_remote_description(RTCSessionDescription::answer(answer.sdp).unwrap()).await.unwrap();
+                    },
+                    proto::signal_request::Message::Trickle(candidate) if candidate.target==proto::SignalTarget::Subscriber as i32=>{
+                        remote.add_ice_candidate(serde_json::from_str(&candidate.candidate_init).unwrap()).await.unwrap();
+                    },
+                    proto::signal_request::Message::Offer(_)=>panic!("publisher started before explicit acknowledgement"),
+                    _=>{},
+                },
+                _=tokio::time::sleep(Duration::from_millis(5))=>{},
+            }
+        }
+    }).await.expect("application-only subscriber ICE/DTLS did not connect");
+    acknowledge(&mut socket,&track.cid,Some(audio_track())).await;
+    let (engine,_,_)=timeout(LIMIT,connect).await.unwrap().unwrap().unwrap();
+    assert_eq!(engine.subscriber.connection_state(),RTCPeerConnectionState::Connected);
+    shutdown(&engine,&mut socket).await;
+    remote.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -190,16 +458,27 @@ async fn legacy_mode_negotiates_without_publication_ack() {
     let connect = tokio::spawn(async move { Engine::connect_inner(905, &url, "fixture-token", Arc::new(|_| {}), false, LIMIT).await });
     let mut socket = timeout(LIMIT, accept).await.unwrap().unwrap();
     add_track(&mut socket).await;
-    timeout(LIMIT, async {
+    let offer=timeout(LIMIT, async {
         loop {
             match request(&mut socket).await.expect("legacy socket closed") {
-                proto::signal_request::Message::Offer(_) => break,
+                proto::signal_request::Message::Offer(offer) => break offer,
                 _ => {}
             }
         }
     }).await.expect("legacy mode incorrectly waited for publication ACK");
     let (engine, _, _) = timeout(LIMIT, connect).await.unwrap().unwrap().unwrap();
+    assert_eq!(offer.id,1);
+    let remote=super::make_api().unwrap().new_peer_connection(RTCConfiguration::default()).await.unwrap();
+    remote.set_remote_description(RTCSessionDescription::offer(offer.sdp).unwrap()).await.unwrap();
+    let answer=remote.create_answer(None).await.unwrap();
+    remote.set_local_description(answer.clone()).await.unwrap();
+    send(&mut socket,proto::signal_response::Message::Answer(proto::SessionDescription {
+        r#type:"answer".into(),sdp:answer.sdp,id:0,..Default::default()
+    })).await;
+    timeout(LIMIT,async {while engine.publisher.remote_description().await.is_none(){tokio::task::yield_now().await;}}).await.unwrap();
+    assert_eq!(engine.media_diagnostic()["negotiation"]["stalePublisherAnswers"],0);
     shutdown(&engine, &mut socket).await;
+    remote.close().await.unwrap();
 }
 
 #[tokio::test]
@@ -269,6 +548,7 @@ async fn abandoned_startup_closes_both_actual_peer_connections_with_silent_serve
         publisher: Some(publisher.clone()),
         subscriber: Some(subscriber.clone()),
         task: None,
+        local_ice:Vec::new(),
         armed: true,
     });
     timeout(Duration::from_secs(2), async {

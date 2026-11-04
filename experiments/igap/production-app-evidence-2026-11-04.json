@@ -87,5 +87,100 @@
     },
     "localProcessesClosed": true,
     "originalLabAccountsResumed": true
+  },
+  "sdpCorrelationTrial": {
+    "binarySha256": "89a5f1ff225e29151f2a82fdc5040d538cf6e8edcee61138c7ff9b164786f89c",
+    "success": false,
+    "subscriberIdsEchoed": true,
+    "client": {
+      "publisherState": "connected",
+      "subscriberState": "connected",
+      "subscriberOfferId": 138,
+      "subscriberAnswerId": 138,
+      "subscriberOfferCount": 2
+    },
+    "server": {
+      "publisherState": "connected",
+      "subscriberState": "new",
+      "subscriberOfferId": 88,
+      "subscriberAnswerId": 88,
+      "subscriberOfferCount": 1,
+      "serviceLeaveReason": 14
+    },
+    "bothPublisherOfferIds": 1,
+    "stalePublisherAnswers": 0,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
+  },
+  "rosterTrial": {
+    "binarySha256": "f7284bc5cbfa3d9a051184f6958d1dc77a396a4acf5a7d476201cef2824ee596",
+    "firstConnection": {
+      "mutualAuthentication": true,
+      "downloadBytes": 352240,
+      "uploadBytes": 71680,
+      "payloadHashesMatched": true,
+      "stableAfterTransferSeconds": 20,
+      "serverResumedListening": true
+    },
+    "secondConnection": {
+      "success": false,
+      "clientPublisherState": "connected",
+      "clientSubscriberState": "connected",
+      "serverPublisherState": "connected",
+      "serverSubscriberState": "new",
+      "serviceLeaveReason": 14
+    },
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true,
+    "repeatabilityVerified": false
+  },
+  "iceCheckingTrial": {
+    "binarySha256": "1b8d60db854985d0c22b181453c483bc276c8c3dd19108c9461d4d1bb9d20a87",
+    "firstCycleTransferAndTwentySecondHoldPassed": true,
+    "secondCycleSucceeded": false,
+    "failedSide": "client",
+    "client": {
+      "peerCount": 1,
+      "peerWaitReleased": true,
+      "quicClientStarted": true,
+      "publisherState": "connected",
+      "publisherIceState": "connected",
+      "subscriberState": "new",
+      "subscriberIceState": "checking",
+      "subscriberOfferCount": 1,
+      "subscriberApplicationSections": 1,
+      "subscriberAudioSections": 0,
+      "subscriberEmbeddedCandidates": 0,
+      "serviceLeaveReason": 14
+    },
+    "server": {
+      "peerCount": 1,
+      "peerWaitReleased": true,
+      "quicServerStarted": true,
+      "publisherState": "connected",
+      "subscriberState": "connected",
+      "subscriberOfferCount": 2,
+      "subscriberAudioSections": 1
+    },
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
+  },
+  "orderedIceTrial": {
+    "binarySha256": "3dee58fd5fddf2b53c884457273019c27f4c234d1a63ddb8edafb087141d9867",
+    "success": false,
+    "failedSide": "server",
+    "failedStage": "initialConnection",
+    "bothPublishersConnected": true,
+    "clientSubscriberConnected": true,
+    "serverSubscriberIceState": "checking",
+    "serverSubscriberState": "new",
+    "serverSubscriberOfferCount": 1,
+    "peerWaitReleasedBoth": true,
+    "quicClientAndServerStarted": true,
+    "serverForceRelay": "absent",
+    "appliedIcePolicy": "default",
+    "serviceLeaveReason": 14,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
   }
 }

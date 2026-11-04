@@ -4,7 +4,7 @@
 from https://github.com/livekit/rust-sdks at commit aec91c8e1b70614e7b254589c00aaba992c0a39f.
 Only the published normalized `Cargo.toml` and `src/` are included.
 
-There is one source change: `src/http_client.rs` exports `reqwest::Client` when
+The original feature patch in `src/http_client.rs` exports `reqwest::Client` when
 `signal-client-tokio` is enabled as well as when `services-tokio` is enabled.
 The signal client's `region.rs` needs this type. Upstream's feature gate prevents
 a signaling-only build, forcing consumers to enable server services, JWT, and
@@ -12,9 +12,28 @@ an unused RustCrypto RSA implementation with RUSTSEC-2023-0071.
 
 The three transport-consuming workspace roots patch this crate to the same path.
 The application enables only the signaling and rustls root-certificate features.
-No crypto, HTTP, WebSocket, protocol, or certificate verification logic is changed.
+Crypto and certificate verification are unchanged. Additional signaling lifecycle
+changes are described below.
 Remove this patch when upgrading to an upstream release that supports this
 feature combination, and rerun every workspace's tests and security audit.
+
+## Signaling startup cancellation and ordered negotiation
+
+The signal stream uses abortable read/write tasks and a pending-stream guard so
+cancelled joins and abandoned startup do not retain background WebSocket tasks.
+The ordinary public `send` behavior remains unchanged.
+
+`send_sdp_or_ice` is an additive checked write for Offer, Answer and Trickle only.
+It returns an opaque physical-stream token after a successful write, rejects a
+token from a different/replaced stream, does not replay negotiation on reconnect,
+and bounds the entire operation including lock acquisition. Cancelled queued
+writes are skipped. No credentials, SDP, or addresses enter these tokens.
+The tunnel's bounded per-PC generation gate uses this result to send SDP before
+releasing locally gathered ICE candidates. Gate bookkeeping never holds its
+mutex across an await, and failed/cancelled generations cannot reopen a new one.
+
+Local WebSocket/real-peer-connection fixtures cover ordering, failure, generation
+revocation, stream ownership, legacy negotiation and startup cancellation.
 
 ## DTLS curve arithmetic security update — 2.6.2
 

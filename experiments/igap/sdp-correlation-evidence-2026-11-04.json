@@ -1,0 +1,35 @@
+{
+  "source": "https://web.igap.net/assets/CallEngine-D5ybhatj.js",
+  "sha256": "0f42455443331cd85db95adb3adfaea7d186f00f0db12c1f3c6db1890b71bdbf",
+  "schema": "livekit-protocol 0.7.7 SessionDescription.id, uint32 field 3",
+  "primaryReferences": {
+    "serializerEchoesId": 192028,
+    "publisherCounterInitialZero": 205996,
+    "answerGuardKeepsZeroIdCompatibility": 208220,
+    "publisherIncrementsBeforeCreateOffer": 209670,
+    "subscriberAnswerCreation": 220012,
+    "onOfferPassesIdToSendAnswer": 274706
+  },
+  "verifiedSourceBehavior": [
+    "Subscriber answer echoes the received offer id, including zero.",
+    "First publisher offer id is one and subsequent offers increment it.",
+    "A nonzero answer id different from the current nonzero publisher offer id is ignored.",
+    "Zero or omitted answer ids remain accepted for older peers."
+  ],
+  "nativeMismatch": "Native SessionDescription construction previously defaulted both outgoing offer and answer ids to zero and did not reject stale nonzero answers.",
+  "liveCausality": "Not yet established. Prior production subscriber timeout is documented separately; this change corrects a concrete wire-level mismatch.",
+  "regressionScope": [
+    "Actual protobuf WebSocket subscriber offers 73 and 74 must receive matching answer ids and valid SDP.",
+    "A valid SDP answer with stale publisher id must not be applied; matching id must be applied.",
+    "Default non-publication-gated mode must still apply a valid zero-id answer.",
+    "Negotiation diagnostics contain only bounded protocol counters, never SDP or account identifiers."
+  ],
+  "validation": {
+    "lktunnelLibraryTestsPassed": 78,
+    "ignoredTests": 0,
+    "explicitLocalEitaaAndRubikaHelperFixtures": true,
+    "liveProviderTestAfterFix": false
+  },
+  "otherHypothesesUnchanged": ["ICE restart candidate buffering", "forceRelay policy", "media startup timing"],
+  "diagnosticSemantics": "subscriberOfferCount counts received offers; subscriberAnswerId records the last submitted answer, not an acknowledgement by the SFU. IDs are protocol counters, not account identifiers."
+}
