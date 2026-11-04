@@ -28,6 +28,19 @@
   "separateNetworksVerified": false,
   "operatorBillingVerified": false,
   "internationalOutageVerified": false,
+  "fullDurationFollowup": {
+    "sourceCommit": "cc301df1eea3f62556ecf025e7b96b1ad733c373",
+    "kitArchiveSha256": "7a73d89bf6c1507bb683034950adeff5523709193c44a4fe6947264bcd14f23e",
+    "bothCallLimitsSeconds": 300,
+    "bothRoutesVerifiedInitially": true,
+    "bothPeersAuthenticatedInitially": true,
+    "bothTerminationReasons": ["event_stream_not_connected", "event_stream_not_connected"],
+    "nearDeadlineTransferReached": false,
+    "bothEndpointsConfirmedCleanup": false,
+    "pendingIntentsRetained": 2,
+    "ownedAppsExited": true,
+    "labSignalingRestored": true
+  },
   "longCallFollowup": {
     "appAndEndpointSourceCommit": "cc301df1eea3f62556ecf025e7b96b1ad733c373",
     "appSha256": "40796fee56c608d8deb6652f35e99ed9e772617928981114840a817a5a7233eb",
