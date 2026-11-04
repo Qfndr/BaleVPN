@@ -1,2 +1,4 @@
 # Preserve exact upstream and reviewed backport bytes for source verification.
-vendor/glib/** -text
+vendor/glib/** -text whitespace=cr-at-eol
+# The upstream license's final blank line is preserved verbatim.
+vendor/glib/LICENSE whitespace=cr-at-eol,-blank-at-eof
