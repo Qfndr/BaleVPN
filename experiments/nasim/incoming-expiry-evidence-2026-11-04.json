@@ -1,0 +1,37 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "scope": "Conservative incoming config expiry using verified service time",
+  "officialSource": {
+    "url": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+    "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149",
+    "timeRequest": "GET https://core.gap.im/utils/getTime.json without account token",
+    "timeField": "response.data.data.time in epoch seconds",
+    "configTime": "msgGroupCall config message.time in epoch milliseconds",
+    "expiry": "onReceiveConfig computes server-adjusted age and expires incoming calls when age exceeds 60000 milliseconds",
+    "sseBoundary": "The official worker ignores establish and forwards message batches. No documented first-batch or quiet-period boundary was found."
+  },
+  "implementation": {
+    "clockRequestTimeoutMs": 3000,
+    "clockResponseLimitBytes": 8192,
+    "sharedClockCacheMs": 300000,
+    "failedClockReadBackoffMs": 30000,
+    "usesLocalWallClockForExpiry": false,
+    "expiryAgeMs": 60000,
+    "strictGreaterThanBoundary": true,
+    "ageEstimate": "Verified service epoch plus elapsed monotonic time from receipt. The service epoch is used as a conservative lower bound so transport delay and whole-second precision do not falsely age a fresh call.",
+    "lazyRefresh": "An incoming config refreshes an expired sample once through the shared cache. No continuous timer or data-packet work is added.",
+    "unavailableClock": "Expose serverClockVerified false and preserve incoming admission instead of assuming a local wall-clock offset.",
+    "publicState": ["serverClockVerified", "expiredIncomingConfigs"]
+  },
+  "validation": {
+    "passed": 58,
+    "failed": 0,
+    "skipped": 0,
+    "command": "node --test scripts/test-nasim-server-clock.cjs scripts/test-nasim-signaling.cjs scripts/test-nasim-call.cjs scripts/test-nasim-call-pair.cjs scripts/test-nasim-cleanup-intent.cjs",
+    "covers": ["strict age boundary", "local wall-clock skew", "shared cache and refresh", "long-lived SSE after cache expiry", "unavailable clock", "malformed and oversized replies", "bounded timeout", "fresh incoming and outgoing config preservation"],
+    "liveCallAfterChange": false
+  },
+  "remainingLimit": "Recently replayed configs inside the sixty-second lifetime are not excluded by expiry alone. The last live incoming-selection failure has not yet been re-tested with this change.",
+  "privacy": "No account IDs, call IDs, raw event timestamps, tokens or relay credentials are included."
+}

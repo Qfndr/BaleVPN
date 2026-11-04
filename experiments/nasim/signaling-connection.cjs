@@ -3,6 +3,7 @@ const wire=require('./wire.cjs');
 const codec=require('./call-codec.cjs');
 const {SSEParser}=require('./sse-parser.cjs');
 const {initialCursor}=require('./stream-cursor.cjs');
+const {getServerClock,incomingCallExpired,isClockCurrent}=require('./server-clock.cjs');
 const MAX_REPLY=256*1024+28;
 const DOMAINS=['gaplication.com','gap.im','nasimrezvan.com'];
 function serverBase(value){
@@ -40,19 +41,22 @@ class SignalingConnection{
  #replayed=0;
  #historyGaps=0;
  #awaitingFreshEvent=false;
+ #clock=null;
+ #clockNow;
+ #expiredIncomingConfigs=0;
  #pending=new Set();
  #unbind;
- static async open(session,{fetchImpl=globalThis.fetch,onEvent=()=>{},cursor='0',signal}={}){
+ static async open(session,{fetchImpl=globalThis.fetch,onEvent=()=>{},cursor='0',signal,clockNow=()=>performance.now()}={}){
   if(process.env.NODE_TLS_REJECT_UNAUTHORIZED==='0')throw new ApiError('tls_verification_disabled');
   if(session?.provider!=='nasim'||typeof session.token!=='string'||! /^[\x21-\x7e]{16,16384}$/.test(session.token)||
    typeof session.deviceId!=='string'||! /^web\.[a-z0-9.-]{12,80}$/.test(session.deviceId)||
-   typeof onEvent!=='function'||typeof cursor!=='string'||! /^(?:0|[1-9]\d{0,19})$/.test(cursor))throw new ApiError('invalid_saved_session');
+   typeof onEvent!=='function'||typeof clockNow!=='function'||typeof cursor!=='string'||! /^(?:0|[1-9]\d{0,19})$/.test(cursor))throw new ApiError('invalid_saved_session');
   if(signal?.aborted)throw new ApiError('closed');
   if(signal&&(typeof signal.addEventListener!=='function'||typeof signal.removeEventListener!=='function'||typeof signal.aborted!=='boolean'))throw new ApiError('invalid_request');
   let self,client;try{self=codec.userId(session.userId);client=codec.clientId(session.clientId);}catch{throw new ApiError('invalid_saved_session');}
   const connection=new SignalingConnection();
   connection.#session={provider:'nasim',token:session.token,userId:self,clientId:client,deviceId:session.deviceId};
-  connection.#cursor=BigInt(cursor);connection.#fetch=fetchImpl;connection.#onEvent=onEvent;
+  connection.#cursor=BigInt(cursor);connection.#fetch=fetchImpl;connection.#onEvent=onEvent;connection.#clockNow=clockNow;
   connection.#api=new HttpClient({deviceId:session.deviceId,fetchImpl});
   if(signal){const close=()=>connection.close();signal.addEventListener('abort',close,{once:true});connection.#unbind=()=>signal.removeEventListener('abort',close);}
   try{await connection.#start();return connection;}catch(error){const reason=connection.#phase==='closed'?'closed':error instanceof ApiError?error.reason:'stream_connect_failed';connection.#fail(reason);throw new ApiError(reason,error instanceof ApiError?error.statusCode:undefined,['cursor_cipher','cursor_groups','cursor_message_id'].includes(error?.serviceType)?error.serviceType:undefined);}
@@ -61,9 +65,11 @@ class SignalingConnection{
   clientid:this.#session.clientId,duid:this.#session.deviceId,os:'web',token:this.#session.token,
   project:'nasimrezvan','content-type':'application/octet-stream',origin:'https://web.nasimrezvan.com',referer:'https://web.nasimrezvan.com/'};}
  async #start(){
+  const clock=getServerClock(this.#fetch,this.#clockNow).catch(()=>null);
   if(this.#cursor===0n)this.#cursor=BigInt(await initialCursor(this.#session,{fetchImpl:this.#fetch,signal:this.#abort.signal}));
   if(this.#abort.signal.aborted)throw new ApiError('closed');
   const config=await this.#api.request('/message/get/config',{}, {token:this.#session.token,clientId:this.#session.clientId});
+  this.#clock=await clock;
   if(this.#abort.signal.aborted)throw new ApiError('closed');
   const base=serverBase(config?.SSEServerAddress);
   let timedOut=false;const timer=setTimeout(()=>{timedOut=true;this.#abort.abort();},10000);let response;
@@ -103,6 +109,11 @@ class SignalingConnection{
      if(this.#abort.signal.aborted)return;
      if(message?.type!=='msgGroupCall'){this.#ignored++;continue;}
      let event;try{event=codec.incoming(message,this.#session.userId);}catch{this.#invalid++;continue;}
+     if(event.type==='config'&&event.invitedUserId===this.#session.userId){
+      if(!isClockCurrent(this.#clock,this.#clockNow))this.#clock=await getServerClock(this.#fetch,this.#clockNow).catch(()=>null);
+      if(this.#abort.signal.aborted)return;
+      if(incomingCallExpired(this.#clock,event.time,this.#clockNow)){this.#expiredIncomingConfigs++;continue;}
+     }
      try{await this.#onEvent(event);}catch{throw new ApiError('event_handler_failed');}
      this.#calls++;
     }
@@ -156,6 +167,7 @@ class SignalingConnection{
  get state(){return {provider:'nasim',phase:this.#phase,reason:this.#reason,lastEventId:this.#cursor.toString(),
   receivedFrames:this.#frames,callEvents:this.#calls,ignoredMessages:this.#ignored,invalidCallMessages:this.#invalid,
   replayedFrames:this.#replayed,historyGaps:this.#historyGaps,awaitingFreshEvent:this.#awaitingFreshEvent,
+  serverClockVerified:isClockCurrent(this.#clock,this.#clockNow),expiredIncomingConfigs:this.#expiredIncomingConfigs,
   pendingRequests:this.#pending.size,liveCallVerified:false,tunnelReady:false,billingVerified:false};}
 }
 module.exports={SignalingConnection,serverBase};

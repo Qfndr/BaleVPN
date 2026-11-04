@@ -16,9 +16,10 @@ function frame(id,messages,ending='\r\n'){
 }
 function reply(value){return new Response(wire.encrypt({status:'success',data:value},token),{status:200});}
 async function waitFor(predicate){const deadline=Date.now()+2000;while(!predicate()){if(Date.now()>deadline)throw new Error('Fixture state timed out');await new Promise(resolve=>setTimeout(resolve,5));}}
-function fixture({base='https://stream.gaplication.com',onEvent,apiResponse}={}){
- const seen=[],events=[];let stream,cancelled=false;
+function fixture({base='https://stream.gaplication.com',onEvent,apiResponse,clockSeconds=1,clockNow}={}){
+ const seen=[],events=[];let stream,cancelled=false,clockReads=0;
  const fetchImpl=async(url,options)=>{
+  if(url==='https://core.gap.im/utils/getTime.json'){clockReads++;return Response.json({status:'success',data:{time:typeof clockSeconds==='function'?clockSeconds():clockSeconds}});}
   seen.push({url,options});assert.equal(options.redirect,'error');
   if(url==='https://api.gaplication.com/groupList?page=reset')return Response.json({data:{groups:[]}});
   if(url==='https://core.gaplication.com/message/get/config'){
@@ -39,7 +40,7 @@ function fixture({base='https://stream.gaplication.com',onEvent,apiResponse}={})
   }
   throw new Error('Unexpected external destination in offline test');
  };
- return {seen,events,open:()=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event))}),
+ return {seen,events,clockReads:()=>clockReads,open:()=>SignalingConnection.open(session,{fetchImpl,onEvent:onEvent||((event)=>events.push(event)),...clockNow?{clockNow}:{}}),
   push:bytes=>stream.enqueue(bytes),end:()=>stream.close(),cancelled:()=>cancelled};
 }
 
@@ -157,6 +158,48 @@ test('cleanSession resets old call state and continues receiving fresh events wi
  }finally{connection.close();}
 });
 
+test('verified service clock discards expired incoming configs while preserving fresh and caller configs',async()=>{
+ const seconds=2000000000,f=fixture({clockSeconds:seconds}),connection=await f.open();
+ try{
+  const expired=config();expired.time=seconds*1000-61000;
+  const fresh=config();fresh.time=seconds*1000-5000;
+  const caller=config();caller.time=seconds*1000-120000;caller.data.callData.invitedParticipantUserID=42;
+  f.push(frame(1,[expired,fresh,caller]));await waitFor(()=>f.events.length===2);
+  assert.equal(connection.state.serverClockVerified,true);
+  assert.equal(connection.state.expiredIncomingConfigs,1);
+  assert.equal(connection.state.callEvents,2);
+  assert.equal(f.events[0].time,fresh.time);assert.equal(f.events[1].time,caller.time);
+ }finally{connection.close();}
+});
+
+test('unverified service time never substitutes the local wall clock for incoming expiry',async()=>{
+ const f=fixture({clockSeconds:null}),connection=await f.open();
+ try{
+  f.push(frame(1,[config()]));await waitFor(()=>f.events.length===1);
+  assert.equal(connection.state.serverClockVerified,false);
+  assert.equal(connection.state.expiredIncomingConfigs,0);
+ }finally{connection.close();}
+});
+
+test('long-lived streams lazily refresh the shared clock before checking new incoming calls',async()=>{
+ let elapsed=0,seconds=2000000000;
+ const f=fixture({clockNow:()=>elapsed,clockSeconds:()=>seconds}),connection=await f.open();
+ try{
+  assert.equal(f.clockReads(),1);elapsed=300001;seconds+=301;
+  assert.equal(connection.state.serverClockVerified,false);
+  const old=config();old.time=seconds*1000-61000;
+  const fresh=config();fresh.time=seconds*1000-1000;
+  f.push(frame(1,[old,fresh]));await waitFor(()=>f.events.length===1);
+  assert.equal(f.clockReads(),2);assert.equal(connection.state.expiredIncomingConfigs,1);
+  assert.equal(connection.state.serverClockVerified,true);
+  f.push(frame(2,[fresh]));await waitFor(()=>f.events.length===2);assert.equal(f.clockReads(),2);
+  elapsed+=300001;seconds=null;
+  f.push(frame(3,[fresh]));await waitFor(()=>f.events.length===3);
+  assert.equal(connection.state.serverClockVerified,false);assert.equal(f.clockReads(),3);
+  f.push(frame(4,[fresh]));await waitFor(()=>f.events.length===4);assert.equal(f.clockReads(),3);
+ }finally{connection.close();}
+});
+
 test('callback failures and truncated EOF end the stream visibly without automatically reading chat history or reconnecting',async()=>{
  for(const mode of ['callback','truncated']){
   const f=fixture({onEvent:mode==='callback'?()=>{throw new Error('private callback detail');}:undefined}),connection=await f.open();
@@ -176,7 +219,7 @@ test('abort during cursor fetch cannot open a late stream or create a new device
  const abort=new AbortController();let finish;const pending=new Promise(resolve=>{finish=resolve;}),urls=[];
  const opening=SignalingConnection.open(session,{signal:abort.signal,fetchImpl:async(url)=>{urls.push(url);return pending;}});
  abort.abort();finish(reply({SSEServerAddress:'https://stream.gap.im'}));await assert.rejects(opening,/closed/);
- assert.deepEqual(urls,['https://api.gaplication.com/groupList?page=reset']);
+ assert.deepEqual(urls,['https://core.gap.im/utils/getTime.json','https://api.gaplication.com/groupList?page=reset']);
 });
 
 test('call HTTP authorization failure invalidates the event connection and cannot turn a failed request into a call acknowledgment',async()=>{
