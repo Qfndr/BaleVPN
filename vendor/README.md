@@ -57,6 +57,12 @@ Tests exercise P-256/P-384 agreement against ring, malformed SEC1 points,
 retransmission consistency and the upstream DTLS handshake suite.
 Run `cargo test --manifest-path vendor/webrtc-dtls/Cargo.toml --locked --lib`.
 
+The local DTLS state snapshot uses a private codec in `src/state_codec.rs`.
+It preserves the fixed-width little-endian format previously emitted by
+`bincode 1.3`, including trailing-byte tolerance on read. The parsed snapshot
+is limited to 16 MiB and 4096 certificates. Snapshots exceeding those limits
+are rejected. The codec is separate from DTLS packet handling.
+
 The vendored crate's development-only Clap 3 dependency enables `std` and
 `suggestions` explicitly instead of its default terminal-color feature. That
 removes the unsound, unmaintained `atty` dependency from the standalone test and

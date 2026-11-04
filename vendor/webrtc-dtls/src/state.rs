@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use portable_atomic::AtomicU16;
-use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use util::{KeyingMaterialExporter, KeyingMaterialExporterError};
 
@@ -16,6 +15,9 @@ use super::extension::extension_use_srtp::SrtpProtectionProfile;
 use super::handshake::handshake_random::*;
 use super::prf::*;
 use crate::error::*;
+
+#[path = "state_codec.rs"]
+mod state_codec;
 
 // State holds the dtls connection state and implements both encoding.BinaryMarshaler and encoding.BinaryUnmarshaler
 pub struct State {
@@ -50,7 +52,7 @@ pub struct State {
     //pub(crate) replay_detector: Vec<Box<dyn ReplayDetector + Send + Sync>>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(PartialEq, Debug)]
 struct SerializedState {
     local_epoch: u16,
     remote_epoch: u16,
@@ -227,22 +229,21 @@ impl State {
         }
     }
 
-    // marshal_binary is a binary.BinaryMarshaler.marshal_binary implementation
+    /// Encodes the legacy state format, capped at 16 MiB and 4096 certificates.
     pub async fn marshal_binary(&self) -> Result<Vec<u8>> {
+        // Check before the existing in-memory serialization clones the state.
+        state_codec::encoded_size(
+            &self.master_secret,
+            &self.peer_certificates,
+            &self.identity_hint,
+        )?;
         let serialized = self.serialize().await?;
-
-        match bincode::serialize(&serialized) {
-            Ok(enc) => Ok(enc),
-            Err(err) => Err(Error::Other(err.to_string())),
-        }
+        state_codec::encode(&serialized)
     }
 
-    // unmarshal_binary is a binary.BinaryUnmarshaler.unmarshal_binary implementation
+    /// Reads the legacy format with the same limits as `marshal_binary`.
     pub async fn unmarshal_binary(&mut self, data: &[u8]) -> Result<()> {
-        let serialized: SerializedState = match bincode::deserialize(data) {
-            Ok(dec) => dec,
-            Err(err) => return Err(Error::Other(err.to_string())),
-        };
+        let serialized = state_codec::decode(data)?;
         self.deserialize(&serialized).await?;
         self.init_cipher_suite().await?;
 

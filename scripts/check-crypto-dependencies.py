@@ -12,6 +12,7 @@ for workspace in workspaces:
             # 0.7.7 and 0.7.8 were yanked; 0.7.10 is the reviewed replacement.
             assert tuple(map(int,version.split('.'))) >= (0,7,10),(workspace,name,version)
         assert name!='atty',(workspace,'Unsound atty dependency reintroduced')
+        assert name!='bincode',(workspace,'Unmaintained DTLS snapshot dependency reintroduced')
         if name=='webrtc-dtls':
             assert 'source' not in package,(workspace,'Unpatched registry DTLS')
         if name=='webrtc-ice':
@@ -25,7 +26,7 @@ for workspace in workspaces:
 
 vendor=root/'vendor/webrtc-dtls'
 record=json.loads((vendor/'UPSTREAM.json').read_text())
-intentional={'Cargo.toml','src/curve/named_curve.rs','src/prf/mod.rs','src/prf/prf_test.rs','src/crypto/crypto_cbc.rs'}
+intentional={'Cargo.toml','src/curve/named_curve.rs','src/prf/mod.rs','src/prf/prf_test.rs','src/crypto/crypto_cbc.rs','src/state.rs'}
 for name,expected in record['upstream_source_sha256'].items():
     if name not in intentional:
         # Git's platform checkout can normalize text line endings.
