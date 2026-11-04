@@ -2,7 +2,11 @@
 
 This component is isolated from production Bale. Eitaa is still marked as
 a two-account login and explicit call/media laboratory in the local provider
-panel. Real login, provider calls/relay and tariffs remain unverified.
+panel. Two Web accounts and two Android-profile accounts completed live sign-in
+and session restoration. One Web session also passed the corrected refresh flow.
+Secure live call signaling, provider relay and actual tunnel tariffs remain
+unverified. See [session refresh evidence](refresh-recovery-evidence-2026-11-04.json)
+and [Android login evidence](android-profile-evidence-2026-11-04.json).
 
 The isolated [call-key component](call-key.md) now implements native DH setup,
 safe-group/public-value validation and the observed commitment/fingerprint
@@ -288,4 +292,4 @@ acquisition retain their separate storage purposes.
 The original live response that exposed this parser failure was cleared by the
 old code. Its bytes cannot be reconstructed by this change. See
 [refresh recovery evidence](refresh-recovery-evidence-2026-11-04.json) for the
-offline tests and the remaining live-validation boundary.
+offline tests and the single successful live Web refresh.

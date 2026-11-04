@@ -58,8 +58,9 @@ require a valid encrypted response; discovery is the explicit plaintext exceptio
 The login API uses digits-only international `phone_number`, `send_type: SMS`,
 and optional `pass_key` for its password challenge. Sign-in additionally sends
 the code hash, verification code and wrapped public key. Their HTTP shapes are
-fixture-tested; **actual SMS delivery, international-number acceptance, second
-password behavior, user registration and login are unverified**. This module
+fixture-tested. Live sign-in and restoration previously succeeded for two
+Android-profile accounts. International-number acceptance and the second-password
+flow remain unverified. This module
 now provides an account-local auth state machine, sealed session storage and
 restore, password challenge handling and two account forms in the local lab.
 `auth-session.cjs` saves accepted credentials before device registration. Restore
@@ -479,10 +480,18 @@ it. No automatic registration retry, OTP request, logout, record replacement or
 conversion of an old Web session has been added. The current running lab must
 be explicitly reloaded by its owner to see source changes.
 
-The Android profile has passed offline encrypted login/registration/restore,
-cross-profile binding, byte-fixture and browser tests only. Service login,
-Android-profile socket handshake interoperability, real calls and media remain
-unverified. See [source evidence](android-login-profile-evidence-2026-11-04.json).
+The Android profile passed offline encrypted login, registration, restoration,
+cross-profile binding and browser tests. Two accounts previously signed in and
+restored with protected self reads. Later protected requests returned
+`NOT_REGISTERED`, and an explicit registration attempt returned `INVALID_AUTH`.
+The cause and recovery of that later failure remain unverified. A successful
+live call and media transfer have not been confirmed. See the
+[login evidence](android-login-profile-evidence-2026-11-04.json) and
+[DC revalidation evidence](dc-reload-evidence-2026-11-04.json).
+
+The private session-status diagnostic preserves the fixed service code and
+`ERROR_ACTION` or `ERROR_GENERIC` class for a failed read. It omits provider
+messages and unknown status text, and discards results from replaced accounts.
 
 ```powershell
 $env:TEMP='E:\CodexTemp'; $env:TMP=$env:TEMP; $env:TMPDIR=$env:TEMP

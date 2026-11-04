@@ -49,6 +49,31 @@ test('an account change while I/O is pending invalidates the read and closes onl
  await assert.rejects(pending,/account_binding_changed/);assert.equal(closed,1);assert.equal(record.auth,'012345abcdefghijklmnopqrstuvwxyz');
 });
 
+test('a rejected read from a replaced account cannot publish that account’s status',async()=>{
+ const record=await credentials();let reject,closed=0;
+ const pending=readMySessionStatus(record,{createClient:()=>({async discover(){},async request(){return new Promise((_,fail)=>{reject=fail;});},close(){closed++;}})});
+ while(!reject)await new Promise(resolve=>setImmediate(resolve));record.auth='012345abcdefghijklmnopqrstuvwxyz';
+ reject(Object.assign(new ApiError('registration_required',undefined,'NOT_REGISTERED'),{diagnosticStatus:'ERROR_ACTION'}));
+ await assert.rejects(pending,error=>error.reason==='account_binding_changed'&&error.serviceCode===undefined);assert.equal(closed,1);
+});
+
+test('private status probe retains the fixed Android error class without raw error details',async()=>{
+ const record=await credentials();
+ for(const [status,reason,expectedStatus]of [['ERROR_ACTION','registration_required','ERROR_ACTION'],
+  ['ERROR_GENERIC','service_rejected','ERROR_GENERIC'],['UNRECOGNIZED_STATUS','service_rejected',undefined]]){
+  let requests=0;
+  await assert.rejects(readMySessionStatus(record,{createClient:options=>new HttpClient({...options,fetchImpl:async(_url,options)=>{
+   requests++;if(JSON.parse(options.body).method==='getDCs')return Response.json({status:'OK',data:{default_api_urls:['https://messengerg2c1.iranlms.ir/']}});
+   return Response.json({data_enc:wire.encrypt({status,status_det:'NOT_REGISTERED',message:'fixture-private-message',data:{auth:record.auth}},record.auth,profiles.ANDROID)});
+  }})}),error=>{
+   assert.equal(error.reason,reason);assert.equal(error.stage,'getMySessions');assert.equal(error.serviceCode,'NOT_REGISTERED');
+   assert.equal(error.diagnosticStatus,expectedStatus);assert.ok(!JSON.stringify(error).includes(record.auth));
+   assert.ok(!JSON.stringify(error).includes('fixture-private-message'));return true;
+  });
+  assert.equal(requests,2);
+ }
+});
+
 test('real signed Android framing carries only getMySessions and returns sanitized metadata from an offline service',async()=>{
  const record=await credentials(),seen=[];
  const result=await readMySessionStatus(record,{createClient:options=>new HttpClient({...options,fetchImpl:async(url,options)=>{
