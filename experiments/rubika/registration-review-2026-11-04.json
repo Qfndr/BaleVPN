@@ -1,0 +1,22 @@
+{
+  "date": "2026-11-04",
+  "scope": "Retained Android-compatible accounts and inspected official Android registration lifecycle",
+  "liveReadOnlyProbe": {
+    "accountsProbedWithNativeWebSocket": 1,
+    "nativeWebSocketTransportOpened": true,
+    "protectedMethod": "getMySessions",
+    "result": "NOT_REGISTERED",
+    "registrationOrOtpRequested": false,
+    "callsRequested": false,
+    "savedSessionsChanged": false
+  },
+  "sourceReview": {
+    "signInAuthDecryption": "Official LoginUtils decrypts SignInOutput.auth with the retained private RSA key and stores the result directly.",
+    "v6Transition": "The official transition selects API version 6 and clears the public key while retaining the private signing key.",
+    "registerDeviceSuccess": "The inspected success callback updates local device notification/version state; no auth rotation was found.",
+    "requestProfile": "The current native client package, platform and version match the inspected Android profile.",
+    "deviceIdentifierDifference": "The official application uses Android ID with a build-derived fallback; the desktop compatibility client uses a persistent generated identifier. This difference has not been shown to cause the failure."
+  },
+  "conclusion": "Correct native WebSocket setup alone did not resolve the protected API rejection. No proven auth-normalization or package mismatch was found. Do not rewrite retained identities or declare the session remotely revoked on this evidence.",
+  "privacy": "No account identifiers, device identifiers, credentials, keys, raw responses or private URLs."
+}

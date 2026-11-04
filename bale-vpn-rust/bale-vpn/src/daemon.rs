@@ -18,6 +18,7 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// State shared with the HTTP UI handlers. Wrapped in an Arc so
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
+    pub igap: Arc<crate::provider::Service>,
     pub bond_server: Option<Arc<crate::bond::Server>>,
     pub auth_flow: tokio::sync::Mutex<()>,
     pub backup_job: tokio::sync::Mutex<()>,
@@ -86,6 +87,9 @@ pub async fn run_with_startup(
     shutdown: oneshot::Receiver<()>,
     ready: Option<std::sync::mpsc::SyncSender<Result<(),String>>>,
 ) -> Result<(), Box<dyn Error>> {
+    if cfg.provider==crate::provider_config::ProviderId::Igap {
+        return crate::provider::run(cfg,shutdown,ready).await;
+    }
     // Boot the lktunnel mio reactor. The CLI / Android JNI shim
     // both do this — the binary `bale-vpn` was missing it, so
     // `attach_tun` / NAT host-socket registration silently failed
@@ -128,6 +132,7 @@ pub async fn run_with_startup(
     cfg.peer_id = None;
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
+        igap: crate::provider::Service::new(cfg.config_dir.join("providers/igap")),
         bond_server,
         auth_flow: tokio::sync::Mutex::new(()),
         backup_job: tokio::sync::Mutex::new(()),
@@ -207,6 +212,7 @@ pub async fn run_with_startup(
     // any panic/cancel error.
     mode_task.abort();
     state.aggregate.shutdown().await;
+    state.igap.shutdown().await;
     if let Some(server)=&state.bond_server{server.shutdown();}
     lktunnel::socks5_quic::set_bond_gateway(None);
 
@@ -805,7 +811,7 @@ async fn run_client(state: &Arc<AppState>) -> Result<(), Box<dyn Error + Send + 
 }
 
 /// Block until SIGTERM / SIGINT (or Ctrl-C on Windows).
-async fn wait_for_signal() {
+pub(crate) async fn wait_for_signal() {
     #[cfg(unix)]
     {
         use tokio::signal::unix::{signal, SignalKind};

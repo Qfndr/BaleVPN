@@ -210,6 +210,7 @@ pub struct LkTunnel {
     /// Set by the connect task once [`Engine::connect`] resolves; `None`
     /// in the brief window before that and after teardown takes it.
     engine:      Mutex<Option<Arc<Engine>>>,
+    last_media_diagnostic: Mutex<Option<serde_json::Value>>,
     /// Lifecycle state. Sender lives in the connect task; subscribers
     /// (e.g. [`LkTunnel::await_connected`]) borrow_and_update to wait.
     state_tx:    tokio::sync::watch::Sender<TunnelState>,
@@ -370,6 +371,7 @@ fn build_channel_inner(role: TunnelRole, options: security::TunnelOptions) -> (A
         id,
         counters:      Arc::new(counters::Counters::new()),
         engine:        Mutex::new(None),
+        last_media_diagnostic: Mutex::new(None),
         state_tx,
         events_tx,
         events_rx:     Mutex::new(Some(events_rx)),
@@ -543,6 +545,7 @@ impl LkTunnel {
             id,
             counters:      Arc::new(counters::Counters::new()),
             engine:        Mutex::new(None),
+            last_media_diagnostic: Mutex::new(None),
             state_tx,
             events_tx,
             events_rx:     Mutex::new(Some(events_rx)),
@@ -785,6 +788,12 @@ impl LkTunnel {
     /// and never changes.
     pub fn role(&self) -> TunnelRole { self.role }
     pub fn transport_error(&self) -> Option<String> { self.transport_error.lock().clone() }
+    /// Known WebRTC state enums only; retained before local resource cleanup.
+    pub fn media_diagnostic(&self) -> Option<serde_json::Value> {
+        if let Some(engine) = self.engine.lock().as_ref() {
+            Some(engine.media_diagnostic())
+        } else { self.last_media_diagnostic.lock().clone() }
+    }
     pub(crate) fn fail_transport(&self, error: String) { *self.transport_error.lock()=Some(error);self.disconnect(); }
     pub fn is_proxy_ready(&self) -> bool {
         self.is_connected() && self.quic_client.lock().as_ref().is_some_and(|c| c.connection.close_reason().is_none())
@@ -1394,6 +1403,7 @@ impl LkTunnel {
         // Close the engine (signal WS + both PeerConnections) if it was
         // brought up.
         if let Some(engine) = self.engine.lock().take() {
+            *self.last_media_diagnostic.lock() = Some(engine.media_diagnostic());
             runtime().spawn(async move { engine.close().await; });
         }
     }

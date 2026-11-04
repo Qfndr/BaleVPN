@@ -30,6 +30,9 @@ mod vault;
 mod settings;
 mod appearance;
 mod daemon;
+mod provider_config;
+mod provider_store;
+mod provider;
 mod server;
 // Kernel-TUN device open/configure — Unix-only (uses `std::os::fd::RawFd`
 // + TUNSETIFF/utun ioctls). Windows server/client run userspace NAT and
@@ -51,6 +54,9 @@ mod ui_native;
 #[derive(Parser, Debug)]
 #[command(name = "bale-vpn", version, about = "Bale VPN — Rust client/server.")]
 struct Cli {
+    /// Account transport provider. Existing installations default to Bale.
+    #[arg(long, default_value = "bale", value_parser = ["bale", "igap"])]
+    provider: String,
     /// HTTP UI port. Bound to 127.0.0.1.
     #[arg(long)]
     port: Option<u16>,
@@ -153,7 +159,9 @@ fn main() {
         cli_nat .clone().unwrap_or_else(|| "default".into()),
         cli.headless);
 
-    let cfg = config::Config::load(cli.config_dir.as_deref())
+    let cfg = if cli.provider == "igap" {
+        let mut config=config::Config::default();config.port=37129;Ok(config)
+    } else { config::Config::load(cli.config_dir.as_deref()) }
         .expect("failed to load config");
     #[cfg(feature="gui")]
     if !cli.headless&&cli.port.is_none(){cli.port=Some(if cfg.port==3001{37126}else{cfg.port});}
@@ -168,6 +176,7 @@ fn main() {
         resolved.config_dir = dir;
     }
     resolved.managed_profile=cli.managed_profile;
+    resolved.provider=if cli.provider=="igap" {provider_config::ProviderId::Igap} else {provider_config::ProviderId::Bale};
 
     // GUI vs headless dispatch:
     //   - `gui` feature off:                  always headless
@@ -219,4 +228,16 @@ fn desktop_directory()->PathBuf {
         if let Some(path)=std::env::var_os("HOME"){return PathBuf::from(path).join(".local/share/balevpn");}
     }
     portable.unwrap_or_else(||PathBuf::from("data"))
+}
+
+#[cfg(test)]
+mod provider_cli_tests {
+    use super::*;
+    #[test]
+    fn provider_selection_is_explicit_and_legacy_default_stays_bale() {
+        assert_eq!(Cli::try_parse_from(["bale-vpn"]).unwrap().provider,"bale");
+        let cli=Cli::try_parse_from(["bale-vpn","--provider","igap","--headless","client"]).unwrap();
+        assert_eq!(cli.provider,"igap");assert!(matches!(cli.mode,Some(ModeCmd::Client{..})));
+        assert!(Cli::try_parse_from(["bale-vpn","--provider","rubika"]).is_err());
+    }
 }

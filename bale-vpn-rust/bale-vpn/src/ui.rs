@@ -63,6 +63,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/aggregate/profiles/:slot/*path",get(crate::profiles::forward).post(crate::profiles::forward).delete(crate::profiles::forward))
         .route("/connect",       post(connect))
         .route("/disconnect",    post(disconnect))
+        .route("/desktop/disconnect-all", post(desktop_disconnect_all))
         .route("/logout",        post(logout))
         .route("/auth/start",    post(auth_start))
         .route("/auth/verify",   post(auth_verify))
@@ -91,7 +92,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/disconnect",        post(tunnel_disconnect))
         .route("/tunnel/clients",           get(tunnel_clients))
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
-        .with_state(state)
+        .with_state(state.clone())
+        .nest("/providers/igap", crate::provider::router(state.igap.clone()))
         .layer(middleware::from_fn(protect_management_ui))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"),
@@ -152,7 +154,7 @@ fn trusted_request(headers: &axum::http::HeaderMap) -> bool {
     true
 }
 
-async fn protect_management_ui(request: Request, next: Next) -> axum::response::Response {
+pub(crate) async fn protect_management_ui(request: Request, next: Next) -> axum::response::Response {
     if !trusted_request(request.headers()) {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -219,7 +221,7 @@ struct WorkerRequest {slot:usize,start:bool}
 async fn aggregate_worker(State(s):State<Arc<AppState>>,Json(request):Json<WorkerRequest>)->Result<Json<OkBody>,ApiError>{s.aggregate.worker(request.slot,request.start).await.map_err(|e|ApiError::Internal(e.to_string()))?;Ok(Json(OkBody{ok:true}))}
 
 // Fixed embedded assets only: no filesystem access or external font service.
-async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::response::Response {
+pub(crate) async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::response::Response {
     let (bytes, content_type): (&'static [u8], &'static str) = match name.as_str() {
         "Vazirmatn.woff2" => (include_bytes!("../assets/fonts/Vazirmatn.woff2"), "font/woff2"),
         "InterVariable.woff2" => (include_bytes!("../assets/fonts/InterVariable.woff2"), "font/woff2"),
@@ -230,7 +232,7 @@ async fn font(axum::extract::Path(name): axum::extract::Path<String>) -> axum::r
     ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
 }
 
-async fn country_flag(Path(name):Path<String>) -> axum::response::Response {
+pub(crate) async fn country_flag(Path(name):Path<String>) -> axum::response::Response {
     match crate::country_flags::get(&name) {
         Some(bytes) => ([(header::CONTENT_TYPE,"image/svg+xml")],bytes).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
@@ -689,6 +691,41 @@ async fn disconnect(State(s): State<Arc<AppState>>) -> Json<OkBody> {
     s.server.clear_all().await;
     s.signaling.disconnect().await;
     Json(OkBody { ok: true })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DesktopDisconnectBody {}
+
+async fn desktop_disconnect_all(
+    State(s): State<Arc<AppState>>,
+    Json(_): Json<DesktopDisconnectBody>,
+) -> Result<Json<OkBody>, ApiError> {
+    s.aggregate.stop().await;
+    let mut workers = tokio::task::JoinSet::new();
+    for worker in s.aggregate.workers.snapshots().into_iter().filter(|worker|worker.running) {
+        let state=s.clone();
+        workers.spawn(async move {
+            if crate::profiles::disconnect_owned(&state, worker.slot).await.is_err() {
+                state.aggregate.worker(worker.slot, false).await.is_ok()
+            } else { true }
+        });
+    }
+    let mut failed = false;
+    if s.cfg.read().await.mode.as_deref() == Some("client") {
+        // Preserve the existing explicit manual-disconnect/reconnect policy.
+        failed |= tunnel_disconnect(State(s.clone()), None).await.is_err();
+    } else {
+        let _ = disconnect(State(s.clone())).await;
+    }
+    s.igap.disconnect_if_loaded().await;
+    while let Some(result)=workers.join_next().await {
+        failed |= !matches!(result,Ok(true));
+    }
+    if failed {
+        return Err(ApiError::Internal("Could not disconnect all accounts".into()));
+    }
+    Ok(Json(OkBody { ok: true }))
 }
 
 async fn logout(State(s): State<Arc<AppState>>) -> Json<OkBody> {
@@ -1235,6 +1272,43 @@ mod security_tests {
     use super::*;
     use axum::body::Body;
     use tower::ServiceExt;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn global_disconnect_route_keeps_unused_provider_lazy_and_reusable() {
+        tokio::task::LocalSet::new().run_until(async {
+            let directory = tempfile::tempdir().unwrap();
+            let reservation = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let port = reservation.local_addr().unwrap().port();
+            drop(reservation);
+            let mut config = crate::config::Resolved::merge_cli(
+                &crate::config::Config::default(), Some("client".into()), None, Some(port), false,
+            );
+            config.config_dir = directory.path().to_owned();
+            let (stop, stopped) = tokio::sync::oneshot::channel();
+            let daemon = tokio::task::spawn_local(async move {
+                crate::daemon::run_with_startup(config, stopped, None).await.map_err(|e|e.to_string())
+            });
+            let client = reqwest::Client::new();
+            let base = format!("http://127.0.0.1:{port}");
+            tokio::time::timeout(std::time::Duration::from_secs(5),async {
+                loop {
+                    if client.get(format!("{base}/providers/igap/info")).send().await.is_ok() { break; }
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }).await.unwrap();
+            assert!(!directory.path().join("providers/igap").exists());
+            let blocked=client.post(format!("{base}/desktop/disconnect-all"))
+                .header("Origin","https://attacker.example").json(&serde_json::json!({})).send().await.unwrap();
+            assert_eq!(blocked.status(),StatusCode::FORBIDDEN);
+            let response=client.post(format!("{base}/desktop/disconnect-all"))
+                .header("Origin",&base).json(&serde_json::json!({})).send().await.unwrap();
+            assert!(response.json::<serde_json::Value>().await.unwrap()["ok"].as_bool().unwrap());
+            assert!(!directory.path().join("providers/igap").exists());
+            assert_eq!(client.get(format!("{base}/providers/igap/info")).send().await.unwrap().status(),StatusCode::OK);
+            stop.send(()).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(5),daemon).await.unwrap().unwrap().unwrap();
+        }).await;
+    }
 
     #[tokio::test]
     async fn management_origin_guard_blocks_browser_attacks() {

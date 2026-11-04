@@ -1,10 +1,15 @@
-# Experimental native iGap signaling foundation
+# Native iGap signaling adapter
+
+The desktop application now uses this adapter for its independent iGap page
+and `--provider igap` mode. See the [application guide](../docs/igap-production-backend-fa.md)
+and [real application transfer evidence](../experiments/igap/production-app-evidence-2026-11-04.json).
+The standalone endpoint below remains a separate diagnostic tool.
 
 ## Independent native endpoint (laboratory only)
 
 The optional `media` feature builds `native_endpoint`, a single-account process
-that can run independently on a client or a server. It is not wired into the
-production executable or packaged installers. Build with `cargo build
+that can run independently on a client or a server. That diagnostic executable
+is not packaged with the application. Build with `cargo build
 --manifest-path igap-signaling-rust/Cargo.toml --locked --features media --example
 native_endpoint` after setting `TEMP`, `TMP`, `TMPDIR`, `CARGO_HOME` and
 `CARGO_TARGET_DIR` to task-specific locations on E: as required by `AGENTS.md`.
@@ -55,8 +60,8 @@ endpoint-only logger extracts these from the existing `lktunnel::rtc` state logs
 it never prints or stores raw log records, SDP, tokens, URLs or identifiers. This
 does not alter shared media behavior or enable logs in the production Bale app.
 
-This isolated Rust workspace is **not yet connected to the BaleVPN executable,
-GUI, mobile application, account workers or packaging**. It implements the
+This Rust workspace is connected to the **desktop/headless BaleVPN executable
+and its iGap interface**, but not to mobile or multi-account workers. It implements the
 existing `lk-signaling::Signaling` and `TunnelHooks` contracts, without importing
 Bale signaling or modifying the application's existing credentials.
 

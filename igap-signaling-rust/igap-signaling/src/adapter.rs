@@ -77,7 +77,7 @@ struct Inner {
     last_service_leave: Mutex<Option<ServiceLeaveDiagnostic>>,
     peers: Mutex<HashMap<String, PeerId>>,
     allowed: Mutex<HashSet<String>>,
-    handler: Mutex<Option<Arc<dyn IncomingHandler>>>,
+    handler: Mutex<(u64, Option<Arc<dyn IncomingHandler>>)>,
     accepted_tx: mpsc::UnboundedSender<(PeerId, TransportSession)>,
     accepted_rx: Mutex<Option<mpsc::UnboundedReceiver<(PeerId, TransportSession)>>>,
     events: EventsSink<SignalingEvent>,
@@ -166,7 +166,7 @@ impl IgapSignaling {
                 last_service_leave: Mutex::new(None),
                 peers: Mutex::new(HashMap::new()),
                 allowed: Mutex::new(HashSet::new()),
-                handler: Mutex::new(None),
+                handler: Mutex::new((0, None)),
                 accepted_tx: tx,
                 accepted_rx: Mutex::new(Some(rx)),
                 events: EventsSink::new(),
@@ -713,7 +713,7 @@ impl IgapSignaling {
                     if !self.inner.allowed.lock().contains(&peer) {
                         return Ok(());
                     }
-                    let handler = self.inner.handler.lock().clone();
+                    let (handler_revision, handler) = self.inner.handler.lock().clone();
                     let Some(handler) = handler else {
                         return Ok(());
                     };
@@ -743,7 +743,8 @@ impl IgapSignaling {
                         )
                         .await
                         .unwrap_or(CallDecision::SilentlyIgnore);
-                        if this.guard(epoch, &rpc).is_err() {
+                        if this.guard_admission(epoch, &rpc, handler_revision).is_err() {
+                            this.end_call_if(epoch, &room, EndReason::Rejected);
                             return;
                         }
                         if !this.inner.call.lock().as_ref().is_some_and(|c| {
@@ -758,7 +759,9 @@ impl IgapSignaling {
                             this.end_call_if(epoch, &room, EndReason::Rejected);
                             return;
                         }
-                        let result = this.accept(epoch, rpc, peer, room.clone()).await;
+                        let result = this
+                            .accept(epoch, rpc, peer, room.clone(), handler_revision)
+                            .await;
                         if result.is_err() {
                             this.end_call_if(epoch, &room, EndReason::NetworkDrop);
                         }
@@ -817,16 +820,25 @@ impl IgapSignaling {
         .await;
         if result.is_err() { /* Invalid pushes never authorize a call or expose protocol data. */ }
     }
+    fn guard_admission(&self, epoch: u64, rpc: &Arc<dyn Rpc>, revision: u64) -> Result<(), Error> {
+        self.guard(epoch, rpc)?;
+        if self.inner.handler.lock().0 != revision {
+            return Err(Error::Cancelled);
+        }
+        Ok(())
+    }
     async fn accept(
         &self,
         epoch: u64,
         rpc: Arc<dyn Rpc>,
         peer: PeerId,
         room: String,
+        handler_revision: u64,
     ) -> Result<(), Error> {
+        self.guard_admission(epoch, &rpc, handler_revision)?;
         let self_id = self.self_id()?;
         let ring = rpc.request(916, vec![]).await?;
-        self.guard(epoch, &rpc)?;
+        self.guard_admission(epoch, &rpc, handler_revision)?;
         if ring.action != 30916 || room::response_id(&ring.fields, 2)? != self_id {
             return Err(Error::InvalidResponse);
         }
@@ -838,12 +850,19 @@ impl IgapSignaling {
             }
             c.phase = Phase::Joining;
         }
+        self.guard_admission(epoch, &rpc, handler_revision)?;
         let response = rpc.request(914, room::join(&room)?).await?;
-        self.guard(epoch, &rpc)?;
+        self.guard_admission(epoch, &rpc, handler_revision)?;
         if response.action != 30914 {
             return Err(Error::InvalidResponse);
         }
         let token = room::bound_token(&response.fields, &self_id, &room)?;
+        // Serialize final publication with handler replacement. A revoked
+        // decision must not surface an accepted session after its owner stops.
+        let handler = self.inner.handler.lock();
+        if handler.0 != handler_revision {
+            return Err(Error::Cancelled);
+        }
         {
             let mut call = self.inner.call.lock();
             let c = call.as_mut().ok_or(Error::Cancelled)?;
@@ -1046,7 +1065,9 @@ impl TunnelHooks for IgapSignaling {
         }
     }
     fn set_incoming_handler(&self, h: Box<dyn IncomingHandler>) {
-        *self.inner.handler.lock() = Some(Arc::from(h));
+        let mut handler = self.inner.handler.lock();
+        handler.0 = handler.0.wrapping_add(1);
+        handler.1 = Some(Arc::from(h));
     }
     fn accepted_sessions(&self) -> mpsc::UnboundedReceiver<(PeerId, TransportSession)> {
         self.inner

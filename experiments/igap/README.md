@@ -1,9 +1,13 @@
 # iGap feasibility spike
 
-This directory is experimental and is **not imported by the application**.
-It does not add a selectable provider to BaleVPN. The separate loopback-only
-[local login laboratory](../../docs/provider-local-login-fa.md) now implements
-the current login flow; live account login and calls still need verification.
+The JavaScript code in this directory remains experimental and is **not imported
+by the application**. The application now uses the independent Rust iGap adapter
+and provides its own [login, pairing and connection interface](../../docs/igap-production-backend-fa.md).
+A real in-application client/server transfer passed payload hash checks; see
+[production evidence](production-app-evidence-2026-11-04.json). Remote VPS,
+long-running operation, video transport and billing remain unverified.
+The separate [local login laboratory](../../docs/provider-local-login-fa.md)
+is retained for protocol research. Older results below describe their own stage.
 
 The current web client also uses LiveKit room RPCs. See
 [current multi-provider findings](../../docs/messenger-providers-fa.md); the legacy

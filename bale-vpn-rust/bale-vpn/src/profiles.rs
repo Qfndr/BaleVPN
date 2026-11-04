@@ -119,6 +119,28 @@ async fn bounded(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8
     }
     Ok(output)
 }
+/// Gracefully stop the owned account using its existing per-mode policy.
+/// The PID-bound endpoint and fixed paths prevent forwarding to unrelated apps.
+pub(crate) async fn disconnect_owned(state: &AppState, slot: usize) -> Result<(), ApiError> {
+    let base = owned_endpoint(state, slot).await?;
+    let response = state.profile_http.get(format!("{base}/state")).send().await
+        .map_err(|_| ApiError::Internal("Account profile is unavailable".into()))?;
+    let snapshot: serde_json::Value = serde_json::from_slice(&bounded(response, MAX_BODY).await?)
+        .map_err(|_| ApiError::Internal("Account state is invalid".into()))?;
+    if snapshot.get("error").is_some_and(|e| !e.is_null()) {
+        return Err(ApiError::Internal("Account state is unavailable".into()));
+    }
+    let path = if snapshot["mode"].as_str() == Some("client") { "tunnel/disconnect" } else { "disconnect" };
+    let response = state.profile_http.post(format!("{base}/{path}"))
+        .header("Origin", &base).json(&serde_json::json!({})).send().await
+        .map_err(|_| ApiError::Internal("Account profile is unavailable".into()))?;
+    let reply: serde_json::Value = serde_json::from_slice(&bounded(response, 4096).await?)
+        .map_err(|_| ApiError::Internal("Account disconnect failed".into()))?;
+    if reply["ok"].as_bool() != Some(true) {
+        return Err(ApiError::Internal("Account disconnect failed".into()));
+    }
+    Ok(())
+}
 pub async fn view(
     State(state): State<Arc<AppState>>,
     Path(slot): Path<usize>,

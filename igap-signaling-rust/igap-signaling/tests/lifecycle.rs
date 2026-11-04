@@ -10,7 +10,7 @@ use lk_signaling::{CallDecision, IncomingHandler, PeerId, Signaling, TokenStore,
 use parking_lot::Mutex;
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU16, Ordering},
         Arc,
     },
     time::Duration,
@@ -37,6 +37,8 @@ struct Mock {
     leave_timeout: AtomicBool,
     leave_rejected: AtomicBool,
     release_leave: Notify,
+    block_action: AtomicU16,
+    release_action: Notify,
 }
 fn response(action: u16, b: Vec<u8>) -> Response {
     Response {
@@ -68,6 +70,9 @@ fn joined(room: &str) -> Response {
 impl Rpc for Mock {
     async fn request(&self, action: u16, _: Vec<u8>) -> Result<Response, Error> {
         self.calls.lock().push(action);
+        if self.block_action.load(Ordering::Acquire) == action {
+            self.release_action.notified().await;
+        }
         let body = match action {
             100 => {
                 let mut b = w::string_field(2, "private-username", 256).unwrap();
@@ -146,6 +151,8 @@ fn fixture() -> (IgapSignaling, Arc<Mock>, Arc<Store>) {
         leave_timeout: AtomicBool::new(false),
         leave_rejected: AtomicBool::new(false),
         release_leave: Notify::new(),
+        block_action: AtomicU16::new(0),
+        release_action: Notify::new(),
     });
     let store = Arc::new(Store::default());
     let app = IgapSignaling::with_connector(
@@ -248,6 +255,54 @@ async fn caller_uses_bound_push_once_and_preserves_websocket_on_manager_deactiva
     app.disconnect().await;
 }
 struct Accept;
+struct Ignore;
+#[async_trait]
+impl IncomingHandler for Ignore {
+    async fn decide(&self, _: PeerId, _: Option<String>) -> CallDecision {
+        CallDecision::SilentlyIgnore
+    }
+}
+#[tokio::test]
+async fn replacing_handler_revokes_inflight_accept_before_or_after_join_rpc() {
+    for delayed in [916, 914] {
+        let (app, rpc, _) = fixture();
+        app.restore(record()).await.unwrap();
+        app.set_allowed_peers(&["42".into()]).unwrap();
+        app.set_incoming_handler(Box::new(Accept));
+        let mut accepted = app.accepted_sessions();
+        let mut events = app.events();
+        rpc.block_action.store(delayed, Ordering::Release);
+        let incoming = [w::uint_field(2, 42).unwrap(), w::uint_field(3, 99).unwrap()].concat();
+        rpc.push.send(response(30915, incoming)).await.unwrap();
+        wait_call(&rpc, delayed).await;
+        // The decision has already returned Accept; revoking only the handler's
+        // future decisions cannot protect this suspended protocol operation.
+        app.set_incoming_handler(Box::new(Ignore));
+        rpc.leave_timeout.store(true, Ordering::Release);
+        rpc.release_leave.notify_one();
+        assert_eq!(app.hang_up().await, Err(Error::Timeout));
+        assert!(app.set_allowed_peers(&[]).is_err());
+        rpc.release_action.notify_one();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if matches!(
+                    events.recv().await,
+                    Some(lk_signaling::SignalingEvent::CallEnded { .. })
+                ) {
+                    break;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(accepted.try_recv().is_err());
+        if delayed == 916 {
+            assert!(!rpc.calls.lock().contains(&914));
+        }
+        assert!(app.set_allowed_peers(&[]).is_ok());
+        app.disconnect().await;
+    }
+}
 #[async_trait]
 impl IncomingHandler for Accept {
     async fn decide(&self, _: PeerId, _: Option<String>) -> CallDecision {

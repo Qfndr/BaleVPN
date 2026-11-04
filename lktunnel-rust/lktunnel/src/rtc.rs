@@ -381,6 +381,12 @@ impl Engine {
     pub fn peer_present(&self) -> bool {
         !self.peers.lock().is_empty()
     }
+    pub(crate) fn media_diagnostic(&self) -> serde_json::Value {
+        serde_json::json!({
+            "publisherState": media_state_name(self.publisher.connection_state()),
+            "subscriberState": media_state_name(self.subscriber.connection_state()),
+        })
+    }
 
     /// Idempotent teardown.
     ///
@@ -400,6 +406,18 @@ impl Engine {
         let _ = self.publisher.close().await;
         let _ = self.subscriber.close().await;
         log::info!("rtc[{}]: closed", self.id);
+    }
+}
+
+fn media_state_name(state: RTCPeerConnectionState) -> &'static str {
+    match state {
+        RTCPeerConnectionState::New => "new",
+        RTCPeerConnectionState::Connecting => "connecting",
+        RTCPeerConnectionState::Connected => "connected",
+        RTCPeerConnectionState::Disconnected => "disconnected",
+        RTCPeerConnectionState::Failed => "failed",
+        RTCPeerConnectionState::Closed => "closed",
+        _ => "unknown",
     }
 }
 
@@ -717,6 +735,13 @@ fn server_leave_context(leave: &proto::LeaveRequest) -> String {
 #[cfg(test)]
 mod remote_ice_tests {
     use super::*;
+    #[test]
+    fn media_state_names_are_fixed_enums() {
+        assert_eq!(media_state_name(RTCPeerConnectionState::default()),"unknown");
+        for (state,name) in [(RTCPeerConnectionState::New,"new"),(RTCPeerConnectionState::Connecting,"connecting"),(RTCPeerConnectionState::Connected,"connected"),(RTCPeerConnectionState::Disconnected,"disconnected"),(RTCPeerConnectionState::Failed,"failed"),(RTCPeerConnectionState::Closed,"closed")] {
+            assert_eq!(media_state_name(state),name);
+        }
+    }
     fn candidate(port: u16) -> RTCIceCandidateInit {
         RTCIceCandidateInit { candidate: format!("candidate:1 1 udp 2130706431 127.0.0.1 {port} typ host"),
             sdp_mid: Some("0".into()), sdp_mline_index: Some(0), username_fragment: None }

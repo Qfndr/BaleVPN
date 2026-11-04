@@ -1,0 +1,91 @@
+{
+  "date": "2026-11-04",
+  "scope": "Production application on one Windows host: client uses /providers/igap inside the default Bale application; server uses --provider igap.",
+  "firstLiveTrial": {
+    "binarySha256": "4cfd130ee28f6f28732c7a692a4099ad60b9f7bee8f0cc1835ad9a076b7b334b",
+    "existingSessionsImportedEncrypted": true,
+    "newOtpRequested": false,
+    "newDeviceRegistrationRequested": false,
+    "bothAccountsRestored": true,
+    "mutualPeerAuthentication": true,
+    "clientSocksReady": true,
+    "download": {
+      "bytes": 352240,
+      "sha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+      "elapsedSeconds": 2.132689
+    },
+    "upload": {
+      "bytes": 71680,
+      "sha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+      "elapsedSeconds": 2.704895,
+      "echoMatches": true
+    },
+    "localTunnelsAndProcessesClosed": true,
+    "originalLabAccountsResumed": true
+  },
+  "interface": {
+    "nestedNavigationVerifiedAgainstRealBinary": true,
+    "embeddedAssetHashVerified": true,
+    "hostileOriginRejected": true,
+    "appearancePersistenceVerifiedAfterClearingBrowserStorage": true,
+    "syntheticBrowserFlows": [
+      "sign in",
+      "profile completion",
+      "country search and prefix detection",
+      "save pairing",
+      "connect and disconnect without automatic redial",
+      "measured chart, RTT and cumulative QUIC loss",
+      "FA/EN and light/dark",
+      "360,768,1280px layouts",
+      "native maximize and resize command dispatch"
+    ],
+    "syntheticResultsAreNotLiveAccountProof": true
+  },
+  "limits": {
+    "remoteVpsTested": false,
+    "longRunningTested": false,
+    "operatorBillingVerified": false,
+    "internationalOutageVerified": false,
+    "clientAutomaticReconnectImplemented": false,
+    "multiAccountInterfaceImplemented": false,
+    "providerVideoTransportTested": false
+  },
+  "privacy": "No account IDs, phone numbers, tokens, raw service replies, certificates, SDP or ICE addresses.",
+  "reopenTrial": {
+    "binarySha256": "312fe99f2e9de885831313cbbbf8ba15524fac9fd42b2501f1534ee838c07a8b",
+    "encryptedSessionsRestored": true,
+    "pairingAndConfigPreserved": true,
+    "newOtpRequested": false,
+    "newDeviceRegistrationRequested": false,
+    "firstConnectionSucceeded": false,
+    "clientFailure": "media_failed",
+    "serverPhaseAtFailure": "connecting",
+    "bothAccountsAuthenticated": true,
+    "bothWebSocketsReady": true,
+    "twoCycleTestCompleted": false,
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
+  },
+  "diagnosticReopenTrial": {
+    "binarySha256": "51cde3b8d9c1fcd02fec6d4bfcdf21e6e1920c0a60c191f86a67c5ece9bc6c54",
+    "sessionsAndPairingPreserved": true,
+    "newOtpRequested": false,
+    "success": false,
+    "client": {
+      "reason": "call_ended",
+      "publisherState": "connected",
+      "subscriberState": "connected"
+    },
+    "server": {
+      "phaseAfterFailure": "listening",
+      "reason": "server_leave",
+      "serviceReason": 14,
+      "serviceAction": 1,
+      "reconnect": false,
+      "publisherState": "connected",
+      "subscriberState": "disconnected"
+    },
+    "localProcessesClosed": true,
+    "originalLabAccountsResumed": true
+  }
+}
