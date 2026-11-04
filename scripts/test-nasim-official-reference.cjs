@@ -3,6 +3,7 @@
 const assert=require('node:assert/strict'),http=require('node:http');
 const {chromium}=require(process.env.BALEVPN_PLAYWRIGHT_MODULE||'playwright');
 const {loadSources,SOURCES}=require('../experiments/nasim/official-web-reference.cjs');
+const wire=require('../experiments/nasim/wire.cjs');
 (async()=>{
  const sources=await loadSources(process.env.BALEVPN_NASIM_OFFICIAL_DIRECTORY);
  let server,browser;
@@ -17,7 +18,7 @@ const {loadSources,SOURCES}=require('../experiments/nasim/official-web-reference
   const origin='http://127.0.0.1:'+server.address().port;
   browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream'],
    ...(process.env.BALEVPN_BROWSER_EXECUTABLE?{executablePath:process.env.BALEVPN_BROWSER_EXECUTABLE}:{})});
-  const blocked=[];let deniedSockets=0,notificationRequests=0;
+  const blocked=[],callRequests=[];let deniedSockets=0,notificationRequests=0;
   const contexts=[];
   for(let slot=1;slot<=2;slot++){
    const context=await browser.newContext({serviceWorkers:'block',permissions:['microphone']});contexts.push(context);
@@ -26,6 +27,13 @@ const {loadSources,SOURCES}=require('../experiments/nasim/official-web-reference
     const url=new URL(route.request().url());
     if(url.origin===origin&&(url.pathname==='/'||sources.has(url.pathname)))return route.continue();
     if(url.origin===origin&&url.pathname==='/assets/notify1-fHatXC4U.mp3'){notificationRequests++;return route.fulfill({status:404,body:''});}
+    if(url.href==='https://api.gaplication.com/'&&route.request().method()==='POST'){
+     const request=route.request(),headers=request.headers();
+     const plain=wire.decryptBytes(request.postDataBuffer(),'offline-synthetic-token-never-a-real-account-'+slot);
+     try{callRequests.push({endpoint:url.origin+url.pathname,method:request.method(),version:headers['api-version'],
+      topic:headers['x-topic'],packet:JSON.parse(plain.toString('utf8'))});}finally{plain.fill(0);}
+     return route.abort();
+    }
     blocked.push(url.pathname);return route.abort();
    });
    await context.addInitScript(()=>{
@@ -64,12 +72,25 @@ const {loadSources,SOURCES}=require('../experiments/nasim/official-web-reference
      account.token==='offline-synthetic-token-never-a-real-account-'+slot&&signedIn===true&&active===undefined;
    },slot);
    assert.equal(stable,true,'Denied fixture request changed the synthetic account or call state');
+   if(slot===1){
+    const rejectedCall=await page.evaluate(async()=>{
+     const vendor=await import('/assets/index-i5qo2U3I.js');await vendor.Jt.initWorker('fa');
+     const store=value=>({subscribe(fn){fn(value);return ()=>{};}});
+     const chat={group:{_realType:'private',isMyGap:()=>false,getTopicToPublish:()=> 'u/900002/900001',
+      contact:store({id:900002,nickname:store('Synthetic peer'),username:store('fixture'),avatars:store(undefined)})}};
+     try{await vendor.tt.start(chat,'audio');return false;}catch{return true;}
+    });
+    assert.equal(rejectedCall,true);
+   }
   }
   // The isolated contexts retain distinct module singletons and account state.
   assert.equal(contexts.length,2);
   assert.deepEqual(blocked,['/device/register','/device/register']);assert.equal(deniedSockets,0);
+  assert.deepEqual(callRequests,[{endpoint:'https://api.gaplication.com/',method:'POST',version:'v2.5',topic:'u/900002/900001',
+   packet:{type:'msgGroupCall',data:{type:'callRequest',callData:{method:'audio'}}}}]);
   console.log(JSON.stringify({ok:true,isolatedContexts:2,officialFiles:Object.keys(SOURCES).length,fakeAudio:true,
    defaultDenyAssertions:blocked.length,blockedNotificationRequests:notificationRequests,providerRequests:0,
+   blockedSyntheticCallRequest:{endpoint:callRequests[0].endpoint,method:callRequests[0].method,version:callRequests[0].version},
    realAccountsUsed:0,liveReady:false,liveCallTested:false}));
  }finally{await browser?.close();if(server)await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error('Offline official reference failed',error.name,error.message);process.exitCode=1;});

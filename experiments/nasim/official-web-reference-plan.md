@@ -1,6 +1,6 @@
 # Official Web call reference
 
-The adapter loads seven SHA-256-pinned vendor files. It removes only the exact
+The adapter loads eight SHA-256-pinned vendor files. It removes only the exact
 top-level `Xd(),l(Jd,{target:document.body}),` UI bootstrap expression from the
 pinned entry module. Call, account, crypto and message-worker implementations
 remain unchanged. The offline page has no title element because the vendor's
@@ -22,14 +22,30 @@ These two evidence types remain distinct in the journal. Restarted intents
 permit cleanup only.
 Its injected journal store must implement encrypted compare-and-swap writes
 against the supplied previous record, and honor the supplied account guard.
-The gate does not open that store or a network connection itself.
+The gate does not open that store or a network connection itself. The vault
+adapter implements that store in a separate sealed pair journal with an
+exclusive owner marker. It syncs the replacement file before rename and syncs
+the directory on Linux. Windows validation covers process restart, with no
+claim about directory metadata durability across power loss. An abandoned
+owner marker blocks concurrent use and is never removed by an automatic reset.
 
 Events returned as `defer: true` must be bounded and staged by the future
-transport adapter until the durable response UUID is known. The adapter must
-also seal the raw call response before decoding so a process crash cannot lose
-the only UUID-bearing response. Neither that transport adapter nor its encrypted
-journal namespace is implemented yet. Passing the gate's offline tests does
-not make live execution ready.
+transport adapter until the durable response UUID is known. The HTTP adapter
+seals the complete first reply and its HTTP status before decoding. It admits
+only the pinned source's `POST https://api.gaplication.com/` v2.5 call packets,
+with the exact account, client and topic. A blocked Chromium request confirmed
+that destination and payload for the vendor's actual `start` implementation.
+
+The browser pair uses fake audio and the vendor's `all` ICE policy. It disables
+Chromium's mDNS host masking so the guard can compare exact numeric IP/port
+pairs. The guard rejects private peer candidates unless captured on the other
+test context's local peer connection. Approved relay URLs and host pins are
+checked before creating a peer connection. The synthetic service fixture uses
+explicit loopback-only relay configuration and does not contact a provider.
+Both vendor browser peers have exchanged synthetic audio through that fixture,
+and one HTTP bye acknowledgement plus the matching peer event cleared the
+encrypted journal. Live provider SSE subscription and cleanup orchestration
+remain separate integration work.
 
 The entry module exports account model `N`, account manager `M`, call manager
 `tt`, account repository `pt` and message API `nt`. `M.login(N.fromJson(record))`

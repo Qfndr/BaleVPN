@@ -8,6 +8,7 @@ const SOURCES=Object.freeze({
  'rolldown-runtime-8BhlS34s.js':'1cb5c6ead7e29370203f12e2d5cdf50ec1f02dd70ee2d050d909afbf2406f6b1',
  'Crypto.worker-D3fv1cc7.js':'fd35b0037761486725cd940a8c3a243477ffb9d6c5483108c15a0759cd3bd197',
  'Message.worker-CM1iGuzH.js':'028fdf22fea157851fef2bd894375d177839a0d16f9dcb8899306c2232056f48',
+ 'fa-B_epXhxB.js':'a3784bbd0907ac0c100af947f8cb48ec2994b31e04972a8739f82300766a89a4',
  'SSE.worker-B_oEmBu_.js':'0ced14127586594e01d8785ebd0f942981f4be9e4d5f6efcf8b5ae03cadc4860'
 });
 const BOOTSTRAP='Xd(),l(Jd,{target:document.body}),';

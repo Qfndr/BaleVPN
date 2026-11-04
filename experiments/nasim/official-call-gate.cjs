@@ -124,10 +124,17 @@ class OfficialCallGate{
   }
   await this.#cleanup.get(slot).peerEnded({peerId:intent.accounts[2-slot].selfId,callUUID:intent.callUUID});
   if(intent.terminalEvents.length!==2||[...this.#cleanup.values()].some(cleanup=>cleanup.state.pending))return;
+  await this.#remove(intent);
+ }
+ async #remove(intent){
   const epoch=this.#epoch,guard=()=>this.#guard(intent,epoch);await this.#store.clear(structuredClone(intent),guard);guard();
   const remaining=await this.#store.load();guard();if(remaining)throw fail('cleanup_unconfirmed');
   this.#intent=null;this.#counts.clear();this.#ready=false;this.#recovering=false;
  }
+ abandonPrepared(){return this.#run(async()=>{
+  if(!this.#intent||this.#intent.phase!=='prepared'||this.#failed)throw fail('cleanup_pending');
+  await this.#remove(this.#intent);
+ });}
  restore(){return this.#run(async()=>{
   if(!await this.#restore())return false;
   const intent=this.#intent;
