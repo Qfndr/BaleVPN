@@ -93,6 +93,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/clients",           get(tunnel_clients))
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
         .with_state(state.clone())
+        .route("/providers/igap/", get(crate::provider::igap_ui_redirect))
         .nest(
             "/providers/igap",
             crate::provider::router_with_nasim(state.igap.clone(), state.nasim.is_some()),

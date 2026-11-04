@@ -874,7 +874,7 @@ pub fn router(service: Arc<Service>) -> Router {
 
 pub(crate) fn router_with_nasim(service: Arc<Service>, nasim_enabled: bool) -> Router {
     Router::new()
-        .route("/", get(move || async move { provider_index(nasim_enabled) }))
+        .route("/", get(provider_root))
         .route("/ui", get(move || async move { provider_index(nasim_enabled) }))
         .route("/ui.js", get(provider_script))
         .route("/countries.js", get(provider_countries))
@@ -908,6 +908,17 @@ pub(crate) fn router_with_nasim(service: Arc<Service>, nasim_enabled: bool) -> R
         .layer(middleware::from_fn(crate::ui::protect_management_ui))
         .with_state(service)
 }
+async fn provider_root(axum::extract::OriginalUri(uri): axum::extract::OriginalUri) -> Response {
+    if uri.path() == "/providers/igap" {
+        return igap_ui_redirect().await.into_response();
+    }
+    provider_index(false).into_response()
+}
+
+pub(crate) async fn igap_ui_redirect() -> axum::response::Redirect {
+    axum::response::Redirect::temporary("/providers/igap/ui")
+}
+
 fn provider_index(nasim_enabled: bool) -> axum::response::Html<std::borrow::Cow<'static, str>> {
     let page = include_str!("../assets/provider.html");
     axum::response::Html(if nasim_enabled {
@@ -1320,6 +1331,27 @@ mod tests {
         let link = "href=\"/providers/nasim/ui\"";
         assert!(!super::provider_index(false).0.contains(link));
         assert_eq!(super::provider_index(true).0.matches(link).count(), 1);
+    }
+
+    #[tokio::test]
+    async fn nested_igap_aliases_redirect_to_the_panel_asset_base() {
+        let panel = Router::new().route("/", get(provider_root));
+        let app = Router::new()
+            .route("/providers/igap/", get(igap_ui_redirect))
+            .nest("/providers/igap", panel.clone());
+        for path in ["/providers/igap", "/providers/igap/"] {
+            let response = app.clone()
+                .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+            assert_eq!(response.headers()["location"], "/providers/igap/ui");
+        }
+        let response = panel
+            .oneshot(Request::new(Body::empty()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[test]
