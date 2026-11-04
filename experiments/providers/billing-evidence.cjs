@@ -21,7 +21,7 @@ function compareBilling({provider,operator,direct,tunneled}={}){
   if(direct.bundleId!==tunneled.bundleId)return unknown('different_bundles');
   if(direct.payloadSha256.toLowerCase()!==tunneled.payloadSha256.toLowerCase()||a.payload!==b.payload)return unknown('different_payloads');
   if(a.end>b.start)return unknown('overlapping_measurements');
-  if(a.low===0)return unknown('meter_precision_too_low');
+  if(a.low===0||b.low===0)return unknown('meter_precision_too_low');
   const ratio=b.delta/a.delta,lower=b.low/a.high,upper=b.high/a.low;
   return {status:'observed',provider,operator,effectiveDebitRatio:ratio,ratioRange:[lower,upper],effectiveSavingsFraction:1-ratio,wireOverheadRatio:b.wire/a.wire,providerPathVerified:false,tariffContractVerified:false,internationalOutageVerified:false};
  }catch(e){return unknown(e.message);}

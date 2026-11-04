@@ -5,3 +5,13 @@ test('billing compares settled deduction counters with uncertainty, not a fixed 
 test('all providers remain unverified without controlled measurements; direct-VPS fallback is disallowed',()=>{for(const provider of ['bale','igap','eitaa','nasim','rubika'])assert.equal(compareBilling({provider,operator:'fixture'}).status,'unverified');assert.equal(POLICY.allowDirectForeignFallback,false);assert.equal(POLICY.requireProviderCarrier,true);});
 test('different payload, bundle, bucket, overlapping runs and unsettled/coarse counters cannot claim a discount',()=>{for(const mutate of [s=>s.tunneled.bundleId='other',s=>s.tunneled.payloadSha256='b'.repeat(64),s=>s.tunneled.counterKind='messenger_free_quota',s=>s.tunneled.settled=false,s=>s.tunneled.backgroundTrafficIsolated=false,s=>s.tunneled.startedAtMs=1500,s=>s.direct.meterStepBytes=10000000,s=>s.tunneled.after=s.tunneled.before,s=>s.tunneled.before=1/2]){const s=sample();mutate(s);assert.equal(compareBilling(s).status,'unverified');}});
 test('higher tunnel cost remains visible; a small network RTT or local byte count does not certify tariff',()=>{const s=sample();s.tunneled.after=70000000;const result=compareBilling(s);assert.equal(result.effectiveDebitRatio,2);assert.equal(result.effectiveSavingsFraction,-1);assert.equal(result.tariffContractVerified,false);});
+test('a tunnel debit within the meter uncertainty cannot establish savings',()=>{
+ const input=sample();
+ input.tunneled.after=input.tunneled.before-2*input.tunneled.meterStepBytes;
+ const result=compareBilling(input);
+ assert.equal(result.status,'unverified');
+ assert.equal(result.reason,'meter_precision_too_low');
+ assert.equal(Object.hasOwn(result,'effectiveSavingsFraction'),false);
+ input.tunneled.after--;
+ assert.equal(compareBilling(input).status,'observed');
+});
