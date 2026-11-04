@@ -3,18 +3,19 @@ from pathlib import Path
 import json,hashlib,tomllib
 
 root=Path(__file__).resolve().parent.parent
-workspaces=['lk-signaling-rust','bale-signaling-rust','lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust','vendor/webrtc-dtls']
+workspaces=['lk-signaling-rust','bale-signaling-rust','igap-signaling-rust','lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust','vendor/webrtc-dtls']
 for workspace in workspaces:
     packages=tomllib.loads((root/workspace/'Cargo.lock').read_text(encoding='utf-8'))['package']
     for package in packages:
         name,version=package['name'],package['version']
         if name=='crypto-bigint':
-            assert tuple(map(int,version.split('.'))) >= (0,7,6),(workspace,name,version)
+            # 0.7.7 and 0.7.8 were yanked; 0.7.10 is the reviewed replacement.
+            assert tuple(map(int,version.split('.'))) >= (0,7,10),(workspace,name,version)
         if name=='webrtc-dtls':
             assert 'source' not in package,(workspace,'Unpatched registry DTLS')
         if name in ['p256','p384','elliptic-curve']:
             assert tuple(map(int,version.split('.'))) >= (0,14,0),(workspace,name,version)
-    if workspace in ['lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust','vendor/webrtc-dtls']:
+    if workspace in ['igap-signaling-rust','lktunnel-rust','bale-vpn-rust','bale-vpn-android/rust','vendor/webrtc-dtls']:
         assert any(p['name']=='crypto-bigint' for p in packages),workspace
 
 vendor=root/'vendor/webrtc-dtls'

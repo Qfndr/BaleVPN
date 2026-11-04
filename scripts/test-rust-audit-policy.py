@@ -101,6 +101,42 @@ class AuditPolicyTests(unittest.TestCase):
         source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.assertEqual(self.classify()["status"], "pass_with_scoped_exception")
 
+    def glib_case(self):
+        shutil.copytree(REPO / "vendor/glib", self.root / "vendor/glib")
+        report = copy.deepcopy(self.report)
+        report["warnings"] = {"unsound": [{"kind": "unsound",
+            "advisory": {"id": policy.GLIB_ADVISORY, "package": "glib"},
+            "package": {"name": "glib", "version": "0.18.5", "source": None}}]}
+        meta = copy.deepcopy(self.metadata)
+        meta["packages"].append({"id": "glib", "name": "glib", "version": "0.18.5",
+            "source": None, "dependencies": [], "manifest_path": str(self.root / "vendor/glib/Cargo.toml")})
+        meta["workspace_members"] = ["igap"]
+        meta["resolve"]["nodes"][0]["dependencies"] = ["rsa", "glib"]
+        meta["resolve"]["nodes"][1]["dependencies"] = []
+        meta["resolve"]["nodes"].append({"id": "glib", "deps": [], "dependencies": []})
+        return report, meta
+
+    def test_exact_active_glib_backport_retains_raw_warning(self):
+        report, meta = self.glib_case()
+        original = copy.deepcopy(report)
+        result = self.classify(report, meta)
+        self.assertEqual(len(result["scopedExceptions"]), 2)
+        self.assertEqual(result["scopedExceptions"][0]["disposition"], "fixed-in-reviewed-backport")
+        self.assertIn("Linux optimized", result["scopedExceptions"][0]["requiredValidation"])
+        self.assertEqual(report, original)
+
+    def test_glib_cannot_exempt_other_warnings_or_changed_sources(self):
+        report, meta = self.glib_case()
+        other = copy.deepcopy(report)
+        other["warnings"]["unmaintained"] = [{"package": {"name": "bincode"}, "advisory": {}}]
+        with self.assertRaises(policy.PolicyError): self.classify(other, meta)
+        duplicate = copy.deepcopy(report)
+        duplicate["warnings"]["unsound"].append(copy.deepcopy(duplicate["warnings"]["unsound"][0]))
+        with self.assertRaises(policy.PolicyError): self.classify(duplicate, meta)
+        source = self.root / "vendor/glib/src/variant_iter.rs"
+        source.write_bytes(source.read_bytes() + b"\n// changed\n")
+        with self.assertRaisesRegex(policy.PolicyError, "glib_source_changed"): self.classify(report, meta)
+
 
 if __name__ == "__main__":
     unittest.main()

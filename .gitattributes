@@ -1,0 +1,2 @@
+# Preserve exact upstream and reviewed backport bytes for source verification.
+vendor/glib/** -text

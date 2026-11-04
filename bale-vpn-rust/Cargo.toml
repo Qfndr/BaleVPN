@@ -31,3 +31,6 @@ livekit-api = { path = "../vendor/livekit-api" }
 
 # Upstream curve/constant-time security upgrade; see vendor/README.md.
 webrtc-dtls = { path = "../vendor/webrtc-dtls" }
+
+# GLib 0.18 API-compatible VariantStrIter soundness fix; see vendor/glib/BACKPORT.md.
+glib = { path = "../vendor/glib" }

@@ -17,5 +17,16 @@ warnings (the same source, lines 322–347).
 
 This repair does not excuse any actual vulnerability, unmaintained/unsound
 dependency warning, or yanked dependency. The existing classifier still checks
-the raw findings and warnings. Its separately documented, exact RSA public-only
-review remains the sole scoped vulnerability disposition.
+the raw findings and warnings. Separately documented dispositions cover exact
+RSA public-only use and the verified GLib source backport; all other findings
+and warnings still require their own review or dependency remediation.
+
+The GLib disposition is restricted to `RUSTSEC-2024-0429`, version 0.18.5, and
+the active local `vendor/glib` dependency in the desktop application graph.
+`scripts/verify-glib-backport.py` pins the complete upstream file inventory,
+backport source and provenance hashes, rejects additional files/symlinks, and
+checks the resolved dependency path. CI runs its tamper tests and an optimized
+Linux string-iterator regression in the desktop binary workflow. Raw audit
+warnings remain present; the result describes a reviewed source backport, not
+an upstream patched release. Unmaintained dependencies and the separate rand
+advisory are not covered by this disposition.

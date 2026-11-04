@@ -150,6 +150,10 @@ jobs:
           cp target/release/bale-vpn${{ matrix.bin_ext }} \
              ../release-staging/bale-vpn-gui-${{ matrix.artifact_os }}${{ matrix.bin_ext }}
 
+      - name: Test optimized GLib string iterator backport (Linux)
+        if: runner.os == 'Linux'
+        run: cargo test --manifest-path ../vendor/glib/Cargo.toml --release --lib test_variant_str_iter
+
       - name: Package desktop launchers without terminals
         if: steps.native_package.outputs.enabled == 'true'
         run: |

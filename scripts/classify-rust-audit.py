@@ -1,10 +1,11 @@
 """Fail-closed disposition of raw cargo-audit output; never edits the raw report.
 
-The sole scoped exception is reviewed public-key-only RSA use in the native
-iGap dependency of bale-vpn-rust. The upstream crate remains vulnerable.
+Scoped dispositions cover reviewed public-key-only RSA use and the exact
+vendored GLib backport. Raw findings remain unchanged.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -14,6 +15,7 @@ ADVISORY = "RUSTSEC-2023-0071"
 REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
 PACKAGE_ROOT = Path("igap-signaling-rust/igap-signaling")
 INVENTORY = Path("scripts/rsa-public-only-review.json")
+GLIB_ADVISORY = "RUSTSEC-2024-0429"
 
 
 class PolicyError(ValueError):
@@ -89,11 +91,40 @@ def classify(report, workspace, root, metadata=None, audit_exit_code=0):
             type(vulnerabilities.get("found")) is bool and vulnerabilities["count"] == len(findings) and
             vulnerabilities["found"] == bool(findings), "inconsistent_audit_report")
     warnings = report.get("warnings", {})
-    require(isinstance(warnings, dict) and not any(warnings.values()), "audit_warnings_require_review")
+    require(isinstance(warnings, dict), "invalid_audit_warnings")
+    scoped = []
+    glib_warnings = []
+    for kind, items in warnings.items():
+        require(isinstance(items, list), "invalid_audit_warnings")
+        for item in items:
+            require(isinstance(item, dict), "invalid_audit_warnings")
+            package, advisory = item.get("package", {}), item.get("advisory", {})
+            require(isinstance(package, dict) and isinstance(advisory, dict), "invalid_audit_warnings")
+            require(workspace == "bale-vpn-rust" and kind == "unsound" and
+                    item.get("kind") == "unsound" and advisory.get("id") == GLIB_ADVISORY and
+                    advisory.get("package") == "glib" and package.get("name") == "glib" and
+                    package.get("version") == "0.18.5" and package.get("source") is None,
+                    "audit_warnings_require_review")
+            glib_warnings.append(item)
+    if glib_warnings:
+        require(len(glib_warnings) == 1, "duplicate_glib_warning")
+        spec = importlib.util.spec_from_file_location("glib_backport_proof", Path(__file__).with_name("verify-glib-backport.py"))
+        proof_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(proof_module)
+        try:
+            proof = proof_module.verify_glib_backport(root, metadata)
+        except ValueError as error:
+            raise PolicyError(str(error)) from error
+        scoped.append({"advisory": GLIB_ADVISORY, "package": "glib", "version": "0.18.5",
+                       "disposition": "fixed-in-reviewed-backport", "upstreamPatched": False,
+                       "sourceProof": proof,
+                       "requiredValidation": "Linux optimized test_variant_str_iter in the binary workflow",
+                       "limitation": "Raw warning retained; only this exact active source backport is covered."})
     require(not report.get("error"), "audit_execution_failed")
     require(audit_exit_code == (1 if findings else 0), "audit_execution_failed")
     if not findings:
-        return {"status": "pass", "rawVulnerabilityCount": 0, "scopedExceptions": []}
+        return {"status": "pass_with_scoped_exception" if scoped else "pass",
+                "rawVulnerabilityCount": 0, "scopedExceptions": scoped}
     require(workspace == "bale-vpn-rust" and len(findings) == 1, "unapproved_vulnerability")
     item = findings[0]
     require(isinstance(item, dict), "invalid_audit_finding")
@@ -103,11 +134,12 @@ def classify(report, workspace, root, metadata=None, audit_exit_code=0):
             package.get("name") == "rsa" and package.get("version") == "0.9.10" and
             package.get("source") == REGISTRY, "unapproved_vulnerability")
     verify_public_only(root, metadata)
-    return {"status": "pass_with_scoped_exception", "rawVulnerabilityCount": 1,
-            "scopedExceptions": [{"advisory": ADVISORY, "package": "rsa", "version": "0.9.10",
+    scoped.append({"advisory": ADVISORY, "package": "rsa", "version": "0.9.10",
                 "consumer": "igap-signaling", "upstreamPatched": False,
                 "basis": "Exact reviewed source uses RSA public-key encryption; private RSA operations occur only in tests.",
-                "limitation": "Not a repaired dependency or a general exemption; any source/consumer change requires new review."}]}
+                "limitation": "Not a repaired dependency or a general exemption; any source/consumer change requires new review."})
+    return {"status": "pass_with_scoped_exception", "rawVulnerabilityCount": 1,
+            "scopedExceptions": scoped}
 
 
 def main():
@@ -120,8 +152,8 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        result = classify(json.loads(args.report.read_text()), args.workspace, args.repo_root.resolve(),
-                          json.loads(args.metadata.read_text()) if args.metadata else None, args.audit_exit_code)
+        result = classify(json.loads(args.report.read_text(encoding="utf-8")), args.workspace, args.repo_root.resolve(),
+                          json.loads(args.metadata.read_text(encoding="utf-8")) if args.metadata else None, args.audit_exit_code)
     except (PolicyError, OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         reason = str(error) if isinstance(error, PolicyError) else "audit_policy_input_error"
         result = {"status": "fail", "reason": reason}

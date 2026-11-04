@@ -202,6 +202,7 @@ jobs:
           mkdir -p security-evidence
           python scripts/check-crypto-dependencies.py | tee security-evidence/crypto-dependencies.txt
           python scripts/test-rust-audit-policy.py
+          python scripts/test-glib-backport-policy.py
           failed=0
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust vendor/webrtc-dtls; do
             name="${workspace//\//-}"
@@ -220,6 +221,8 @@ jobs:
             if [ "$workspace" = "bale-vpn-rust" ]; then
               if cargo metadata --locked --format-version 1 --manifest-path "$workspace/Cargo.toml" > "security-evidence/$name-metadata.json"; then
                 metadata_arg=(--metadata "security-evidence/$name-metadata.json")
+                python scripts/verify-glib-backport.py --metadata "security-evidence/$name-metadata.json" \
+                  > "security-evidence/glib-backport-proof.json" || failed=1
               else
                 failed=1
               fi
