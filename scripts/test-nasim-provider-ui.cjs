@@ -20,6 +20,7 @@ const files = new Map([
 
 async function installFixture(page,available,{durationChoices,olderKit=false,cleanupOnly=false}={}) {
   let state = {phase:'idle'};
+  let cleanupReason = 'cleanup_unconfirmed';
   const posts = [], external = [], errors = [];
   page.on('pageerror',error => errors.push(error.message));
   await page.route('**/*',async route => {
@@ -60,7 +61,7 @@ async function installFixture(page,available,{durationChoices,olderKit=false,cle
         break;
       case '/cleanup':
         state = input.slot === 1
-          ? {phase:'failed',cleanupPending:true,cleanupReason:'cleanup_unconfirmed'}
+          ? {phase:'failed',cleanupPending:true,cleanupReason}
           : {phase:'idle',cleanupPending:false,cleanupAcknowledged:true};
         break;
       default:
@@ -68,7 +69,7 @@ async function installFixture(page,available,{durationChoices,olderKit=false,cle
     }
     return respond(state);
   });
-  return {posts,external,errors,patchState:patch=>Object.assign(state,patch)};
+  return {posts,external,errors,patchState:patch=>Object.assign(state,patch),setCleanupReason:reason=>{cleanupReason=reason;}};
 }
 
 async function start(page,role) {
@@ -103,8 +104,11 @@ async function main() {
     await page.locator('#recoverCleanup').click();
     await page.getByText('سرویس پایان همان تماس را تأیید نکرد.').waitFor();
     assert.equal(fixture.posts.shift().command,'/cleanup');
-    fixture.patchState({cleanupReason:'login_account_mismatch'});
+    fixture.setCleanupReason('login_account_mismatch');
+    await page.locator('input[name=vaultPassword]').fill('fixture-vault-password');
+    await page.locator('#recoverCleanup').click();
     await page.getByText('نشست با حساب ثبت‌شده در رکورد پاک‌سازی مطابقت ندارد.').waitFor();
+    assert.equal(fixture.posts.shift().command,'/cleanup');
     await page.locator('#language').click();
     await page.getByText('The session does not match the account in the cleanup record.').waitFor();
     await page.locator('#language').click();
