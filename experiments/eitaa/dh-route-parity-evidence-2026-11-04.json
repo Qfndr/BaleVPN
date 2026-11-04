@@ -84,6 +84,14 @@
     "requestBytesMatch": true
   },
   "conclusion": "The pinned DH constructor, field order and uncached synthetic request match. The normal Android CallClient and APK probe also emit the same source-matched HTTPS frame. The pinned official callsite selects native connection type64, so this HTTPS test does not reproduce its actual call transport.",
+  "directCallRecovery": {
+    "scope": "Pinned web worker method schema and pinned Android DEX descriptors",
+    "exactDirectCallStatusLookupFound": false,
+    "generalConfigMethod": "phone.getCallConfig",
+    "matchingTerminalEvent": "updates.getDifference may carry updatePhoneCall with phoneCallDiscarded for a known call ID when history remains available",
+    "emptyDifferenceProvesTermination": false,
+    "discardIdempotencyVerified": false
+  },
   "limits": [
     "INVALID_CONSTRUCTOR establishes rejection of the tested HTTPS request only. It does not prove the native method or service call feature is unsupported.",
     "Official Android uses the stored DH version when available; version0 requests the uncached configuration.",
