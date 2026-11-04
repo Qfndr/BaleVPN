@@ -1,6 +1,7 @@
 // Private child-process control. SDP replies are delivered only to the awaited
 // signaling operation; state never contains SDP, TURN credentials or raw errors.
 const path=require('node:path'),{spawn}=require('node:child_process');
+const {iceDiagnostics}=require('./ice-diagnostics.cjs');
 function createBridge(provider){
 if(!['nasim','eitaa','rubika'].includes(provider))throw Error('Unsupported media provider');
 const MAX=192*1024;
@@ -49,7 +50,7 @@ class NativeMediaBridge {
   });
  }
  #failed(reason){
-  if(['failed','closed'].includes(this.#phase))return;this.#phase='failed';this.#reason=reason;this.#latest={};
+  if(['failed','closed'].includes(this.#phase))return;this.#phase='failed';this.#reason=reason;this.#latest=this.#latest.ice?{ice:this.#latest.ice}:{};
   clearTimeout(this.#timer);clearTimeout(this.#killTimer);this.#prepare?.reject(fail(reason));this.#prepare=null;
   if(this.#pending){clearTimeout(this.#pending.timer);this.#pending.reject(fail(reason));this.#pending=null;}
   this.#buffer.fill(0);this.#buffer=Buffer.alloc(0);this.#child?.stdin.destroy();this.#child?.kill();
@@ -69,6 +70,10 @@ class NativeMediaBridge {
   }catch{this.#failed('invalid_native_output');}
  }
  #event(v){
+  if(v?.event==='iceDiagnostics'){
+   if(!['configured','connecting','connected'].includes(this.#phase)||!keys(v,['event','ice']))throw Error();
+   this.#latest.ice=iceDiagnostics(v.ice);return;
+  }
   if(v?.event==='prepared'){
    if(this.#phase!=='starting'||!keys(v,['event','protocol','provider','publicCertificate'])||v.protocol!==2||v.provider!==provider||!cert(v.publicCertificate))throw Error();
    this.#certificate=v.publicCertificate;this.#phase='prepared';clearTimeout(this.#timer);this.#prepare.resolve();this.#prepare=null;return;
@@ -143,6 +148,7 @@ class NativeMediaBridge {
   this.#killTimer=setTimeout(()=>this.#child.kill(),2500);this.#killTimer.unref();
  }
  get state(){return {provider,phase:this.#phase,role:this.#role||null,context:this.#context?{...this.#context}:null,...this.#latest,
+  ...(this.#latest.ice?{ice:{...this.#latest.ice}}:{}),
   quic:this.#latest.quic?{...this.#latest.quic}:null,reason:this.#reason,stderrPresent:this.#stderr,
   providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};}
 }

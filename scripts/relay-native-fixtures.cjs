@@ -15,6 +15,22 @@ function fixture({prepared=true}={}){
  return {child,emit,commands,invocation:()=>invocation,open:()=>NativeMediaBridge.open(path.resolve('fixture-native-helper'),{spawnImpl,prepareTimeout:100})};
 }
 async function configure(f,b){const p=b.configure(call,{role:'client',trustedCertificates:[peer],throughput:true});f.emit({event:'configured',provider});await p;}
+const iceCounts=()=>({localRelayCandidates:1,remoteRelayCandidates:1,pairWaiting:0,pairInProgress:0,pairFailed:1,pairSucceeded:0,
+ pairUnspecified:0,nominatedPairs:0,requestsSent:null,requestsReceived:null,responsesSent:null,responsesReceived:null});
+test('ICE failure retains only validated bounded numeric diagnostics without mutable references',async()=>{
+ const f=fixture(),b=await f.open();await configure(f,b);
+ const counts=iceCounts();f.emit({event:'iceDiagnostics',ice:counts});
+ assert.deepEqual(b.state.ice,counts);const view=b.state;view.ice.pairFailed=999;assert.equal(b.state.ice.pairFailed,1);assert.equal(b.state.ice.requestsSent,null);
+ f.emit({event:'error',reason:'ice_failed'});assert.equal(b.state.reason,'ice_failed');assert.deepEqual(b.state.ice,counts);
+ assert.ok(!JSON.stringify(b.state).includes(secret));
+});
+test('ICE diagnostics reject raw fields, incomplete records and unbounded counters',async()=>{
+ for(const ice of [{...iceCounts(),address:'private-address'}, {...iceCounts(),pairFailed:-1}, {...iceCounts(),pairFailed:1000000001},
+  {...iceCounts(),pairFailed:0.5}, {...iceCounts(),requestsSent:0}, {...iceCounts(),requestsSent:'7'}, {localRelayCandidates:1}]){
+  const f=fixture(),b=await f.open();await configure(f,b);f.emit({event:'iceDiagnostics',ice});
+  assert.equal(b.state.phase,'failed');assert.equal(b.state.reason,'invalid_native_output');assert.equal(b.state.ice,undefined);
+ }
+});
 const connected=(extra={})=>({event:'connected',provider,mediaConnected:true,relayPair:true,peerAuthenticated:false,proxyReady:false,socksAddress:'127.0.0.1:1089',providerPathVerified:false,billingVerified:false,...extra});
 const metrics=(extra={})=>({event:'metrics',mediaConnected:true,relayPair:true,peerAuthenticated:true,proxyReady:true,receivedBytes:3000,sentBytes:1000,quic:{rttMs:12,lostPackets:0,sentPackets:30,congestionWindow:60000,sendWindowBytes:200000,profile:'balanced'},providerPathVerified:false,billingVerified:false,...extra});
 function stopped(f,b){b.close();f.emit({event:'stopped'});f.child.emit('exit',0);}

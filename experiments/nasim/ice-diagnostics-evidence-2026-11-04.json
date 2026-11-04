@@ -1,0 +1,48 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "scope": "Terminal diagnostics for the previously observed ICE_FAILED; no new live provider call and no claimed connectivity fix",
+  "sourceParity": {
+    "officialWebSource": "https://web.nasimrezvan.com/assets/index-i5qo2U3I.js",
+    "sha256": "cfcbbba60b108c05b499b310b9fa87e5e6abd2c88b4f7d52a5c7ee1eee5e2149",
+    "characterOffset": 380036,
+    "finding": "Official source prepends stun:/turn: and passes turnServer.username/password unchanged; the lab matches those transformations. Official default ICE also permits direct candidates; the lab deliberately requires TURN/UDP relay-only. No TURN credential or URL mismatch was established."
+  },
+  "diagnostics": {
+    "measuredFields": ["localRelayCandidates", "remoteRelayCandidates", "pairWaiting", "pairInProgress", "pairFailed", "pairSucceeded", "pairUnspecified", "nominatedPairs"],
+    "unavailableFieldsAlwaysNull": ["requestsSent", "requestsReceived", "responsesSent", "responsesReceived"],
+    "numericMaximum": 1000000000,
+    "collectionTimeoutMs": 250,
+    "collectionTrigger": "terminal media disconnect/error or initial connection deadline only",
+    "ongoingPollingAdded": false,
+    "timeoutBehavior": "Skip sample, preserve original failure; never fabricate zero counts",
+    "rawStatsOrAddressesOrCredentialsExposed": false
+  },
+  "unsupportedCounterEvidence": {
+    "package": "webrtc-ice",
+    "version": "0.11.0",
+    "source": "src/agent/agent_stats.rs",
+    "sha256": "6f736665627cdece27e474f4fdedf78ba36182b9cdc6a7fda497019b09d4e83e",
+    "lines": "217-229 populate only timestamp, candidate IDs, state and nomination; remaining fields inherit default zeros at lines 138-141",
+    "actualFixtureFinding": "A successful nominated local TURN pair still reported zero request/response stats; these values are therefore exposed as null rather than measurements."
+  },
+  "validation": {
+    "actualLocalTurnAndTwoPeerConnectionsPassed": true,
+    "gatheredLocalRelayBeforeRemoteSdpVerified": true,
+    "bothRelayCandidateCountsAndSuccessfulNominatedPairVerified": true,
+    "existingMutuallyAuthenticatedQuicByteTransferPassed": true,
+    "pausedClock250msCancellationTestPassed": true,
+    "nodeTestsPassed": 69,
+    "nodeTestsSkipped": 0,
+    "followupCompatibilityRun": "Parent reran all 30 Eitaa/Rubika shared-bridge cases with their actual existing executables:30 passed,0 skipped. This covers the six previously skipped native compatibility cases; all three Nasim actual native helper tests also passed.",
+    "unknownFieldsMalformedNumbersAndUnsupportedNumericRequestCountersRejected": true,
+    "terminalSnapshotRetainsImmutableProjection": true
+  },
+  "artifact": {
+    "path": "E:/CodexBuilds/BaleVPN/messenger-research/nasim/nasim_relay_bridge-ice-diagnostics.exe",
+    "profile": "Windows x64 debug, private test helper",
+    "sha256": "f225875c60e8590d4237ab69b01aa34f708473e61d428cc0a446c3ded1262df6",
+    "published": false
+  },
+  "limitations": {"liveNasimRetestPerformed": false, "liveIceFailureFixed": false, "remoteVpsVerified": false, "billingVerified": false}
+}

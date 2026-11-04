@@ -15,6 +15,7 @@
   "cleanup": {
     "bothEndpointProcessesEnded": true,
     "localSocksListenerClosed": true,
+    "bothLaboratorySessionsResumedAndSignedIn": true,
     "bothLaboratorySessionsResumed": true
   },
   "balancedDiagnosticTrial": {

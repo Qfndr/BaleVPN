@@ -2,7 +2,7 @@
 // by the separate binary, never chosen by a control message.
 use lktunnel::{
     carrier,
-    peer_media::{MediaDisconnectStage, MediaError, RelayMedia},
+    peer_media::{IceDiagnostics, MediaDisconnectStage, MediaError, RelayMedia},
     security::Identity,
     EventKind, TunnelRole,
 };
@@ -31,6 +31,43 @@ fn output(value: Value) -> Result<(), &'static str> {
         .write_all(b"\n")
         .and_then(|_| stream.flush())
         .map_err(|_| "output_closed")
+}
+async fn bounded_ice_diagnostics(future: impl Future<Output = IceDiagnostics>) -> Option<IceDiagnostics> {
+    tokio::time::timeout(Duration::from_millis(250), future).await.ok()
+}
+async fn output_ice(media: &RelayMedia) -> Result<(), &'static str> {
+    // Terminal diagnostics must not delay teardown indefinitely. Missing
+    // diagnostics means unavailable, never a fabricated zero-count sample.
+    let Some(counts) = bounded_ice_diagnostics(media.ice_diagnostics()).await else {
+        return Ok(());
+    };
+    output(json!({"event":"iceDiagnostics","ice":{
+        "localRelayCandidates":counts.local_relay_candidates,"remoteRelayCandidates":counts.remote_relay_candidates,
+        "pairWaiting":counts.pair_waiting,"pairInProgress":counts.pair_in_progress,
+        "pairFailed":counts.pair_failed,"pairSucceeded":counts.pair_succeeded,"pairUnspecified":counts.pair_unspecified,
+        "nominatedPairs":counts.nominated_pairs,"requestsSent":counts.requests_sent,"requestsReceived":counts.requests_received,
+        "responsesSent":counts.responses_sent,"responsesReceived":counts.responses_received
+    }}))
+}
+#[cfg(test)]
+mod ice_diagnostic_deadline_tests {
+    use super::*;
+    #[tokio::test(start_paused = true)]
+    async fn stalled_stats_are_cancelled_without_fabricating_counts() {
+        use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+        struct DropMarker(Arc<AtomicBool>);
+        impl Drop for DropMarker { fn drop(&mut self) { self.0.store(true, Ordering::SeqCst); } }
+        let dropped = Arc::new(AtomicBool::new(false));
+        let marker = DropMarker(dropped.clone());
+        let started = tokio::time::Instant::now();
+        let result = bounded_ice_diagnostics(async move {
+            let _marker = marker;
+            std::future::pending::<IceDiagnostics>().await
+        }).await;
+        assert!(result.is_none());
+        assert!(dropped.load(Ordering::SeqCst));
+        assert_eq!(started.elapsed(), Duration::from_millis(250));
+    }
 }
 fn keys(value: &Value, allowed: &[&str]) -> bool {
     value
@@ -290,7 +327,7 @@ async fn run(
                     _=>return Err("invalid_control_command"),
                 }
             },
-            _=&mut deadline,if !connected=>return Err("connect_timeout"),
+            _=&mut deadline,if !connected=>{output_ice(&media).await?;return Err("connect_timeout");},
             event=events.recv()=>{
                 let event=event.ok_or("transport_closed")?;
                 match event.kind {
@@ -302,7 +339,8 @@ async fn run(
                             "socksAddress":address,"peerAuthenticated":tunnel.is_peer_authenticated(),"proxyReady":tunnel.is_proxy_ready(),
                             "providerPathVerified":false,"billingVerified":false}))?;
                     },
-                    EventKind::Disconnected|EventKind::PeerLeft=>return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected")),EventKind::Error=>return Err(disconnect_reason(media.disconnect_stage(),"transport_failed")),_=>{},
+                    EventKind::Disconnected|EventKind::PeerLeft=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_disconnected"));},
+                    EventKind::Error=>{output_ice(&media).await?;return Err(disconnect_reason(media.disconnect_stage(),"transport_failed"));},_=>{},
                 }
             },
             _=interval.tick(),if connected=>{

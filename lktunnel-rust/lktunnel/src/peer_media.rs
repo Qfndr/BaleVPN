@@ -96,6 +96,49 @@ pub struct RelayMedia {
     route_rejected: Arc<AtomicBool>,
 }
 
+/// Counts only: intentionally excludes candidate IDs, addresses and credentials.
+#[derive(Clone, Debug, Default)]
+pub struct IceDiagnostics {
+    pub local_relay_candidates: u64,
+    pub remote_relay_candidates: u64,
+    pub pair_waiting: u64,
+    pub pair_in_progress: u64,
+    pub pair_failed: u64,
+    pub pair_succeeded: u64,
+    pub pair_unspecified: u64,
+    pub nominated_pairs: u64,
+    // webrtc-ice 0.11 hardcodes these stats to zero. None means unavailable,
+    // not a measured absence of connectivity-check traffic.
+    pub requests_sent: Option<u64>,
+    pub requests_received: Option<u64>,
+    pub responses_sent: Option<u64>,
+    pub responses_received: Option<u64>,
+}
+
+fn ice_diagnostics(stats: &StatsReport) -> IceDiagnostics {
+    let mut result = IceDiagnostics::default();
+    let add = |total: &mut u64, value: u64| *total = total.saturating_add(value).min(1_000_000_000);
+    for report in stats.reports.values() {
+        match report {
+            StatsReportType::LocalCandidate(c) if c.candidate_type == CandidateType::Relay => add(&mut result.local_relay_candidates, 1),
+            StatsReportType::RemoteCandidate(c) if c.candidate_type == CandidateType::Relay => add(&mut result.remote_relay_candidates, 1),
+            StatsReportType::CandidatePair(pair) => {
+                let count = match pair.state {
+                    CandidatePairState::Waiting => &mut result.pair_waiting,
+                    CandidatePairState::InProgress => &mut result.pair_in_progress,
+                    CandidatePairState::Failed => &mut result.pair_failed,
+                    CandidatePairState::Succeeded => &mut result.pair_succeeded,
+                    _ => &mut result.pair_unspecified,
+                };
+                add(count, 1);
+                if pair.nominated { add(&mut result.nominated_pairs, 1); }
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
 fn config(servers: Vec<RTCIceServer>) -> Result<RTCConfiguration, MediaError> {
     if servers.is_empty() || servers.len() > 4 {
         return Err(MediaError::InvalidRelay);
@@ -192,6 +235,9 @@ fn secure_audio(sdp: &str) -> bool {
 }
 
 impl RelayMedia {
+    pub async fn ice_diagnostics(&self) -> IceDiagnostics {
+        ice_diagnostics(&self.pc.get_stats().await)
+    }
     /// Takes ownership of the external carrier. A failed setup drops its
     /// output and disconnects QUIC, rather than leaving a half-ready proxy.
     pub async fn new(
@@ -662,11 +708,24 @@ mod tests {
         // decide which endpoint provides the Internet/SOCKS role.
         let offer = b_media.offer().await.unwrap();
         assert!(secure_audio(&offer.sdp));
+        let gathering_only = b_media.ice_diagnostics().await;
+        assert!(gathering_only.local_relay_candidates > 0);
+        assert_eq!(gathering_only.remote_relay_candidates, 0);
+        assert_eq!(gathering_only.pair_succeeded, 0);
         let answer = a_media.answer(offer).await.unwrap();
         b_media.set_answer(answer).await.unwrap();
         tokio::join!(media_connected(&a), media_connected(&b));
         assert_eq!(a_media.selected_route().await, RelayRoute::RelayPair);
         assert_eq!(b_media.selected_route().await, RelayRoute::RelayPair);
+        for media in [&a_media, &b_media] {
+            let counts = media.ice_diagnostics().await;
+            assert!(counts.local_relay_candidates > 0);
+            assert!(counts.remote_relay_candidates > 0);
+            assert!(counts.pair_succeeded > 0);
+            assert!(counts.nominated_pairs > 0);
+            assert!(counts.requests_sent.is_none() && counts.requests_received.is_none());
+            assert!(counts.responses_sent.is_none() && counts.responses_received.is_none());
+        }
         assert!(!a.is_peer_authenticated());
         assert!(!a.is_proxy_ready());
         let endpoint = b.enable_quic_server().unwrap();

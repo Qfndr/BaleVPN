@@ -2,6 +2,20 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {fixture,sdp,waitFor}=require('./nasim-call-fixture.cjs');
 const flags=state=>Object.fromEntries(['configured','offerSeen','answerSeen','negotiated'].map(key=>[key,state[key]]));
 
+test('terminal ICE diagnostics preserve connectivity-check counts through cleanup',async()=>{
+ const f=fixture();try{
+  const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');
+  const ice={localRelayCandidates:1,remoteRelayCandidates:1,pairWaiting:0,pairInProgress:0,pairFailed:1,pairSucceeded:0,
+   pairUnspecified:0,nominatedPairs:0,requestsSent:null,requestsReceived:null,responsesSent:null,responsesReceived:null};
+  f.natives[1].latest={phase:'failed',reason:'ice_failed',ice};await waitFor(()=>b.state.phase==='uncertain');
+  assert.deepEqual(b.state.terminalSnapshot.media.ice,ice);
+  const view=b.state.terminalSnapshot;view.media.ice.pairFailed=999;
+  assert.equal(b.state.terminalSnapshot.media.ice.pairFailed,1);assert.equal(b.state.terminalSnapshot.media.ice.requestsSent,null);
+  await b.end();assert.equal(b.state.terminalSnapshot.media.ice.pairFailed,1);
+  b.reset();assert.equal(b.state.terminalSnapshot,null);
+ }finally{f.close();}
+});
+
 test('terminal diagnostics retain verified peer signal across late frames and cleanup, then reset',async()=>{
  for(const signal of ['bye','reject','busy']){
   const f=fixture();try{const {a,b}=await f.prepare();await a.dial('42');await waitFor(()=>b.state.phase==='incoming');

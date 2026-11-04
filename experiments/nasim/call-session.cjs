@@ -2,6 +2,7 @@
 // There is no automatic dialing, answering, redial or cross-account trust.
 const {NativeMediaBridge}=require('./native-media-bridge.cjs');
 const {userId,clientId}=require('./call-codec.cjs');
+const {iceDiagnostics}=require('../providers/ice-diagnostics.cjs');
 const SAFE=new Set(['timeout','closed','not_authorized','not_connected','call_transport_failed','call_rejected','invalid_call_response',
  'invalid_native_output','operation_timeout','input_closed','process_exited','process_failed','prepare_timeout','invalid_relay',
  'invalid_pairing','invalid_description','negotiation_failed','gather_timeout','no_relay','transport_closed','transport_failed',
@@ -78,7 +79,7 @@ class CallSession {
     localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
     media:media?{phase:['prepared','configured','gathering','connecting','connected','failed','closed'].includes(media.phase)?media.phase:null,
      reason:SAFE.has(media.reason)?media.reason:null,relayPair:media.relayPair===true,mediaConnected:media.mediaConnected===true,
-     peerAuthenticated:media.peerAuthenticated===true,proxyReady:media.proxyReady===true}:null};
+     peerAuthenticated:media.peerAuthenticated===true,proxyReady:media.proxyReady===true,...media.ice?{ice:iceDiagnostics(media.ice)}:{}}:null};
   }
   this.#epoch++;if(this.#call){this.#retired.add(this.#call);while(this.#retired.size>128)this.#retired.delete(this.#retired.values().next().value);}
   clearInterval(this.#timer);this.#timer=null;this.#bridge?.close();this.#bridge=null;this.#own=null;this.#trusted=[];
@@ -246,7 +247,7 @@ class CallSession {
   return {provider:'nasim',phase,busy:this.#working||this.#queue.length>0,direction:this.#direction||null,peerId:this.#peer||null,callUUID:this.#call||null,
    selfId:this.#self||null,remoteClientId:this.#remote||null,localAccepted:this.#localAccepted,remoteAccepted:this.#remoteAccepted,
    pairingSet:this.#trusted.length>0,ignoredEvents:this.#ignored,queuedEvents:this.#queue.length,reason:this.#reason,media,terminal:this.#terminal?{...this.#terminal}:null,
-   terminalSnapshot:this.#terminalSnapshot?{signaling:{...this.#terminalSnapshot.signaling},media:this.#terminalSnapshot.media?{...this.#terminalSnapshot.media}:null}:null,
+   terminalSnapshot:this.#terminalSnapshot?{signaling:{...this.#terminalSnapshot.signaling},media:this.#terminalSnapshot.media?{...this.#terminalSnapshot.media,...this.#terminalSnapshot.media.ice?{ice:{...this.#terminalSnapshot.media.ice}}:{}}:null}:null,
    signaling:{configured:this.#configured,offerSeen:this.#offerSeen,answerSeen:this.#answerSeen,negotiated:this.#negotiated,
     pendingOfferCount:this.#earlyOffers.size,earlyEventCount:this.#early.length,...this.#signalCounts},
    liveCallVerified:false,providerPathVerified:false,billingVerified:false,internationalOutageVerified:false};
