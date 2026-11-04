@@ -36,12 +36,14 @@ fn psk_and_certificate_clients_parse_the_published_server_flag() {
 }
 
 #[test]
-fn psk_and_certificate_servers_keep_defaults_and_parse_host() {
+fn psk_and_certificate_servers_require_and_parse_host() {
     for name in ["listen_psk", "listen_verify", "listen_selfsign"] {
-        let defaults = example_cli(name, "host")
+        // The upstream required_unless setting requires explicit --host even
+        // though the argument also declares a default value.
+        let missing_host = example_cli(name, "host")
             .try_get_matches_from([name])
-            .unwrap();
-        assert_eq!(defaults.value_of("host"), Some("127.0.0.1:4444"));
+            .unwrap_err();
+        assert_eq!(missing_host.kind(), ErrorKind::MissingRequiredArgument);
         let matches = example_cli(name, "host")
             .try_get_matches_from([name, "--host", "127.0.0.1:5555"])
             .unwrap();
