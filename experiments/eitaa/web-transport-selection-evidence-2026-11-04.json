@@ -1,0 +1,18 @@
+{
+  "date": "2026-11-04",
+  "source": "Previously downloaded official Eitaa Web mtproto.worker-CJJzYEpd.js",
+  "sourceSha256": "3f26a2a9706ac7a7761efae1fe1f96ef16c2063ede6b20397cf69e802b95825f",
+  "inspection": "Offline exact-source match; no code from the artifact executed",
+  "findings": [
+    {
+      "byteOffset": 23637,
+      "exactSource": "this.transportSocket=(e,t,s)=>{}"
+    },
+    {
+      "byteOffset": 24029,
+      "exactSource": "chooseServer(e,t=\"client\",s=ct.transport,a=!0,n){return this.transportHTTP(e,t,n)}"
+    }
+  ],
+  "scope": "The cached Web DC selector always chooses its HTTP implementation even when the caller asks for websocket. Its socket factory is empty. This cached artifact supplies no alternate working secure WebSocket path for native getDhConfig.",
+  "limitations": "Does not prove the current service or another app version lacks such a path. Native empty-secret transport remains unverified for confidentiality; no credentials or network requests were used. No production route changed."
+}

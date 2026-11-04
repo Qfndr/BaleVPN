@@ -1,0 +1,21 @@
+{
+  "source": "Official Rubika Android APK 4.1.1, classes.dex",
+  "apkSha256": "193765853f6466cc56cc262b90952a40b91a6fe502149fbf6d9fad46f33e065c",
+  "registrationResponse": {
+    "class": "Lir/aaap/messengercore/model/api/RegisterDeviceOutput;",
+    "superclass": "Ljava/lang/Object;",
+    "declaredFields": [],
+    "listener": "Lir/aaap/messengercore/LoginUtils$19;.onResponse(RegisterDeviceOutput)",
+    "listenerBehavior": "Ignores response data; persists the submitted Firebase token, app version and submitted advertising ID, then reports completion."
+  },
+  "signInResponse": {
+    "class": "Lir/aaap/messengercore/model/api/SignInOutput;",
+    "superclass": "Ljava/lang/Object;",
+    "declaredFields": ["auth:String", "status:Status", "timeStamp:long", "user:UserInfoFromServer"],
+    "listener": "Lir/aaap/messengercore/LoginUtils$2;.onResponse(SignInOutput)",
+    "authBehavior": "RSA-decrypts auth with the existing private key and saves that auth. Sets API version 6, clears only the stored public key, and saves the user object and user GUID."
+  },
+  "comparison": "The current record preserves auth, private/public RSA keypair, user GUID, protocol profile and stable registration metadata. Official post-registration cache fields are input bookkeeping, not server-issued credentials.",
+  "finding": "No additional server-issued registration token or refresh token exists in these response schemas or their success handlers. Missing-token persistence is therefore not supported as the explanation for NOT_REGISTERED.",
+  "limitation": "This source audit does not identify the server-side reason for rejecting the retained sessions. It does not justify new credentials, device spoofing or repeated registration requests."
+}

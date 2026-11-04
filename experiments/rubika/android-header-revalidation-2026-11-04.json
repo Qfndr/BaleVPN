@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-04",
+  "testedChange": "Android HTTP JSON content-type parity, commit 3e5e53f",
+  "purpose": "Read-only revalidation of the two existing Android compatibility sessions",
+  "requestsPerAccount": {"anonymousGetDCs": 1, "credentialedGetDCs": 1, "getMySessions": 1},
+  "results": [
+    {"accountSlot": 1, "protectedReadSucceeded": false, "stage": "getMySessions", "reason": "registration_required", "serviceCode": "NOT_REGISTERED"},
+    {"accountSlot": 2, "protectedReadSucceeded": false, "stage": "getMySessions", "reason": "registration_required", "serviceCode": "NOT_REGISTERED"}
+  ],
+  "conclusion": "The source-backed HTTP content-type correction alone did not restore protected access. Both retained sessions still require registration according to the service.",
+  "constraints": {"newLogin": false, "registerDevice": false, "peerCalls": false, "identityChanged": false, "savedRecordWritten": false, "runtimeRestarted": false},
+  "privacy": "No account identifiers, phone numbers, tokens, keys, payloads or service URLs are retained in this evidence."
+}
