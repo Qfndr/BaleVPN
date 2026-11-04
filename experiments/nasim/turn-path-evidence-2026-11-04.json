@@ -236,5 +236,38 @@
     "exitCode": 1,
     "interpretation": "The stale verifier replacement fix passed its regression but did not change the live outcome in the same-host setup. The client still rejected route proof after successful nomination."
   },
-  "nextDiagnostic": "Retain a bounded enum-only observation of the selected candidate types and route verification stage at teardown. Test across two independent networks with the separate Windows and Linux endpoints."
+  "asymmetricMediaSelectedCandidateDiagnosis": {
+    "sourceCommit": "2c193484736b403f3b0b61ecc4a3edc721791441",
+    "windowsHelperSha256": "fccc72f82e5ce04d48d070b5826dc51f89a0b7c5a6e00a217b192410c9d0ff78",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41796444478",
+    "attempts": 1,
+    "topology": "Two retained accounts on one Windows host",
+    "clientTerminalReason": "relay_route_failed",
+    "clientRouteProofDiagnostic": {
+      "reason": "remoteCandidateRejected",
+      "localKind": "relay",
+      "remoteKind": "prflx",
+      "currentGeneration": true
+    },
+    "clientSucceededPairs": 1,
+    "clientNominatedPairs": 1,
+    "serverRouteProof": "client-relay/server-public",
+    "peerAuthenticated": [false, false],
+    "payloadTransferVerified": false,
+    "exactCleanupAcknowledged": true,
+    "remainingEncryptedCleanupIntents": [false, false],
+    "labEventSubscriptionsRestored": [true, true],
+    "bothAccountsStillSignedIn": true,
+    "exitCode": 1
+  },
+  "peerReflexiveProofPolicy": {
+    "source": "vendor/webrtc-ice/src/agent/agent_internal.rs handle_inbound",
+    "creationChecks": ["Binding request class and ICE roles", "current local:remote USERNAME", "MESSAGE-INTEGRITY with the current local ICE password"],
+    "allowedScope": "Client remote side of a unique, nominated, successful, same-family pair with a local relay, public UDP destination and nonprivileged remote port.",
+    "signaledPeerReflexiveCandidatesAllowed": false,
+    "mutualQuicAuthenticationStillRequired": true,
+    "standalonePolicyAndDestinationTestsPassed": 19,
+    "liveRetestVerified": false
+  },
+  "nextDiagnostic": "Verify the selected-pair policy change with a new live test and a separate-network VPS test."
 }

@@ -223,6 +223,12 @@ mod tests {
             true
         )
         .is_none());
+        assert!(candidate(
+            policy(),
+            "candidate:f 1 udp 123 8.8.8.8 37000 typ prflx raddr 8.8.4.4 rport 37001",
+            false
+        )
+        .is_none());
     }
 
     #[test]
@@ -241,6 +247,25 @@ mod tests {
         assert!(description(
             policy(),
             RTCSessionDescription::offer(sdp.into()).unwrap(),
+            false
+        )
+        .is_none());
+        let server_sdp = sdp
+            .replace("a=candidate:private 1 udp 100 10.0.0.1 40000 typ host\r\n", "")
+            .replace(
+                "1.1.1.1 48000 typ relay raddr 10.0.0.1 rport 40000",
+                "8.8.8.8 37000 typ host",
+            );
+        assert!(description(
+            policy(),
+            RTCSessionDescription::offer(server_sdp.clone()).unwrap(),
+            false
+        )
+        .is_some());
+        let server_sdp = server_sdp.replace("typ host", "typ prflx raddr 8.8.4.4 rport 37001");
+        assert!(description(
+            policy(),
+            RTCSessionDescription::offer(server_sdp).unwrap(),
             false
         )
         .is_none());

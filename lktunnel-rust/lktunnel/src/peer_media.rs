@@ -1150,7 +1150,10 @@ mod tests {
         let client_observation = client_media.nasim_route_observation().unwrap();
         assert_eq!(client_observation.reason, "verified");
         assert_eq!(client_observation.local_kind, Some("relay"));
-        assert!(matches!(client_observation.remote_kind, Some("host" | "srflx")));
+        assert!(matches!(
+            client_observation.remote_kind,
+            Some("host" | "srflx" | "prflx")
+        ));
         let server_observation = server_media.nasim_route_observation().unwrap();
         assert_eq!(server_observation.reason, "verified");
         assert!(matches!(server_observation.local_kind, Some("host" | "srflx")));

@@ -205,6 +205,10 @@ impl NasimRoutePolicy {
     }
 
     pub fn allows(&self, candidate: Candidate, local: bool) -> bool {
+        self.allows_candidate(candidate, local, false)
+    }
+
+    fn allows_candidate(&self, candidate: Candidate, local: bool, from_pair_proof: bool) -> bool {
         if !candidate.udp
             || !matches!(candidate.component, 1 | 2)
             || candidate.address.port() == 0
@@ -215,10 +219,13 @@ impl NasimRoutePolicy {
         let server_candidate = (self.role == Role::Server) == local;
         if server_candidate {
             candidate.address.port() >= 1024
-                && matches!(
+                && (matches!(
                     candidate.kind,
                     CandidateKind::Host | CandidateKind::ServerReflexive
-                )
+                ) || (from_pair_proof
+                    && self.role == Role::Client
+                    && !local
+                    && candidate.kind == CandidateKind::PeerReflexive))
         } else {
             candidate.kind == CandidateKind::Relay
         }
@@ -264,7 +271,10 @@ impl NasimRoutePolicy {
         if !self.allows(pair.local, true) {
             return RouteProofReason::LocalCandidateRejected;
         }
-        if !self.allows(pair.remote, false) {
+        // Remote peer-reflexive stats can come from the ICE agent's
+        // authenticated Binding-request path. Signaled candidates still go
+        // through allows(), which excludes peer-reflexive candidates.
+        if !self.allows_candidate(pair.remote, false, true) {
             return RouteProofReason::RemoteCandidateRejected;
         }
         RouteProofReason::Verified
@@ -384,11 +394,45 @@ mod tests {
         assert_eq!(policy.prove(true, &[bypass]), RouteProof::Rejected);
         let mut peer_reflexive = pair();
         peer_reflexive.remote.kind = CandidateKind::PeerReflexive;
-        let reason = policy.proof_reason(true, &[peer_reflexive]);
-        assert_eq!(reason, RouteProofReason::RemoteCandidateRejected);
-        assert_eq!(reason.proof(), RouteProof::Rejected);
-        assert_eq!(reason.code(), "remoteCandidateRejected");
         assert_eq!(CandidateKind::PeerReflexive.code(), "prflx");
+        assert!(!policy.allows(peer_reflexive.remote, false));
+        assert_eq!(
+            policy.prove(true, &[peer_reflexive]),
+            RouteProof::ClientRelayServerPublic
+        );
+
+        for (address, udp) in [
+            ("192.168.1.2:37000", true),
+            ("8.8.8.8:443", true),
+            ("8.8.8.8:37000", false),
+        ] {
+            let mut pair = pair();
+            pair.remote.kind = CandidateKind::PeerReflexive;
+            pair.remote.address = address.parse().unwrap();
+            pair.remote.udp = udp;
+            let reason = policy.proof_reason(true, &[pair]);
+            assert_eq!(reason, RouteProofReason::RemoteCandidateRejected);
+            assert_eq!(reason.code(), "remoteCandidateRejected");
+        }
+
+        let mut wrong_role = pair();
+        std::mem::swap(&mut wrong_role.local, &mut wrong_role.remote);
+        wrong_role.remote.kind = CandidateKind::PeerReflexive;
+        let server_policy = NasimRoutePolicy::new(Role::Server);
+        assert_eq!(
+            server_policy.proof_reason(true, &[wrong_role]),
+            RouteProofReason::RemoteCandidateRejected
+        );
+        let mut local_peer_reflexive = pair();
+        std::mem::swap(
+            &mut local_peer_reflexive.local,
+            &mut local_peer_reflexive.remote,
+        );
+        local_peer_reflexive.local.kind = CandidateKind::PeerReflexive;
+        assert_eq!(
+            server_policy.proof_reason(true, &[local_peer_reflexive]),
+            RouteProofReason::LocalCandidateRejected
+        );
         let mut mixed = pair();
         mixed.local.address = "[2606:4700:4700::1111]:48000".parse().unwrap();
         assert_eq!(policy.prove(true, &[mixed]), RouteProof::Rejected);
