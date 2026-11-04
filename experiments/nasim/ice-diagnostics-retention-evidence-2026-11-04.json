@@ -1,0 +1,34 @@
+{
+  "provider": "nasim",
+  "date": "2026-11-04",
+  "sourceFinding": {
+    "dependency": "webrtc-ice 0.11.0",
+    "failureOrdering": "AgentInternal.update_connection_state(Failed) awaits delete_all_candidates before storing and publishing Failed.",
+    "candidateDeletion": "delete_all_candidates closes candidate sockets and clears local_candidates and remote_candidates.",
+    "helperOrdering": "Terminal helper diagnostics are collected after the carrier reports Disconnected or Error, which follows the ICE state callback.",
+    "interpretation": "Terminal zero candidate-list counts cannot establish that candidate gathering or remote-description delivery was absent."
+  },
+  "retainedFields": {
+    "gatheredLocalRelayCandidates": "Count from the successful final gathered local SDP. Null until that step completes.",
+    "remoteDescriptionRelayCandidates": "Count from a successfully installed remote SDP. Null before installation. Zero remains meaningful for a description with no embedded relay candidates."
+  },
+  "implementation": {
+    "existingTerminalCountsPreserved": true,
+    "rawSdpOrIdentifiersStored": false,
+    "perPacketWorkAdded": false,
+    "retainedAcrossClose": true,
+    "legacyTwelveFieldIpcAccepted": true,
+    "newFourteenFieldIpcValidated": true
+  },
+  "validation": {
+    "nodeTestsPassed": 72,
+    "nodeTestsFailed": 0,
+    "nodeTestsSkipped": 0,
+    "nodeScope": "Three provider IPC suites and Nasim call controller, including existing actual-helper controls and synthetic retained-field regression.",
+    "rustSourceParsed": true,
+    "newRustRegressionExecuted": false,
+    "rustRegressionAdded": "Actual local TURN/WebRTC/QUIC test now checks unavailable fields before description, known gathered/installed counts after negotiation, and retained counts after close.",
+    "newHelperLiveTested": false
+  },
+  "pending": "Compile and execute the changed Rust regression in CI, build verified helper artifacts, then perform any separately authorized live trial."
+}

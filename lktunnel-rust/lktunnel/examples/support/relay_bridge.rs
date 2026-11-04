@@ -43,6 +43,8 @@ async fn output_ice(media: &RelayMedia) -> Result<(), &'static str> {
     };
     output(json!({"event":"iceDiagnostics","ice":{
         "localRelayCandidates":counts.local_relay_candidates,"remoteRelayCandidates":counts.remote_relay_candidates,
+        "gatheredLocalRelayCandidates":counts.gathered_local_relay_candidates,
+        "remoteDescriptionRelayCandidates":counts.remote_description_relay_candidates,
         "pairWaiting":counts.pair_waiting,"pairInProgress":counts.pair_in_progress,
         "pairFailed":counts.pair_failed,"pairSucceeded":counts.pair_succeeded,"pairUnspecified":counts.pair_unspecified,
         "nominatedPairs":counts.nominated_pairs,"requestsSent":counts.requests_sent,"requestsReceived":counts.requests_received,

@@ -31,6 +31,22 @@ test('ICE diagnostics reject raw fields, incomplete records and unbounded counte
   assert.equal(b.state.phase,'failed');assert.equal(b.state.reason,'invalid_native_output');assert.equal(b.state.ice,undefined);
  }
 });
+test('retained candidate evidence is nullable, distinct from terminal current counts and survives failure',async()=>{
+ for(const retained of [null,0,1]){
+  const f=fixture(),b=await f.open();await configure(f,b);
+  const counts={...iceCounts(),localRelayCandidates:0,remoteRelayCandidates:0,
+   gatheredLocalRelayCandidates:retained,remoteDescriptionRelayCandidates:retained};
+  f.emit({event:'iceDiagnostics',ice:counts});f.emit({event:'error',reason:'ice_failed'});
+  assert.deepEqual(b.state.ice,counts);assert.equal(b.state.phase,'failed');
+ }
+ for(const extra of [{gatheredLocalRelayCandidates:1},
+  {gatheredLocalRelayCandidates:-1,remoteDescriptionRelayCandidates:1},
+  {gatheredLocalRelayCandidates:1,remoteDescriptionRelayCandidates:'private-address'}]){
+  const f=fixture(),b=await f.open();await configure(f,b);
+  f.emit({event:'iceDiagnostics',ice:{...iceCounts(),...extra}});
+  assert.equal(b.state.reason,'invalid_native_output');assert.equal(b.state.ice,undefined);
+ }
+});
 const connected=(extra={})=>({event:'connected',provider,mediaConnected:true,relayPair:true,peerAuthenticated:false,proxyReady:false,socksAddress:'127.0.0.1:1089',providerPathVerified:false,billingVerified:false,...extra});
 const metrics=(extra={})=>({event:'metrics',mediaConnected:true,relayPair:true,peerAuthenticated:true,proxyReady:true,receivedBytes:3000,sentBytes:1000,quic:{rttMs:12,lostPackets:0,sentPackets:30,congestionWindow:60000,sendWindowBytes:200000,profile:'balanced'},providerPathVerified:false,billingVerified:false,...extra});
 function stopped(f,b){b.close();f.emit({event:'stopped'});f.child.emit('exit',0);}

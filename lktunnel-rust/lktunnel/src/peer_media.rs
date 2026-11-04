@@ -9,7 +9,7 @@ use crate::rtp;
 use bytes::Bytes;
 use parking_lot::Mutex;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
 use std::time::Duration;
@@ -94,6 +94,8 @@ pub struct RelayMedia {
     tasks: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
     closed: Arc<AtomicBool>,
     route_rejected: Arc<AtomicBool>,
+    gathered_local_relay_candidates: AtomicU64,
+    remote_description_relay_candidates: AtomicU64,
 }
 
 /// Counts only: intentionally excludes candidate IDs, addresses and credentials.
@@ -101,6 +103,10 @@ pub struct RelayMedia {
 pub struct IceDiagnostics {
     pub local_relay_candidates: u64,
     pub remote_relay_candidates: u64,
+    /// Retained signaling evidence, distinct from the current agent lists
+    /// which webrtc-ice clears before emitting Failed. None means unavailable.
+    pub gathered_local_relay_candidates: Option<u64>,
+    pub remote_description_relay_candidates: Option<u64>,
     pub pair_waiting: u64,
     pub pair_in_progress: u64,
     pub pair_failed: u64,
@@ -234,9 +240,21 @@ fn secure_audio(sdp: &str) -> bool {
         })
 }
 
+fn relay_description_count(sdp: &str) -> u64 {
+    sdp.lines()
+        .filter(|line| line.starts_with("a=candidate:") && relay_candidate(&line[2..]))
+        .count()
+        .min(1_000_000_000) as u64
+}
+
 impl RelayMedia {
     pub async fn ice_diagnostics(&self) -> IceDiagnostics {
-        ice_diagnostics(&self.pc.get_stats().await)
+        let mut counts = ice_diagnostics(&self.pc.get_stats().await);
+        let local = self.gathered_local_relay_candidates.load(Ordering::Acquire);
+        let remote = self.remote_description_relay_candidates.load(Ordering::Acquire);
+        counts.gathered_local_relay_candidates = (local != u64::MAX).then_some(local);
+        counts.remote_description_relay_candidates = (remote != u64::MAX).then_some(remote);
+        counts
     }
     /// Takes ownership of the external carrier. A failed setup drops its
     /// output and disconnects QUIC, rather than leaving a half-ready proxy.
@@ -267,6 +285,8 @@ impl RelayMedia {
             tasks: tasks.clone(),
             closed: closed.clone(),
             route_rejected: route_rejected.clone(),
+            gathered_local_relay_candidates: AtomicU64::new(u64::MAX),
+            remote_description_relay_candidates: AtomicU64::new(u64::MAX),
         };
         let weak_pc = Arc::downgrade(&pc);
         let state_input = input.clone();
@@ -415,6 +435,8 @@ impl RelayMedia {
             self.close().await;
             return Err(MediaError::NoRelay);
         }
+        self.gathered_local_relay_candidates
+            .store(relay_description_count(&description.sdp), Ordering::Release);
         Ok(description)
     }
 
@@ -435,10 +457,13 @@ impl RelayMedia {
         if offer.sdp_type != RTCSdpType::Offer || !secure_audio(&offer.sdp) {
             return Err(MediaError::InvalidDescription);
         }
+        let remote_candidates = relay_description_count(&offer.sdp);
         self.pc
             .set_remote_description(offer)
             .await
             .map_err(|_| MediaError::Negotiation)?;
+        self.remote_description_relay_candidates
+            .store(remote_candidates, Ordering::Release);
         let answer = self
             .pc
             .create_answer(None)
@@ -450,10 +475,14 @@ impl RelayMedia {
         if answer.sdp_type != RTCSdpType::Answer || !secure_audio(&answer.sdp) {
             return Err(MediaError::InvalidDescription);
         }
+        let remote_candidates = relay_description_count(&answer.sdp);
         self.pc
             .set_remote_description(answer)
             .await
-            .map_err(|_| MediaError::Negotiation)
+            .map_err(|_| MediaError::Negotiation)?;
+        self.remote_description_relay_candidates
+            .store(remote_candidates, Ordering::Release);
+        Ok(())
     }
     pub async fn add_candidate(&self, candidate: RTCIceCandidateInit) -> Result<(), MediaError> {
         if !relay_candidate(&candidate.candidate) {
@@ -704,6 +733,9 @@ mod tests {
             .await
             .unwrap();
         let b_media = RelayMedia::new(b_in, b_out, vec![server]).await.unwrap();
+        let before_description = b_media.ice_diagnostics().await;
+        assert_eq!(before_description.gathered_local_relay_candidates, None);
+        assert_eq!(before_description.remote_description_relay_candidates, None);
         // Nasim's invited callee can be the offerer. SDP direction must not
         // decide which endpoint provides the Internet/SOCKS role.
         let offer = b_media.offer().await.unwrap();
@@ -711,6 +743,8 @@ mod tests {
         let gathering_only = b_media.ice_diagnostics().await;
         assert!(gathering_only.local_relay_candidates > 0);
         assert_eq!(gathering_only.remote_relay_candidates, 0);
+        assert!(gathering_only.gathered_local_relay_candidates.is_some_and(|count| count > 0));
+        assert_eq!(gathering_only.remote_description_relay_candidates, None);
         assert_eq!(gathering_only.pair_succeeded, 0);
         let answer = a_media.answer(offer).await.unwrap();
         b_media.set_answer(answer).await.unwrap();
@@ -721,6 +755,8 @@ mod tests {
             let counts = media.ice_diagnostics().await;
             assert!(counts.local_relay_candidates > 0);
             assert!(counts.remote_relay_candidates > 0);
+            assert!(counts.gathered_local_relay_candidates.is_some_and(|count| count > 0));
+            assert!(counts.remote_description_relay_candidates.is_some_and(|count| count > 0));
             assert!(counts.pair_succeeded > 0);
             assert!(counts.nominated_pairs > 0);
             assert!(counts.requests_sent.is_none() && counts.requests_received.is_none());
@@ -760,6 +796,11 @@ mod tests {
         assert!(!b.is_connected());
         assert!(!a.is_peer_authenticated());
         assert_eq!(a_media.selected_route().await, RelayRoute::Unknown);
+        for media in [&a_media, &b_media] {
+            let counts = media.ice_diagnostics().await;
+            assert!(counts.gathered_local_relay_candidates.is_some_and(|count| count > 0));
+            assert!(counts.remote_description_relay_candidates.is_some_and(|count| count > 0));
+        }
     }
 
     #[tokio::test]
