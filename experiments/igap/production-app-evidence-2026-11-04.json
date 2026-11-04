@@ -569,5 +569,30 @@
       "The default ICE policy failed prior controlled trials; relay-only succeeded in these two calls.",
       "Remote VPS deployment, sustained reliability, operator billing and international-outage behavior remain unverified."
     ]
+  },
+  "persistedRelayRepeatTrial": {
+    "sourceCommit": "4f13ea25cb94c948c85d8b7a529d1fbe5cf9fe81",
+    "binarySha256": "805b8eb22192f5e00b7ec3d679bec240fda5bcacba2405552b791577c1f3d5d2",
+    "scope": "Normal saved relayOnly setting through protected config API, two sequential calls on one Windows host.",
+    "cycles": 2,
+    "bothSidesPolicy": "relay",
+    "bothSidesRelayOnlyRequested": true,
+    "bothSidesDiagnosticRelayOnly": false,
+    "mutualAuthentication": true,
+    "downloadBytesPerCycle": 352240,
+    "downloadSha256": "693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3",
+    "uploadBytesPerCycle": 71680,
+    "uploadSha256": "f2a397bbb2c83282451cd5a4e26c1371ca056bf475d4b52bce7ba1d2b9a917a7",
+    "uploadEchoMatches": true,
+    "stableAfterTransferSecondsPerCycle": 20,
+    "serverReturnedToListeningAfterEachCycle": true,
+    "cleanupBothLocallyStopped": true,
+    "bothOriginalConfigurationsRestoredAndReadBack": true,
+    "otpRequested": false,
+    "deviceRegistrationRequested": false,
+    "limitations": [
+      "Single-host short functional test, not a speed benchmark.",
+      "Remote VPS, sustained operation, operator billing and international-outage behavior remain unverified."
+    ]
   }
 }
