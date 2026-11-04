@@ -183,6 +183,40 @@ test('Eitaa HTTP recovery accepts only an exact terminal event and never retries
  assert.equal(state.canRecover,false);assert.equal(state.canPrepare,true);
  assert.equal(api.calls.filter(call=>call.method==='phone.discardCall').length,1);
 },{eitaaNative:true}));
+test('Eitaa HTTP lab reloads the same vault and recovers a known call after a clean server restart',()=>fixture(async({lab,request,dir,calls,eitaaHarness})=>{
+ await eitaaLogin(request);
+ assert.equal((await request('/api/eitaa/media/prepare',{})).status,200);
+ assert.equal((await request('/api/eitaa/media/dial',{slot:1})).status,200);
+ const id=eitaaHarness.api.call.base.id;
+ await lab.close();
+ assert.ok(eitaaHarness.natives.every(native=>native.state.phase==='closed'));
+ const reopened=await startLab({directory:dir,port:0,eitaaBridgeExecutable:path.resolve('fixture-eitaa-helper'),
+  eitaaOpenBridge:eitaaHarness.open,eitaaCallClientFactory:eitaaHarness.createClient,eitaaAccountClientFactory:eitaaHarness.createAccountClient,
+  eitaaSessionFactory:(slot,options)=>eitaaFixture(slot,calls,options)});
+ try{
+  const key=new URL(reopened.url).hash.slice(1);
+  const send=(route,body)=>fetch(reopened.origin+route,{method:body===undefined?'GET':'POST',
+   headers:{Authorization:'Bearer '+key,Origin:reopened.origin,'Content-Type':'application/json'},
+   body:body===undefined?undefined:JSON.stringify(body)});
+  assert.equal((await send('/api/eitaa/media/recover',{})).status,423);
+  assert.equal((await send('/api/vault/unlock',{password:'fixture-passphrase-123'})).status,200);
+  let state=await(await send('/api/state')).json();
+  assert.equal(state.eitaaMedia.phase,'uncertain');assert.equal(state.eitaaMedia.canRecover,true);
+  assert.equal(state.eitaaMedia.canPrepare,false);
+  assert.ok(state.providerAccounts.eitaa.every(account=>account.stored&&!account.signedIn));
+  assert.equal((await send('/api/eitaa/media/recover',{})).status,400);
+  for(const slot of [1,2])assert.equal((await send('/api/eitaa/'+slot+'/resume',{})).status,200);
+  assert.equal((await send('/api/eitaa/media/prepare',{})).status,400);
+  assert.equal((await send('/api/eitaa/media/recover',{})).status,400);
+  eitaaHarness.api.queues.get(8000001).push({_:'updatePhoneCall',phone_call:{_:'phoneCallDiscarded',id}});
+  assert.deepEqual(await(await send('/api/eitaa/media/recover',{})).json(),{ok:true,ended:true,remoteConfirmed:true});
+  state=await(await send('/api/state')).json();
+  assert.equal(state.eitaaMedia.canRecover,false);assert.equal(state.eitaaMedia.canPrepare,true);
+  assert.equal(calls.filter(call=>call.action==='eitaa-auth.sendCode').length,2);
+  assert.equal(eitaaHarness.api.calls.filter(call=>call.method==='phone.requestCall').length,1);
+  assert.equal(eitaaHarness.api.calls.some(call=>call.method==='phone.discardCall'),false);
+ }finally{await reopened.close();}
+},{eitaaNative:true}));
 test('Rubika accounts seal private keys independently and restore without creating another login or touching the other providers',()=>fixture(async({request,dir,calls})=>{
  assert.equal((await request('/api/rubika/1/start',{country:'IR',phone:'09120000001'})).status,423);
  await request('/api/vault/unlock',{password:'fixture-passphrase-123'});
