@@ -99,9 +99,12 @@ impl RtpSender {
     /// Try to enqueue a carrier frame. Returns false on queue overflow —
     /// caller backpressures (RTP semantics: best-effort).
     pub fn send(&self, data: &[u8]) -> bool {
-        match self.tx.try_send(data.to_vec()) {
-            Ok(()) => {
+        match self.tx.try_reserve() {
+            Ok(permit) => {
+                // Publish the count before the receiver can consume the frame.
+                // Reserving also avoids allocating a frame when the queue is full.
                 self.depth.fetch_add(1, Ordering::Relaxed);
+                permit.send(data.to_vec());
                 true
             }
             Err(_) => false,
@@ -109,6 +112,9 @@ impl RtpSender {
     }
 
     pub fn queue_depth(&self) -> usize {
+        if self.tx.is_closed() {
+            return 0;
+        }
         self.depth.load(Ordering::Relaxed)
     }
 }
@@ -605,11 +611,24 @@ async fn peer_ice_stats(pc:&RTCPeerConnection)->serde_json::Value {
     use webrtc::ice::candidate::{CandidatePairState,CandidateType};
     let (mut local,mut remote,mut pairs,mut nominated,mut deleted)=(0u32,0u32,0u32,0u32,0u32);
     let mut states=[0u32;5];let mut local_types=[0u32;5];let mut remote_types=[0u32;5];
+    let (mut outbound_streams, mut inbound_streams) = (0u32, 0u32);
+    let (mut outbound_packets, mut outbound_bytes) = (0u64, 0u64);
+    let (mut inbound_packets, mut inbound_bytes) = (0u64, 0u64);
     let kind=|value:CandidateType|match value {CandidateType::Host=>0,CandidateType::ServerReflexive=>1,CandidateType::PeerReflexive=>2,CandidateType::Relay=>3,_=>4};
     for value in report.reports.values().take(16384) {
         match value {
             StatsReportType::LocalCandidate(candidate)=>{local+=1;local_types[kind(candidate.candidate_type)]+=1;if candidate.deleted{deleted+=1;}},
             StatsReportType::RemoteCandidate(candidate)=>{remote+=1;remote_types[kind(candidate.candidate_type)]+=1;if candidate.deleted{deleted+=1;}},
+            StatsReportType::OutboundRTP(stream) => {
+                outbound_streams += 1;
+                outbound_packets = outbound_packets.saturating_add(stream.packets_sent);
+                outbound_bytes = outbound_bytes.saturating_add(stream.bytes_sent);
+            },
+            StatsReportType::InboundRTP(stream) => {
+                inbound_streams += 1;
+                inbound_packets = inbound_packets.saturating_add(stream.packets_received);
+                inbound_bytes = inbound_bytes.saturating_add(stream.bytes_received);
+            },
             StatsReportType::CandidatePair(pair)=>{
                 pairs+=1;if pair.nominated{nominated+=1;}
                 states[match pair.state {CandidatePairState::Waiting=>0,CandidatePairState::InProgress=>1,CandidatePairState::Succeeded=>2,CandidatePairState::Failed=>3,_=>4}]+=1;
@@ -621,7 +640,16 @@ async fn peer_ice_stats(pc:&RTCPeerConnection)->serde_json::Value {
     serde_json::json!({"status":"ok","configuredTransportRole":role,"selectedPairPresent":selected_pair_present,"transportState":transport_state,"dtlsState":dtls_state,"truncated":report.reports.len()>16384,"localCandidates":local,"remoteCandidates":remote,
         "candidatePairs":pairs,"nominatedPairs":nominated,"deletedCandidates":deleted,
         "pairsWaiting":states[0],"pairsInProgress":states[1],"pairsSucceeded":states[2],"pairsFailed":states[3],"pairsUnknown":states[4],
-        "localTypes":kinds(local_types),"remoteTypes":kinds(remote_types),"requestCountersSupported":false})
+        "localTypes":kinds(local_types),"remoteTypes":kinds(remote_types),"requestCountersSupported":false,
+        "rtp": {
+            "outboundStreams":outbound_streams,
+            "outboundPacketWrites":(outbound_streams>0).then_some(outbound_packets),
+            "outboundPayloadBytes":(outbound_streams>0).then_some(outbound_bytes),
+            "inboundStreams":inbound_streams,
+            "inboundPackets":(inbound_streams>0).then_some(inbound_packets),
+            "inboundPayloadBytes":(inbound_streams>0).then_some(inbound_bytes),
+            "outboundMeasurement":"writer_returned_ok"
+        }})
 }
 
 impl Drop for Engine {

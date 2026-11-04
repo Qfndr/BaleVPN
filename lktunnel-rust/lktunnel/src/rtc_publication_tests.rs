@@ -627,3 +627,122 @@ async fn cancelling_before_join_aborts_the_already_running_signal_stream() {
     assert!(matches!(connect.await, Err(error) if error.is_cancelled()));
     closed_without_offer(&mut socket).await;
 }
+
+#[tokio::test]
+async fn terminal_rtp_counts_require_actual_rtp_and_omit_stream_identifiers() {
+    let api = super::make_api().unwrap();
+    let sender = api
+        .new_peer_connection(RTCConfiguration::default())
+        .await
+        .unwrap();
+    let receiver = api
+        .new_peer_connection(RTCConfiguration::default())
+        .await
+        .unwrap();
+    let track = Arc::new(TrackLocalStaticSample::new(
+        RTCRtpCodecCapability {
+            mime_type: MIME_TYPE_OPUS.into(),
+            clock_rate: 48000,
+            channels: 2,
+            ..Default::default()
+        },
+        "private-fixture-track".into(),
+        "private-fixture-stream".into(),
+    ));
+    sender.add_track(track.clone()).await.unwrap();
+    let before = super::peer_ice_stats(&sender).await;
+    assert!(before["rtp"]["outboundPacketWrites"].is_null());
+    let (received_track, mut tracks) = tokio::sync::mpsc::unbounded_channel();
+    receiver.on_track(Box::new(move |track, _, _| {
+        let _ = received_track.send(track);
+        Box::pin(async {})
+    }));
+    let mut gather = sender.gathering_complete_promise().await;
+    sender
+        .set_local_description(sender.create_offer(None).await.unwrap())
+        .await
+        .unwrap();
+    timeout(LIMIT, gather.recv()).await.unwrap();
+    receiver
+        .set_remote_description(sender.local_description().await.unwrap())
+        .await
+        .unwrap();
+    let mut gather = receiver.gathering_complete_promise().await;
+    receiver
+        .set_local_description(receiver.create_answer(None).await.unwrap())
+        .await
+        .unwrap();
+    timeout(LIMIT, gather.recv()).await.unwrap();
+    sender
+        .set_remote_description(receiver.local_description().await.unwrap())
+        .await
+        .unwrap();
+    timeout(LIMIT, async {
+        while sender.connection_state() != RTCPeerConnectionState::Connected {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    let payload = bytes::Bytes::from_static(&[0x78, 1, 2, 3, 4]);
+    track
+        .write_sample(&Sample {
+            data: payload.clone(),
+            duration: Duration::from_millis(20),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let remote = timeout(LIMIT, tracks.recv()).await.unwrap().unwrap();
+    let (packet, _) = timeout(LIMIT, remote.read_rtp()).await.unwrap().unwrap();
+    assert_eq!(packet.payload, payload);
+    let (sent, received) = timeout(LIMIT, async {
+        loop {
+            let (sent, received) = tokio::join!(
+                super::peer_ice_stats(&sender),
+                super::peer_ice_stats(&receiver)
+            );
+            if sent["rtp"]["outboundPacketWrites"].as_u64().unwrap_or(0) > 0
+                && received["rtp"]["inboundPackets"].as_u64().unwrap_or(0) > 0
+            {
+                break (sent, received);
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(sent["rtp"]["outboundPayloadBytes"].as_u64().unwrap() >= payload.len() as u64);
+    assert!(received["rtp"]["inboundPayloadBytes"].as_u64().unwrap() >= payload.len() as u64);
+    for summary in [sent, received] {
+        let text = summary.to_string();
+        assert!(!text.contains("private-fixture"));
+        assert!(!text.contains("127.0.0.1"));
+    }
+    sender.close().await.unwrap();
+    receiver.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn sender_queue_counts_reservations_and_rejects_full_or_closed_without_growth() {
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let task = tokio::spawn(async {});
+    let sender = RtpSender {
+        tx,
+        depth: Arc::new(AtomicUsize::new(0)),
+        _writer: task.abort_handle(),
+        _track: Arc::new(TrackLocalStaticSample::new(
+            RTCRtpCodecCapability::default(),
+            "fixture".into(),
+            "fixture".into(),
+        )),
+    };
+    assert!(sender.send(&[1]));
+    assert_eq!(sender.queue_depth(), 1);
+    assert!(!sender.send(&[2]));
+    assert_eq!(sender.queue_depth(), 1);
+    drop(rx);
+    assert!(!sender.send(&[3]));
+    assert_eq!(sender.queue_depth(), 0);
+    task.await.unwrap();
+}

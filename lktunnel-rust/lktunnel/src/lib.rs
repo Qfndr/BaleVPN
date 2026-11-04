@@ -803,6 +803,8 @@ impl LkTunnel {
             Some(engine.media_diagnostic())
         } else { self.last_media_diagnostic.lock().clone() }?;
         value["peerWaitReleased"]=self.peer_wait_released.load(Ordering::Acquire).into();
+        value["carrierQueuedFrames"] = self.rtp_senders.lock().iter()
+            .fold(0usize, |total, sender| total.saturating_add(sender.queue_depth())).into();
         value["quicClientStarted"]=self.quic_client_started.load(Ordering::Acquire).into();
         value["quicServerStarted"]=self.quic_server_started.load(Ordering::Acquire).into();
         Some(value)
