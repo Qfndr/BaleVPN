@@ -14,9 +14,17 @@ on:
       - 'vendor/webrtc-*/**'
       - 'vendor/livekit-api/**'
       - 'experiments/providers/relay-media-bridge.cjs'
-      - 'experiments/nasim/native-media-bridge.cjs'
-      - 'experiments/eitaa/native-media-bridge.cjs'
-      - 'experiments/rubika/native-media-bridge.cjs'
+      - 'experiments/nasim/*.cjs'
+      - 'experiments/eitaa/*.cjs'
+      - 'experiments/eitaa/*-schema.json'
+      - 'experiments/rubika/*.cjs'
+      - 'scripts/eitaa-media-fixture-adapter.cjs'
+      - 'scripts/rubika-media-fixture-adapter.cjs'
+      - 'scripts/eitaa-native-call-fixture.cjs'
+      - 'scripts/rubika-native-call-fixture.cjs'
+      - 'scripts/eitaa-call-session-fixture.cjs'
+      - 'scripts/eitaa-call-fixtures.cjs'
+      - 'scripts/rubika-account-media-fixture.cjs'
       - 'scripts/relay-native-fixtures.cjs'
       - 'scripts/test-nasim-native.cjs'
       - 'scripts/test-eitaa-native.cjs'
@@ -29,8 +37,18 @@ on:
       - 'lk-signaling-rust/**'
       - 'vendor/webrtc-*/**'
       - 'vendor/livekit-api/**'
-      - 'experiments/**/native-media-bridge.cjs'
+      - 'experiments/nasim/*.cjs'
+      - 'experiments/eitaa/*.cjs'
+      - 'experiments/eitaa/*-schema.json'
+      - 'experiments/rubika/*.cjs'
       - 'experiments/providers/relay-media-bridge.cjs'
+      - 'scripts/eitaa-media-fixture-adapter.cjs'
+      - 'scripts/rubika-media-fixture-adapter.cjs'
+      - 'scripts/eitaa-native-call-fixture.cjs'
+      - 'scripts/rubika-native-call-fixture.cjs'
+      - 'scripts/eitaa-call-session-fixture.cjs'
+      - 'scripts/eitaa-call-fixtures.cjs'
+      - 'scripts/rubika-account-media-fixture.cjs'
       - 'scripts/relay-native-fixtures.cjs'
       - 'scripts/test-*-native.cjs'
 
@@ -59,7 +77,7 @@ jobs:
           persist-credentials: false
       - name: Configure isolated build and test storage
         run: |
-          printf '%s\n' "TEMP=$RUNNER_TEMP" "TMP=$RUNNER_TEMP" "TMPDIR=$RUNNER_TEMP" "CARGO_HOME=$RUNNER_TEMP/provider-cargo" "CARGO_TARGET_DIR=$RUNNER_TEMP/provider-target" "PROVIDER_ARTIFACT_DIR=$RUNNER_TEMP/provider-helper-artifacts" "PYTHONDONTWRITEBYTECODE=1" >> "$GITHUB_ENV"
+          printf '%s\n' "TEMP=$RUNNER_TEMP" "TMP=$RUNNER_TEMP" "TMPDIR=$RUNNER_TEMP" "CARGO_HOME=$RUNNER_TEMP/provider-cargo" "CARGO_TARGET_DIR=$RUNNER_TEMP/provider-target" "PROVIDER_ARTIFACT_DIR=$RUNNER_TEMP/provider-helper-artifacts" "PYTHONDONTWRITEBYTECODE=1" "CARGO_TERM_COLOR=never" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
@@ -94,12 +112,14 @@ jobs:
           import os
           from pathlib import Path
           import shutil
+          import subprocess
           import sys
 
           directory = Path(os.environ['PROVIDER_ARTIFACT_DIR'])
           directory.mkdir(parents=True, exist_ok=True)
           suffix = '.exe' if sys.platform == 'win32' else ''
           helpers = []
+          node = subprocess.check_output(['node', '-p', 'process.execPath'], text=True).strip()
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as environment:
               for provider in ('nasim', 'eitaa', 'rubika'):
                   name = provider + '_relay_bridge' + suffix
@@ -109,10 +129,12 @@ jobs:
                   helpers.append({'provider': provider, 'file': name, 'bytes': target.stat().st_size,
                                   'sha256': hashlib.sha256(target.read_bytes()).hexdigest()})
                   environment.write('BALEVPN_' + provider.upper() + '_BRIDGE=' + str(target) + '\n')
+              for provider in ('EITAA', 'RUBIKA'):
+                  environment.write('BALEVPN_' + provider + '_ADAPTER_NODE=' + node + '\n')
           manifest = {'format': 1, 'scope': 'experimental-lab-only',
                       'sourceCommit': os.environ['GITHUB_SHA'], 'platform': os.environ['RUNNER_OS'],
                       'architecture': 'x86_64', 'helpers': helpers,
-                      'testScope': 'native process validation, identity lifecycle and local relay-gather cancellation',
+                      'testScope': 'native lifecycle, local TURN/DTLS/RTP/QUIC interoperability, provider codec projection and proxy target filtering',
                       'nativeTestsPassed': False,
                       'liveProviderCallsVerified': False, 'operatorBillingVerified': False}
           (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
@@ -120,6 +142,14 @@ jobs:
       - name: Test actual helpers with all native cases enabled
         run: |
           node --test --test-reporter=tap --test-concurrency=1 scripts/test-nasim-native.cjs scripts/test-eitaa-native.cjs scripts/test-rubika-native.cjs | tee "$PROVIDER_ARTIFACT_DIR/native-tests.tap"
+      - name: Test existing real-media and helper interoperability cases
+        run: |
+          cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --lib peer_media::tests:: -- --ignored --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-peer-media.txt"
+          for provider in nasim eitaa rubika; do
+            cargo test --manifest-path lktunnel-rust/Cargo.toml -p lktunnel --locked --release --example "${provider}_relay_bridge" two_actual_helpers_negotiate_relay_quic_and_keep_ssrf_protection -- --ignored --test-threads=1 2>&1 | tee "$PROVIDER_ARTIFACT_DIR/rust-${provider}-helpers.txt"
+          done
+      - name: Require every native and interoperability test to pass
+        run: |
           python - <<'PY'
           import hashlib
           import json
@@ -135,11 +165,20 @@ jobs:
                   raise SystemExit('Actual native helper tests require zero ' + field)
           total = re.search(r'^# tests (\d+)\s*$', report, re.MULTILINE)
           passed = re.search(r'^# pass (\d+)\s*$', report, re.MULTILINE)
-          if total is None or passed is None or int(total.group(1)) < 9 or total.group(1) != passed.group(1):
+          if total is None or passed is None or int(total.group(1)) != 45 or total.group(1) != passed.group(1):
               raise SystemExit('Actual native helper test report is incomplete')
           manifest_path = directory / 'manifest.json'
           manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          rust_tests = {}
+          for name, expected in (('peer-media', 4), ('nasim-helpers', 1), ('eitaa-helpers', 1), ('rubika-helpers', 1)):
+              path = directory / ('rust-' + name + '.txt')
+              summaries = re.findall(r'^test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured;', path.read_text(encoding='utf-8'), re.MULTILINE)
+              if summaries != [(str(expected), '0', '0', '0')]:
+                  raise SystemExit('Unexpected interoperability result for ' + name)
+              rust_tests[name] = {'passed': expected, 'failed': 0, 'ignored': 0,
+                                  'report': path.name, 'reportSha256': hashlib.sha256(path.read_bytes()).hexdigest()}
           manifest['nativeTestsPassed'] = True
+          manifest['rustInteropTests'] = rust_tests
           manifest['nativeTests'] = {'passed': int(total.group(1)), 'skipped': 0,
                                      'report': report_path.name,
                                      'reportSha256': hashlib.sha256(report_path.read_bytes()).hexdigest()}
