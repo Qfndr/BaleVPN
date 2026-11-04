@@ -203,11 +203,19 @@ jobs:
           python scripts/check-crypto-dependencies.py | tee security-evidence/crypto-dependencies.txt
           python scripts/test-rust-audit-policy.py
           failed=0
-          fetch_arg=""
           for workspace in lk-signaling-rust bale-signaling-rust lktunnel-rust bale-vpn-rust bale-vpn-android/rust vendor/webrtc-dtls; do
             name="${workspace//\//-}"
             audit_status=0
-            cargo audit $fetch_arg --file "$workspace/Cargo.lock" --json > "security-evidence/$name.json" || audit_status=$?
+            # Each lockfile can introduce uncached sparse-index entries. Do not
+            # disable fetching after the first (smaller) dependency graph.
+            CARGO_TERM_COLOR=never cargo audit --file "$workspace/Cargo.lock" --json \
+              > "security-evidence/$name.json" 2> "security-evidence/$name-stderr.txt" || audit_status=$?
+            cat "security-evidence/$name-stderr.txt"
+            # cargo-audit 0.22.2 can report incomplete yank checks only on
+            # stderr, without including the failure in its JSON report.
+            if grep -Eq "couldn't check if the package is yanked|couldn't (update|open) crates.io index|^error:" "security-evidence/$name-stderr.txt"; then
+              failed=1
+            fi
             metadata_arg=()
             if [ "$workspace" = "bale-vpn-rust" ]; then
               if cargo metadata --locked --format-version 1 --manifest-path "$workspace/Cargo.toml" > "security-evidence/$name-metadata.json"; then
@@ -218,7 +226,6 @@ jobs:
             fi
             python scripts/classify-rust-audit.py --workspace "$workspace" --report "security-evidence/$name.json" \
               --audit-exit-code "$audit_status" "${metadata_arg[@]}" --output "security-evidence/$name-disposition.json" || failed=1
-            fetch_arg="--no-fetch"
           done
           exit "$failed"
       - uses: actions/upload-artifact@v4
