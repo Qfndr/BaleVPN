@@ -1,7 +1,7 @@
 {
   "provider": "nasim",
   "date": "2026-11-04",
-  "scope": "One authorized diagnostic call between two owned accounts, before acceptance. This is a TURN allocation and nonce exchange probe, not a completed WebRTC or proxy test.",
+  "scope": "Three authorized diagnostic calls between two owned accounts, covering pre-acceptance and observed signaling acceptance. These probes test TURN allocation and exact payload exchange; full WebRTC media and proxy transfer are outside their scope.",
   "ci": {
     "sourceCommit": "6572fe2cb1f0b4d93541ef37c680ee28d537b2c3",
     "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41775847684",
@@ -55,8 +55,14 @@
       "endCompleted": true,
       "callBound": true,
       "slotTwoExactCleanupServiceAcknowledged": true,
-      "remainingEncryptedCleanupIntents": [false, false],
-      "labEventSubscriptionsRestored": [true, true]
+      "remainingEncryptedCleanupIntents": [
+        false,
+        false
+      ],
+      "labEventSubscriptionsRestored": [
+        true,
+        true
+      ]
     },
     "rawConfigCredentialsAddressesAndCallIdentifiersRecorded": false
   },
@@ -80,14 +86,64 @@
     },
     "callCleanup": {
       "slotOneExactCleanupServiceAcknowledged": true,
-      "remainingEncryptedCleanupIntents": [false, false],
-      "labEventSubscriptionsRestored": [true, true],
+      "remainingEncryptedCleanupIntents": [
+        false,
+        false
+      ],
+      "labEventSubscriptionsRestored": [
+        true,
+        true
+      ],
       "bothAccountsStillSignedIn": true
     },
     "interpretation": "The accept signal was observed by the caller without creating additional WebRTC allocations. This still did not verify a bidirectional nonce exchange. Signaling acceptance alone does not establish full media negotiation or all service-side forwarding eligibility conditions.",
     "rawConfigCredentialsAddressesAndCallIdentifiersRecorded": false
   },
-  "totalLiveProbeAttempts": 2,
+  "stunBindingFollowup": {
+    "executionReportedBy": "parent agent controlling the local diagnostic runner",
+    "attempts": 1,
+    "platform": "Windows",
+    "sourceCommit": "14e36cd9b6fcd00ee77494939aecb8964e59d0da",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41778825034",
+    "artifactId": 13298089882,
+    "probeSha256": "919235d3136d5bad15bc2ddc8111baa31cfac5d97be3c98be79bc5cdd265f2f0",
+    "probeBytes": 1408000,
+    "ciTurnProbeTestsPerPlatform": 6,
+    "ciAsymmetricPolicyTestsPerPlatform": 11,
+    "bothCiArchivesAndReportHashesVerified": true,
+    "serverClockVerified": true,
+    "configsBoundToBothOwnedAccountsAndSameCanonicalCall": true,
+    "signalingAccepted": true,
+    "callerObservedAccept": true,
+    "mediaConfigured": false,
+    "additionalWebRtcAllocations": 0,
+    "payloadKind": "stunBinding",
+    "payloadBytes": 32,
+    "probe": {
+      "allocated": 2,
+      "bidirectionalVerified": false,
+      "localCleanupComplete": true,
+      "ok": false,
+      "reason": "timeout",
+      "stage": "receive_and_verify"
+    },
+    "callCleanup": {
+      "slotOneExactCleanupServiceAcknowledged": true,
+      "remainingEncryptedCleanupIntents": [
+        false,
+        false
+      ],
+      "labEventSubscriptionsRestored": [
+        true,
+        true
+      ],
+      "bothAccountsStillSignedIn": true
+    },
+    "exitCode": 1,
+    "interpretation": "Using valid STUN Binding framing did not change the receive-and-verify timeout in this same-host setup. The probe did not perform authenticated ICE connectivity checks, nomination or DTLS and does not identify why either direction failed to verify.",
+    "rawConfigCredentialsAddressesAndCallIdentifiersRecorded": false
+  },
+  "totalLiveProbeAttempts": 3,
   "sourceAudit": {
     "turnDependency": "turn 0.8.0 via webrtc 0.11.0",
     "permissionOrdering": "RelayConnInternal.create_perm awaits create_permissions and marks the permission permitted after the transaction returns. Both first sends complete before the fixed second send round starts.",
@@ -99,7 +155,8 @@
     "officialPreAcceptanceBehavior": "onReceiveConfig creates the incoming peer connection and sends an offer before acceptance. This supports pre-acceptance connection setup but does not establish the backend's forwarding policy before acceptance."
   },
   "interpretationLimits": [
-    "The first probe ran before acceptance; the second followed observed signaling acceptance without media negotiation. Service-side forwarding eligibility is not established by either state.",
+    "The first probe ran before acceptance. The next two followed observed signaling acceptance without media negotiation. Service-side forwarding eligibility is not established by these states.",
+    "The third probe used a valid STUN Binding request with a random transaction ID and padding. It did not test authenticated ICE checks, nomination, a network outage or full media transport.",
     "Both allocations originated on the same Windows host. This does not test two independent access networks or isolate service relay hairpin behavior.",
     "The probe makes two fixed sends per direction. Datagram loss and time consumed by allocation cannot be excluded by this result.",
     "The successful local TURN mock proves the probe's fixture path, not compatibility with every service policy or relay deployment.",
