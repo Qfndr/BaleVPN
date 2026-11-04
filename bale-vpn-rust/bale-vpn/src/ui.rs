@@ -33,7 +33,7 @@ use tower_http::trace::TraceLayer;
 
 /// Build the router. Caller spawns this against a TcpListener.
 pub fn router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let app = Router::new()
         .route("/flags/:name", get(country_flag))
         .route("/",              get(index))
         .route("/fonts/:name", get(font))
@@ -93,7 +93,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/tunnel/clients",           get(tunnel_clients))
         .route("/tunnel/clients/:peer_id/disconnect", post(tunnel_client_disconnect))
         .with_state(state.clone())
-        .nest("/providers/igap", crate::provider::router(state.igap.clone()))
+        .nest("/providers/igap", crate::provider::router(state.igap.clone()));
+    let app = match &state.nasim {
+        Some(service) => app.nest("/providers/nasim", crate::nasim_provider::router(service.clone())),
+        None => app.route("/providers/nasim/info", get(|| async { Json(serde_json::json!({"available":false})) })),
+    };
+    app
         .layer(middleware::from_fn(protect_management_ui))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"),
@@ -238,11 +243,20 @@ pub(crate) async fn country_flag(Path(name):Path<String>) -> axum::response::Res
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
-async fn index() -> impl IntoResponse {
+async fn index(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let page = if state.nasim.is_some() {
+        std::borrow::Cow::Owned(INDEX_HTML.replacen(
+            "آی‌گپ · iGap</a></nav>",
+            "آی‌گپ · iGap</a><a href=\"/providers/nasim/ui\">نسیم رضوان · Nasim</a></nav>",
+            1,
+        ))
+    } else {
+        std::borrow::Cow::Borrowed(INDEX_HTML)
+    };
     (
         StatusCode::OK,
         [("content-type", "text/html; charset=utf-8")],
-        INDEX_HTML,
+        page,
     )
 }
 
@@ -719,6 +733,9 @@ async fn desktop_disconnect_all(
         let _ = disconnect(State(s.clone())).await;
     }
     s.igap.disconnect_if_loaded().await;
+    if let Some(nasim) = &s.nasim {
+        failed |= !nasim.disconnect().await;
+    }
     while let Some(result)=workers.join_next().await {
         failed |= !matches!(result,Ok(true));
     }

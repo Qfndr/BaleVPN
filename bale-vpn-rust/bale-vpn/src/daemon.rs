@@ -19,6 +19,7 @@ use tokio::sync::{oneshot, watch, RwLock};
 /// axum's State extractor can clone it onto every request task.
 pub struct AppState {
     pub igap: Arc<crate::provider::Service>,
+    pub(crate) nasim: Option<Arc<crate::nasim_provider::Service>>,
     pub bond_server: Option<Arc<crate::bond::Server>>,
     pub auth_flow: tokio::sync::Mutex<()>,
     pub backup_job: tokio::sync::Mutex<()>,
@@ -133,6 +134,7 @@ pub async fn run_with_startup(
     let activation = lktunnel::manager::ActivationDriver::new(signaling.clone());
     let state = Arc::new(AppState {
         igap: crate::provider::Service::new(cfg.config_dir.join("providers/igap")),
+        nasim: cfg.nasim_kit.clone().map(crate::nasim_provider::Service::new),
         bond_server,
         auth_flow: tokio::sync::Mutex::new(()),
         backup_job: tokio::sync::Mutex::new(()),
@@ -213,6 +215,9 @@ pub async fn run_with_startup(
     mode_task.abort();
     state.aggregate.shutdown().await;
     state.igap.shutdown().await;
+    if let Some(nasim) = &state.nasim {
+        nasim.shutdown().await;
+    }
     if let Some(server)=&state.bond_server{server.shutdown();}
     lktunnel::socks5_quic::set_bond_gateway(None);
 

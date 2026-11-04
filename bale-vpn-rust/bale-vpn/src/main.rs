@@ -33,6 +33,7 @@ mod daemon;
 mod provider_config;
 mod provider_store;
 mod provider;
+mod nasim_provider;
 mod server;
 // Kernel-TUN device open/configure — Unix-only (uses `std::os::fd::RawFd`
 // + TUNSETIFF/utun ioctls). Windows server/client run userspace NAT and
@@ -57,6 +58,15 @@ struct Cli {
     /// Account transport provider. Existing installations default to Bale.
     #[arg(long, default_value = "bale", value_parser = ["bale", "igap"])]
     provider: String,
+    /// Opt in to a verified local Nasim endpoint kit directory.
+    #[arg(long, requires = "nasim_node")]
+    nasim_kit: Option<PathBuf>,
+    /// Absolute path to a trusted Node.js 22 or newer executable.
+    #[arg(long, requires = "nasim_kit")]
+    nasim_node: Option<PathBuf>,
+    /// Absolute path to the existing encrypted Nasim session vault.
+    #[arg(long, requires = "nasim_kit")]
+    nasim_vault: Option<PathBuf>,
     /// HTTP UI port. Bound to 127.0.0.1.
     #[arg(long)]
     port: Option<u16>,
@@ -177,6 +187,21 @@ fn main() {
     }
     resolved.managed_profile=cli.managed_profile;
     resolved.provider=if cli.provider=="igap" {provider_config::ProviderId::Igap} else {provider_config::ProviderId::Bale};
+    if let Some(directory) = cli.nasim_kit {
+        let node = cli.nasim_node.expect("checked by CLI parser");
+        let vault = cli.nasim_vault.unwrap_or_else(|| resolved.config_dir.join("providers/nasim"));
+        if !cfg!(all(any(target_os = "windows", target_os = "linux"), target_arch = "x86_64"))
+            || cli.provider != "bale" || cli.managed_profile || !directory.is_absolute()
+            || !node.is_absolute() || !vault.is_absolute()
+        {
+            use clap::CommandFactory;
+            Cli::command().error(
+                clap::error::ErrorKind::InvalidValue,
+                "Nasim requires the regular x64 Windows/Linux Bale app and absolute kit, Node, and vault paths",
+            ).exit();
+        }
+        resolved.nasim_kit = Some(nasim_provider::Kit { directory, node, vault });
+    }
 
     // GUI vs headless dispatch:
     //   - `gui` feature off:                  always headless
@@ -239,5 +264,17 @@ mod provider_cli_tests {
         let cli=Cli::try_parse_from(["bale-vpn","--provider","igap","--headless","client"]).unwrap();
         assert_eq!(cli.provider,"igap");assert!(matches!(cli.mode,Some(ModeCmd::Client{..})));
         assert!(Cli::try_parse_from(["bale-vpn","--provider","rubika"]).is_err());
+    }
+
+    #[test]
+    fn nasim_worker_requires_explicit_kit_and_node() {
+        assert!(Cli::try_parse_from(["bale-vpn", "--nasim-kit", "kit"]).is_err());
+        assert!(Cli::try_parse_from(["bale-vpn", "--nasim-node", "node"]).is_err());
+        assert!(Cli::try_parse_from(["bale-vpn", "--nasim-vault", "vault"]).is_err());
+        let cli = Cli::try_parse_from([
+            "bale-vpn", "--nasim-kit", "kit", "--nasim-node", "node", "--nasim-vault", "vault",
+        ]).unwrap();
+        assert_eq!(cli.provider, "bale");
+        assert_eq!(cli.nasim_vault, Some(PathBuf::from("vault")));
     }
 }

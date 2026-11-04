@@ -31,7 +31,7 @@ lktunnel       = { path = "../../lktunnel-rust/lktunnel" }
 
 # Async runtime + concurrency primitives.
 tokio = { version = "1", features = [
-    "rt-multi-thread", "sync", "macros", "time", "signal", "io-util", "net", "fs",
+    "rt-multi-thread", "sync", "macros", "time", "signal", "io-util", "net", "fs", "process",
 ] }
 parking_lot = "0.12"
 async-trait = "0.1"

@@ -154,6 +154,7 @@ impl Config {
 #[derive(Debug, Clone)]
 pub struct Resolved {
     pub provider: crate::provider_config::ProviderId,
+    pub(crate) nasim_kit: Option<crate::nasim_provider::Kit>,
     pub managed_profile: bool,
     pub preferences: crate::settings::Preferences,
     /// `Some("client" | "server")`, or `None` until the user
@@ -198,6 +199,7 @@ impl Resolved {
         let config_dir = config_dir(None).unwrap_or_else(|_| PathBuf::from("."));
         Self {
             provider: crate::provider_config::ProviderId::Bale,
+            nasim_kit: None,
             mode,
             managed_profile: false,
             preferences: cfg.preferences.clone(),
