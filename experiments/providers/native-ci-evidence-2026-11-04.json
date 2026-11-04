@@ -61,5 +61,37 @@
     "scope": "native lifecycle, local TURN/DTLS/RTP/QUIC interoperability, provider codec projection and proxy target filtering",
     "liveProviderCallsVerified": false,
     "operatorBillingVerified": false
+  },
+  "rtpDiagnosticsFollowup": {
+    "sourceCommit": "95b1bc875034bf9dd1628c12a282785892a64397",
+    "workflowRun": "https://github.com/Qfndr/BaleVPN/actions/runs/41769992843",
+    "platforms": [
+      {
+        "platform": "Windows x64",
+        "jobId": 126377177713,
+        "artifactId": 13295110622,
+        "archiveSha256": "bcf41f00561e92e08b83678c8086d5e2a36e34571ddfed1f19066904a1ce1d0d",
+        "nativeTestsPassed": 45,
+        "realMediaInteropTestsPassed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "helperAndReportHashesVerifiedInMemory": true
+      },
+      {
+        "platform": "Linux x64",
+        "jobId": 126377177688,
+        "artifactId": 13293893617,
+        "archiveSha256": "0e2e8d945b7f2eb23f165016498b3ac3d04f50b1bc0f56e9523369659b37ffb6",
+        "nativeTestsPassed": 45,
+        "realMediaInteropTestsPassed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "helperAndReportHashesVerifiedInMemory": true
+      }
+    ],
+    "newTerminalRtpUnitTestsVerified": false,
+    "scope": "Existing native and local relay interoperability suites with RTP diagnostic source compiled; new terminal RTP unit tests await the separate core workflow.",
+    "liveProviderCallsVerified": false,
+    "operatorBillingVerified": false
   }
 }
