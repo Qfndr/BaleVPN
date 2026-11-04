@@ -59,7 +59,9 @@ async function installFixture(page,available,{durationChoices,olderKit=false,cle
         state = {phase:'stopped',cleanupPending:false};
         break;
       case '/cleanup':
-        state = {phase:'idle',cleanupPending:false,cleanupAcknowledged:true};
+        state = input.slot === 1
+          ? {phase:'failed',cleanupPending:true,cleanupReason:'cleanup_unconfirmed'}
+          : {phase:'idle',cleanupPending:false,cleanupAcknowledged:true};
         break;
       default:
         return route.fulfill({status:404,json:{ok:false}});
@@ -97,6 +99,10 @@ async function main() {
     assert.equal(await page.locator('html').getAttribute('dir'),'rtl');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),true);
     assert.equal(await page.locator('#callDurationField').isHidden(),true);
+    await page.locator('input[name=vaultPassword]').fill('fixture-vault-password');
+    await page.locator('#recoverCleanup').click();
+    await page.getByText('سرویس پایان همان تماس را تأیید نکرد.').waitFor();
+    assert.equal(fixture.posts.shift().command,'/cleanup');
     await page.locator('select[name=slot]').selectOption('2');
     await page.locator('input[name=vaultPassword]').fill('fixture-vault-password');
     await page.locator('#recoverCleanup').click();

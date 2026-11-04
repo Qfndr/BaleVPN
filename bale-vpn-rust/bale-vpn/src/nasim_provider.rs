@@ -354,6 +354,8 @@ struct Snapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     cleanup_acknowledged: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    cleanup_reason: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     end_completed: Option<bool>,
     error: Option<&'static str>,
 }
@@ -372,6 +374,7 @@ impl Default for Snapshot {
             termination: None,
             cleanup_pending: false,
             cleanup_acknowledged: None,
+            cleanup_reason: None,
             end_completed: None,
             error: None,
         }
@@ -560,10 +563,48 @@ fn clean_closed(event: &Value) -> bool {
 fn cleanup_receipt(event: &Value, successful_exit: bool) -> Snapshot {
     let acknowledged = event["cleanupAcknowledged"].as_bool();
     let clean = successful_exit && clean_closed(event) && acknowledged.is_some();
+    let reason = if !clean
+        && successful_exit
+        && event["event"] == "closed"
+        && event["cleanupPending"] == true
+    {
+        match event["reason"].as_str() {
+            Some("vault_unavailable") => Some("vault_unavailable"),
+            Some("unlock_failed") => Some("unlock_failed"),
+            Some("read_failed") => Some("read_failed"),
+            Some("invalid_file") => Some("invalid_file"),
+            Some("invalid_cleanup_intent") => Some("invalid_cleanup_intent"),
+            Some("session_binding_changed") => Some("session_binding_changed"),
+            Some("account_binding_changed") => Some("account_binding_changed"),
+            Some("invalid_saved_session") => Some("invalid_saved_session"),
+            Some("login_account_mismatch") => Some("login_account_mismatch"),
+            Some("not_authorized") => Some("not_authorized"),
+            Some("not_authenticated") => Some("not_authenticated"),
+            Some("event_stream_not_connected") => Some("event_stream_not_connected"),
+            Some("stream_connect_timeout") => Some("stream_connect_timeout"),
+            Some("stream_connect_failed") => Some("stream_connect_failed"),
+            Some("stream_ended") => Some("stream_ended"),
+            Some("invalid_event_stream") => Some("invalid_event_stream"),
+            Some("invalid_stream_cursor") => Some("invalid_stream_cursor"),
+            Some("cleanup_pending") => Some("cleanup_pending"),
+            Some("cleanup_unconfirmed") => Some("cleanup_unconfirmed"),
+            Some("cleanup_cancelled") => Some("cleanup_cancelled"),
+            Some("call_rejected") => Some("call_rejected"),
+            Some("invalid_call_response") => Some("invalid_call_response"),
+            Some("call_transport_failed") => Some("call_transport_failed"),
+            Some("network_error") => Some("network_error"),
+            Some("timeout") => Some("timeout"),
+            Some("cleanup_failed") => Some("cleanup_failed"),
+            _ => None,
+        }
+    } else {
+        None
+    };
     Snapshot {
         phase: if clean { "idle" } else { "failed" },
         cleanup_pending: !clean,
         cleanup_acknowledged: clean.then_some(acknowledged.unwrap_or(false)),
+        cleanup_reason: reason,
         end_completed: clean.then_some(true),
         error: (!clean).then_some("cleanup_unconfirmed"),
         ..Snapshot::default()
@@ -1210,6 +1251,28 @@ mod tests {
         assert_eq!(failed.phase, "failed");
         assert!(failed.cleanup_pending);
         assert_eq!(failed.error, Some("cleanup_unconfirmed"));
+    }
+
+    #[test]
+    fn cleanup_only_projects_allowlisted_reasons_from_unconfirmed_receipts() {
+        let mut event = json!({
+            "event": "closed", "endCompleted": false, "cleanupAcknowledged": false,
+            "cleanupPending": true, "reason": "unlock_failed"
+        });
+        let failed = cleanup_receipt(&event, true);
+        assert_eq!(failed.cleanup_reason, Some("unlock_failed"));
+        assert_eq!(
+            serde_json::to_value(failed).unwrap()["cleanupReason"],
+            "unlock_failed"
+        );
+        assert_eq!(cleanup_receipt(&event, false).cleanup_reason, None);
+        event["reason"] = json!("private response");
+        assert_eq!(cleanup_receipt(&event, true).cleanup_reason, None);
+
+        event["reason"] = json!("timeout");
+        event["endCompleted"] = json!(true);
+        event["cleanupPending"] = json!(false);
+        assert_eq!(cleanup_receipt(&event, true).cleanup_reason, None);
     }
 
     #[test]

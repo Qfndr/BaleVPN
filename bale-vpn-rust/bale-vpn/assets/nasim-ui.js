@@ -23,6 +23,10 @@ const labels = {
     cleanup:'پاک‌سازی تماس قبلی هنوز تأیید نشده است.',
     recoverCleanup:'پاک‌سازی تماس ثبت‌شده',cleanupConfirmed:'سرویس پایان تماس ثبت‌شده را تأیید کرد.',
     noCleanup:'رکورد پاک‌سازی در این جایگاه وجود ندارد.',cleanupKitRequired:'پاک‌سازی جداگانه به کیت سازگار نسیم نیاز دارد.',
+    cleanupUnlock:'باز کردن مخزن ممکن نشد. رمز مخزن را بررسی کنید.',
+    cleanupBinding:'نشست با حساب ثبت‌شده در رکورد پاک‌سازی مطابقت ندارد.',
+    cleanupStream:'ارتباط با جریان اعلان‌های نسیم برقرار نشد.',
+    cleanupAck:'سرویس پایان همان تماس را تأیید نکرد.',
     termination:{
       bye:'طرف مقابل تماس را پایان داد.',reject:'تماس رد شد.',busy:'حساب طرف مقابل مشغول بود.',
       other_device:'تماس در دستگاه دیگری پاسخ داده شد.',media_failure:'مسیر رسانه از دسترس خارج شد.',
@@ -57,6 +61,10 @@ const labels = {
     cleanup:'Cleanup of the previous call is still unconfirmed.',
     recoverCleanup:'Clean up recorded call',cleanupConfirmed:'The service acknowledged the recorded call’s end.',
     noCleanup:'There is no cleanup record in this slot.',cleanupKitRequired:'Separate cleanup requires a compatible Nasim kit.',
+    cleanupUnlock:'Could not unlock the vault. Check its password.',
+    cleanupBinding:'The session does not match the account in the cleanup record.',
+    cleanupStream:'Could not connect to the Nasim event stream.',
+    cleanupAck:'The service did not acknowledge the end of the recorded call.',
     termination:{
       bye:'The peer ended the call.',reject:'The call was declined.',busy:'The peer account was busy.',
       other_device:'The call was answered on another device.',media_failure:'The media path became unavailable.',
@@ -78,6 +86,13 @@ const activePhases = new Set(['starting','prepared','ready','incoming','outgoing
 const liveCallPhases = new Set(['incoming','outgoing','dialing','negotiating','connected']);
 const badPhases = new Set(['failed','uncertain']);
 const terminalPhases = new Set([...badPhases,'ended']);
+const cleanupDetails = new Map([
+  ['unlock_failed','cleanupUnlock'],
+  ['account_binding_changed','cleanupBinding'],['session_binding_changed','cleanupBinding'],
+  ['event_stream_not_connected','cleanupStream'],['stream_connect_failed','cleanupStream'],
+  ['stream_connect_timeout','cleanupStream'],['stream_ended','cleanupStream'],
+  ['cleanup_unconfirmed','cleanupAck']
+]);
 const hexCertificate = /^(?:[a-f0-9]{2}){64,8192}$/;
 let prefs = {language:'fa',theme:'system'};
 let lang = 'fa', csrf = '', configured = false, busy = false, pollTask = null;
@@ -209,7 +224,8 @@ function render() {
   const termination = terminalPhases.has(state.phase) && typeof state.termination === 'string' &&
     Object.hasOwn(reasons,state.termination) ? reasons[state.termination] : null;
   const durationLabel = [300,900].includes(state.callLimitSeconds) ? tr('duration' + state.callLimitSeconds) : null;
-  $('detail').textContent = cleanupUnconfirmed ? tr('cleanup') : termination ??
+  const cleanupDetail = cleanupDetails.get(state.cleanupReason);
+  $('detail').textContent = cleanupUnconfirmed ? tr(cleanupDetail ?? 'cleanup') : termination ??
     (authenticated ? tr('route') : durationLabel ? tr('callDuration') + ' · ' + durationLabel : tr('limits'));
   const proxyReady = authenticated && state.proxyReady === true && role === 'client' &&
     Number.isInteger(state.proxyPort) && state.proxyPort >= 1024 && state.proxyPort <= 65535;
