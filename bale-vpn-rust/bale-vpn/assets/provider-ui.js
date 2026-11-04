@@ -21,6 +21,18 @@ Object.assign(copy.en,{
  trustedHelpLabel:'Trusted account help',loginHelpLabel:'Sign-in help',privacyHelpLabel:'Call privacy help',
  countrySelect:'Choose country',countrySearch:'Search countries'
 });
+Object.assign(copy.fa,{
+ copyPairingCard:'کپی کارت عمومی',pairingCard:'کارت عمومی طرف مقابل',reviewPairingCard:'بازبینی کارت',
+ reviewPeer:'شناسهٔ حساب کارت',pairingCardInvalid:'کارت عمومی آی‌گپ معتبر نیست.',
+ pairingCardReviewed:'شناسه و کد عمومی را بررسی کنید، سپس جفت‌سازی را ذخیره کنید.',
+ pairingCardCopyFallback:'کارت انتخاب شد. آن را کپی کنید.'
+});
+Object.assign(copy.en,{
+ copyPairingCard:'Copy public pairing card',pairingCard:'Peer public pairing card',reviewPairingCard:'Review card',
+ reviewPeer:'Card account ID',pairingCardInvalid:'The iGap public pairing card is invalid.',
+ pairingCardReviewed:'Review the account ID and public code, then save pairing.',
+ pairingCardCopyFallback:'The card is selected. Copy it now.'
+});
 const errorKeys={call_cleanup_failed:['تماس قبلی کامل بسته نشد؛ اتصال متوقف شد.','The previous call did not close completely. Connection stopped.'],account_busy:['حساب مشغول است؛ کمی صبر کنید.','Account is busy. Please wait.'],provider_not_configured:['شناسهٔ طرف مقابل و جفت‌سازی را کامل کنید.','Complete the peer ID and pairing settings.'],invalid_provider_peer:['شناسهٔ حساب معتبر نیست.','Invalid account ID.'],invalid_provider_port:['پورت باید بین ۱۰۲۴ و ۶۵۵۳۵ باشد.','Port must be between 1024 and 65535.'],invalid_provider_trust:['کد عمومی طرف مقابل معتبر نیست.','Invalid peer public code.'],not_authenticated:['ابتدا وارد حساب شوید یا نشست را بازیابی کنید.','Sign in or restore the saved session first.'],session_exists:['نشست موجود است؛ آن را بازیابی کنید.','A session already exists. Restore it instead.'],session_save_failed:['نشست وارد شده، ولی ذخیره نشده است. ذخیرهٔ دوباره را بزنید.','Signed in, but the session was not saved. Retry saving it.'],invalid_code:['کد ورود درست نیست.','Incorrect verification code.'],code_expired:['کد ورود منقضی شده است.','Verification code expired.'],invalid_password:['رمز دومرحله‌ای درست نیست.','Incorrect two-step password.'],service_rejected:['سرویس درخواست را نپذیرفت.','The service rejected this request.'],timeout:['سرویس در زمان مقرر پاسخ نداد.','The service did not respond in time.'],call_ended:['تماس پایان یافت.','The call ended.'],media_disconnected:['مسیر رسانه قطع شد.','The media connection ended.'],session_restore_failed:['بازیابی نشست موفق نبود.','Could not restore this session.'],invalid_input:['ورودی را بررسی کنید.','Check the supplied input.'],rate_limited:['تعداد درخواست‌ها زیاد است؛ بعداً تلاش کنید.','Too many requests. Please try later.']};
 Object.assign(errorKeys,{
  call_rejected:['طرف مقابل تماس را نپذیرفت. اجازهٔ تماس را بررسی کنید. اتصال خودکار متوقف شد.','The peer rejected the call. Check call permissions. Automatic retries stopped.'],
@@ -81,11 +93,28 @@ async function api(path,body){const opts={cache:'no-store',credentials:'same-ori
 async function action(id,work){if(busy)return;busy=true;updateButtons();try{await work();await poll(true);}catch(e){notice(id,errorText(e),'bad');}finally{busy=false;updateButtons();}}
 function saveAppearance(){clearTimeout(appearanceTimer);appearanceTimer=setTimeout(async()=>{if(!csrf)return;const allowed=['layout','language','theme','palette','font','size','width','density','corners','units','range','gradient','metrics','motion','accent'];const value=Object.fromEntries(Object.entries(prefs).filter(([key])=>allowed.includes(key)));try{await api('/appearance',value);}catch(e){notice('routeNotice',errorText(e),'bad');}},180);}
 function switchTab(name){for(const b of document.querySelectorAll('[data-tab]')){const selected=b.dataset.tab===name;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1;$('view-'+b.dataset.tab).hidden=!selected;}hideTip();}
-function updateButtons(){const active=state&&['calling','connecting','connected','listening','reconnecting'].includes(state.phase);for(const id of ['saveConfig','saveTrust','throughput','relayOnly','socksPort','peerId','trustedCodes'])$(id).disabled=busy||!!active;for(const b of document.querySelectorAll('[data-role]'))b.disabled=busy||!!active;for(const id of ['connect','logout','checkPrivacy','allowCalls','retrySave','restore'])$(id).disabled=busy;$('connect').disabled=busy||!state?.hasSession||state?.credentialsSaved===false||!!active||['code','password','profile_required','requesting','authenticating','restoring'].includes(state?.authStage);$('disconnect').disabled=busy||!active;$('autoReconnect').disabled=busy;$('autoReconnect').hidden=role!=='client';$('sendCode').disabled=busy||Number(state?.retryAfterSeconds)>0;const left=Number(state?.retryAfterSeconds)||0;$('sendCode').textContent=left>0?(lang==='fa'?`تلاش دوباره: ${left} ثانیه`:`Try again in ${left}s`):t('requestCode');for(const form of ['codeForm','passwordForm','profileForm'])for(const b of $(form).querySelectorAll('button'))b.disabled=busy;}
+const cardLimit=16640;
+const cardCode=value=>typeof value==='string'&&value.length%2===0&&/^[a-f0-9]{128,16384}$/.test(value);
+const cardId=value=>typeof value==='string'&&/^[1-9][0-9]{0,19}$/.test(value)&&BigInt(value)<=18446744073709551615n;
+let cardReviewPending=false;
+function ownCard(){
+ const accountId=state?.account?.userId,publicCode=state?.publicCode;
+ return state?.authenticated===true&&cardId(accountId)&&cardCode(publicCode)
+  ?{format:1,provider:'igap',accountId,publicCode}:null;
+}
+function parsePairingCard(text){
+ if(text.length>cardLimit)throw Error('pairingCardInvalid');
+ let card;try{card=JSON.parse(text);}catch{throw Error('pairingCardInvalid');}
+ if(!card||typeof card!=='object'||Object.keys(card).sort().join(',')!=='accountId,format,provider,publicCode'||
+    card.format!==1||card.provider!=='igap'||!cardId(card.accountId)||!cardCode(card.publicCode)||
+    card.accountId===state?.account?.userId||card.publicCode===state?.publicCode)throw Error('pairingCardInvalid');
+ return card;
+}
+function updateButtons(){const active=state&&['calling','connecting','connected','listening','reconnecting'].includes(state.phase);for(const id of ['saveConfig','saveTrust','throughput','relayOnly','socksPort','peerId','trustedCodes','peerPairingCard','reviewPairingCard'])$(id).disabled=busy||!!active;for(const b of document.querySelectorAll('[data-role]'))b.disabled=busy||!!active;for(const id of ['connect','logout','checkPrivacy','allowCalls','retrySave','restore'])$(id).disabled=busy;const canCopyCard=!!ownCard();$('copyPairingCard').disabled=!canCopyCard;if(!canCopyCard){$('ownPairingCard').hidden=true;$('ownPairingCard').value='';}$('connect').disabled=busy||cardReviewPending||!state?.hasSession||state?.credentialsSaved===false||!!active||['code','password','profile_required','requesting','authenticating','restoring'].includes(state?.authStage);$('disconnect').disabled=busy||!active;$('autoReconnect').disabled=busy;$('autoReconnect').hidden=role!=='client';$('sendCode').disabled=busy||Number(state?.retryAfterSeconds)>0;const left=Number(state?.retryAfterSeconds)||0;$('sendCode').textContent=left>0?(lang==='fa'?`تلاش دوباره: ${left} ثانیه`:`Try again in ${left}s`):t('requestCode');for(const form of ['codeForm','passwordForm','profileForm'])for(const b of $(form).querySelectorAll('button'))b.disabled=busy;}
 function pickRole(value){role=value;for(const b of document.querySelectorAll('[data-role]'))b.setAttribute('aria-pressed',String(b.dataset.role===role));$('peerLabel').textContent=t(role==='server'?'clientId':'serverId');$('autoReconnect').hidden=role!=='client';}
 function fillConfig(value){config=value;pickRole(value.mode||'client');$('peerId').value=value.peerId||'';$('socksPort').value=value.socks5Port||18080;$('trustedCodes').value=(value.trustedCertificates||[]).join('\n');$('throughput').setAttribute('aria-checked',String(!!value.throughput));$('relayOnly').setAttribute('aria-checked',String(!!value.relayOnly));$('autoReconnect').setAttribute('aria-checked',String(!!value.autoReconnect));dirty=false;}
 function configInput(){const port=Number($('socksPort').value),peer=$('peerId').value.trim(),trusted=$('trustedCodes').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);if(!/^[1-9][0-9]{0,19}$/.test(peer)||!Number.isInteger(port)||port<1024||port>65535)throw Error('configInvalid');if(trusted.length>8||trusted.some(s=>!/^[a-f0-9]{128,16384}$/.test(s)||s.length%2))throw Error('pairInvalid');return {format:1,provider:'igap',mode:role,peerId:peer,socks5Port:port,trustedCertificates:[...new Set(trusted)],throughput:$('throughput').getAttribute('aria-checked')==='true',relayOnly:$('relayOnly').getAttribute('aria-checked')==='true',autoReconnect:$('autoReconnect').getAttribute('aria-checked')==='true'};}
-async function saveConfig(id){const value=configInput();await api('/config',value);config=value;dirty=false;notice(id,t('saved'));}
+async function saveConfig(id){const value=configInput();await api('/config',value);config=value;dirty=false;cardReviewPending=false;$('pairingReview').hidden=true;notice(id,t('saved'));}
 function bytes(n,rate=false){if(!Number.isFinite(n)||n<0)return '—';const units=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<units.length-1){n/=1024;i++;}return `${n>=100?Math.round(n):n.toFixed(i?1:0)} ${units[i]}${rate?'/s':''}`;}
 function duration(ms){const seconds=Math.floor(Math.max(0,ms)/1000),h=Math.floor(seconds/3600),m=Math.floor(seconds/60)%60,s=seconds%60;return [h,m,s].map(n=>String(n).padStart(2,'0')).join(':');}
 function metricSample(value){const now=performance.now(),wall=Date.now(),rx=Number(value.traffic?.receivedBytes),tx=Number(value.traffic?.sentBytes),connected=value.peerAuthenticated===true;if(!connected){lastSample=null;startedAt=null;$('downloadRate').textContent='—';$('uploadRate').textContent='—';$('duration').textContent='—';return;}if(startedAt===null){startedAt=now;points=[];}let down=null,up=null;if(lastSample&&now>lastSample.time&&rx>=lastSample.rx&&tx>=lastSample.tx){const dt=(now-lastSample.time)/1000;down=(rx-lastSample.rx)/dt;up=(tx-lastSample.tx)/dt;}if(Number.isFinite(rx)&&Number.isFinite(tx)){lastSample={time:now,rx,tx};if(down!==null){points.push({time:wall,down,up,rtt:Number.isFinite(value.metrics?.rttMs)?value.metrics.rttMs:null});if(points.length>60)points.shift();}$('received').textContent=bytes(rx);$('sent').textContent=bytes(tx);}$('downloadRate').textContent=bytes(down,true);$('uploadRate').textContent=bytes(up,true);$('duration').textContent=duration(now-startedAt);}
@@ -111,8 +140,29 @@ $('language').onclick=()=>{prefs.language=lang==='fa'?'en':'fa';appearance();sav
 for(const b of document.querySelectorAll('[data-tab]'))b.onclick=()=>switchTab(b.dataset.tab);for(const b of document.querySelectorAll('[data-role]'))b.onclick=()=>{pickRole(b.dataset.role);dirty=true;};for(const id of ['throughput','relayOnly'])$(id).onclick=()=>{$(id).setAttribute('aria-checked',String($(id).getAttribute('aria-checked')!=='true'));dirty=true;};for(const id of ['peerId','socksPort','trustedCodes'])$(id).addEventListener('input',()=>{dirty=true;});
 for(const b of document.querySelectorAll('[data-tab]'))b.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const tabs=[...document.querySelectorAll('[data-tab]')],index=tabs.indexOf(b),delta=(e.key==='ArrowRight'?1:-1)*(lang==='fa'?-1:1),next=tabs[e.key==='Home'?0:e.key==='End'?tabs.length-1:(index+delta+tabs.length)%tabs.length];switchTab(next.dataset.tab);next.focus();});
 $('autoReconnect').onclick=()=>action('routeNotice',async()=>{const enabled=$('autoReconnect').getAttribute('aria-checked')!=='true';await api('/auto-reconnect',{enabled});if(config)config.autoReconnect=enabled;});
-$('connectionForm').onsubmit=e=>{e.preventDefault();action('routeNotice',()=>saveConfig('routeNotice'));};$('saveTrust').onclick=()=>action('securityNotice',()=>saveConfig('securityNotice'));$('connect').onclick=()=>action('routeNotice',async()=>{if(dirty)await saveConfig('routeNotice');await api('/connect',{});notice('routeNotice','');});$('disconnect').onclick=()=>action('routeNotice',async()=>{await api('/disconnect',{});notice('routeNotice','');});
+$('connectionForm').onsubmit=e=>{e.preventDefault();action('routeNotice',()=>saveConfig('routeNotice'));};$('saveTrust').onclick=()=>action('securityNotice',()=>saveConfig('securityNotice'));$('connect').onclick=()=>action('routeNotice',async()=>{if(cardReviewPending)throw Error('pairingCardReviewed');if(dirty)await saveConfig('routeNotice');await api('/connect',{});notice('routeNotice','');});$('disconnect').onclick=()=>action('routeNotice',async()=>{await api('/disconnect',{});notice('routeNotice','');});
 $('phoneForm').onsubmit=e=>{e.preventDefault();action('accountNotice',async()=>{await api('/auth/start',phoneInput());notice('accountNotice',t('codeRequested'));});};$('codeForm').onsubmit=e=>{e.preventDefault();action('accountNotice',async()=>{const value=digits($('code').value).trim();try{await api('/auth/verify',{code:value});notice('accountNotice','');}finally{$('code').value='';}});};$('passwordForm').onsubmit=e=>{e.preventDefault();action('accountNotice',async()=>{const password=$('password').value;$('password').value='';await api('/auth/password',{password});notice('accountNotice','');});};$('profileForm').onsubmit=e=>{e.preventDefault();action('accountNotice',async()=>{await api('/auth/profile',{name:$('profileName').value.trim()});notice('accountNotice','');});};
+$('copyPairingCard').onclick=async()=>{
+ const card=ownCard();if(!card)return;
+ const text=JSON.stringify(card),output=$('ownPairingCard');
+ try{await navigator.clipboard.writeText(text);notice('securityNotice',t('copied'));}
+ catch{if(JSON.stringify(ownCard())!==text)return;output.value=text;output.hidden=false;output.select();notice('securityNotice',t('pairingCardCopyFallback'));}
+};
+$('reviewPairingCard').onclick=()=>{
+ if($('reviewPairingCard').disabled)return;
+ try{
+  const card=parsePairingCard($('peerPairingCard').value);
+  $('peerId').value=card.accountId;
+  $('trustedCodes').value=card.publicCode;
+  $('pairingReviewId').textContent=card.accountId;
+  $('pairingReview').hidden=false;
+  $('peerPairingCard').value='';
+  cardReviewPending=true;
+  dirty=true;
+  updateButtons();
+  notice('securityNotice',t('pairingCardReviewed'));
+ }catch(e){notice('securityNotice',errorText(e),'bad');}
+};
 $('retrySave').onclick=()=>action('accountNotice',()=>api('/session/save',{}));if($('restore'))$('restore').onclick=()=>action('accountNotice',()=>api('/session/restore',{}));$('logout').onclick=()=>{if(confirm(t('logoutConfirm')))action('accountNotice',()=>api('/logout',{}));};$('copyCode').onclick=async()=>{try{await navigator.clipboard.writeText(state?.publicCode||'');notice('securityNotice',t('copied'));}catch{notice('securityNotice',t('noClipboard'),'bad');}};
 $('checkPrivacy').onclick=()=>action('privacyNotice',()=>checkCallPrivacy());$('allowCalls').onclick=()=>action('privacyNotice',()=>checkCallPrivacy(true));
 $('countryButton').onclick=()=>{const open=$('countryMenu').hidden;$('countryMenu').hidden=!open;$('countryButton').setAttribute('aria-expanded',String(open));if(open){$('countrySearch').value='';renderCountries();$('countrySearch').focus();}};$('countrySearch').oninput=renderCountries;$('phone').addEventListener('input',inferPhone);document.addEventListener('pointerdown',e=>{if(!e.target.closest('.phone')){$('countryMenu').hidden=true;$('countryButton').setAttribute('aria-expanded','false');}});document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('countryMenu').hidden=true;$('countryButton').setAttribute('aria-expanded','false');hideTip();}});

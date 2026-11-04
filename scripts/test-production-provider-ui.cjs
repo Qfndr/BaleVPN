@@ -42,7 +42,43 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
   await page.locator('#phone').fill('+989120000000');await page.locator('#sendCode').click();await page.waitForFunction(()=>!document.getElementById('codeForm').hidden);
   assert.deepEqual(requests.find(r=>r.route==='/auth/start').body,{country:'IR',nationalNumber:'9120000000',internationalNumber:'+989120000000',registrationProfile:'web-v3-compat'});
   await page.locator('#code').fill('123456');await page.locator('#codeForm button').click();await page.waitForFunction(()=>!document.getElementById('profileForm').hidden);assert.equal(await page.locator('#loginPanel').isVisible(),true);await page.locator('#profileName').fill('Test User');await page.locator('#profileForm button').click();await page.waitForFunction(()=>document.getElementById('profileForm').hidden);assert.equal(await page.locator('#code').inputValue(),'');assert.equal(await page.locator('#accountDevice').innerText(),'Desktop fixture');
-  await page.locator('#tab-connect').click();await page.locator('#peerId').fill('1002');const switches=await Promise.all(['throughput','relayOnly'].map(id=>page.locator('#'+id).boundingBox()));assert.ok(Math.abs(switches[0].y-switches[1].y)<1,'desktop switches share one row');assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'false');await page.locator('#relayOnly').click();await page.locator('#tab-security').click();await page.locator('#trustedCodes').fill('30'.repeat(200));await page.locator('#saveTrust').click();await page.waitForFunction(()=>document.getElementById('securityNotice').textContent.length>0);
+  await page.locator('#tab-security').click();
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedPairingCard=text;}}}));
+  await page.locator('#copyPairingCard').click();
+  assert.deepEqual(await page.evaluate(()=>JSON.parse(window.copiedPairingCard)),{format:1,provider:'igap',accountId:'1001',publicCode:state.publicCode});
+  await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async()=>{throw Error('fixture');}}}));
+  await page.locator('#copyPairingCard').click();
+  await page.locator('#ownPairingCard').waitFor();
+  assert.deepEqual(JSON.parse(await page.locator('#ownPairingCard').inputValue()),{format:1,provider:'igap',accountId:'1001',publicCode:state.publicCode});
+  const peerCard={format:1,provider:'igap',accountId:'1002',publicCode:'31'.repeat(200)};
+  const previousWrites=requests.filter(r=>r.route==='/config').length;
+  const cardField=page.locator('#peerPairingCard');
+  for(const bad of [
+    JSON.stringify({...peerCard,provider:'nasim'}),
+    JSON.stringify({...peerCard,accountId:'1001'}),
+    JSON.stringify({...peerCard,publicCode:state.publicCode}),
+    JSON.stringify({...peerCard,accountId:'18446744073709551616'}),
+    JSON.stringify({...peerCard,unexpected:'fixture-secret'}),
+    'x'.repeat(16641)
+  ]){
+    await cardField.evaluate((node,text)=>{node.value=text;},bad);
+    await page.locator('#reviewPairingCard').click();
+    assert.match(await page.locator('#securityNotice').innerText(),/معتبر نیست/);
+    assert.equal(await page.locator('#peerId').inputValue(),'');
+    assert.equal(await page.locator('#trustedCodes').inputValue(),'');
+  }
+  await cardField.fill(JSON.stringify(peerCard));
+  await page.locator('#reviewPairingCard').click();
+  assert.equal(await page.locator('#pairingReviewId').innerText(),'1002');
+  assert.equal(await page.locator('#peerId').inputValue(),'1002');
+  assert.equal(await page.locator('#trustedCodes').inputValue(),peerCard.publicCode);
+  assert.equal(await page.locator('#connect').isDisabled(),true);
+  assert.equal(requests.filter(r=>r.route==='/config').length,previousWrites);
+  await page.locator('#saveTrust').click();
+  await page.waitForFunction(()=>document.getElementById('pairingReview').hidden);
+  assert.equal(config.peerId,'1002');
+  assert.deepEqual(config.trustedCertificates,[peerCard.publicCode]);
+  await page.locator('#tab-connect').click();await page.locator('#peerId').fill('1002');const switches=await Promise.all(['throughput','relayOnly'].map(id=>page.locator('#'+id).boundingBox()));assert.ok(Math.abs(switches[0].y-switches[1].y)<1,'desktop switches share one row');assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'false');await page.locator('#relayOnly').click();await page.locator('#tab-security').click();await page.locator('#trustedCodes').fill('30'.repeat(200));const manualSaved=page.waitForResponse(r=>r.url().endsWith('/config')&&r.request().method()==='POST');await page.locator('#saveTrust').click();await manualSaved;
   assert.equal(config.relayOnly,true);await page.reload();await page.waitForFunction(()=>document.getElementById('relayOnly').getAttribute('aria-checked')==='true');await page.locator('#tab-connect').click();await page.locator('#connect').click();await page.waitForFunction(()=>document.getElementById('statusText').textContent.includes('رمزگذاری'));await page.waitForFunction(()=>document.querySelectorAll('#chart path').length===2);
   assert.equal(await page.locator('#relayOnly').isDisabled(),true);assert.equal(await page.locator('#throughput').isDisabled(),true);assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'true');assert.equal(await page.locator('#autoReconnect').isEnabled(),true);await page.locator('#autoReconnect').click();await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='true');assert.equal(config.autoReconnect,true);await page.locator('#autoReconnect').click();await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='false');assert.equal(state.phase,'connected');assert.equal(await page.locator('#packetLoss').innerText(),'1.0%');assert.equal(await page.locator('#rtt').innerText(),'48 ms');
   const box=await page.locator('#chart').boundingBox();await page.mouse.move(box.x+box.width*.6,box.y+box.height*.5);assert.equal(await page.locator('#chartTip').isVisible(),true);assert.match(await page.locator('#chartTip').innerText(),/دانلود/);
@@ -51,7 +87,7 @@ const assets=path.resolve(__dirname,'../bale-vpn-rust/bale-vpn/assets');
   await page.locator('#autoReconnect').click();await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='true');await page.reload();await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='true');await page.locator('#tab-connect').click();
   Object.assign(state,{phase:'reconnecting',reconnecting:true,reconnectAfterSeconds:7});await page.waitForFunction(()=>document.getElementById('statusText').textContent.includes('7s'));assert.equal(await page.locator('#connect').isDisabled(),true);assert.equal(await page.locator('#autoReconnect').isEnabled(),true);await page.locator('#autoReconnect').click();await page.waitForFunction(()=>document.getElementById('autoReconnect').getAttribute('aria-checked')==='false');assert.equal(state.phase,'stopped');assert.equal(requests.filter(r=>r.route==='/connect').length,1);
 
-  await page.locator('#language').click();const appearanceSaved=page.waitForResponse(r=>r.url().endsWith('/appearance')&&r.request().method()==='POST');await page.locator('#theme').click();await appearanceSaved;const theme=await page.locator('html').getAttribute('data-theme');await page.evaluate(()=>localStorage.removeItem('bale_appearance'));await page.reload();await page.waitForFunction(()=>document.documentElement.lang==='en');assert.equal(await page.locator('html').getAttribute('data-theme'),theme);assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'true');assert.match(await page.locator('#relayOnly').innerText(),/TURN/);
+  await page.locator('#language').click();const appearanceSaved=page.waitForResponse(r=>r.url().endsWith('/appearance')&&r.request().method()==='POST');await page.locator('#theme').click();await appearanceSaved;const theme=await page.locator('html').getAttribute('data-theme');await page.evaluate(()=>localStorage.removeItem('bale_appearance'));await page.reload();await page.waitForFunction(()=>document.documentElement.lang==='en');assert.equal(await page.locator('html').getAttribute('data-theme'),theme);assert.equal(await page.locator('#relayOnly').getAttribute('aria-checked'),'true');assert.match(await page.locator('#relayOnly').innerText(),/TURN/);assert.equal(await page.locator('#copyPairingCard').textContent(),'Copy public pairing card');
   for(const width of [360,768,1280]){await page.setViewportSize({width,height:900});for(const tab of ['connect','security','account']){await page.locator('#tab-'+tab).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'overflow '+width+' '+tab);if(width===360&&tab==='connect'){const boxes=await Promise.all(['throughput','relayOnly'].map(id=>page.locator('#'+id).boundingBox()));assert.ok(boxes[1].y>=boxes[0].y+boxes[0].height,'narrow switches stack without overlap');}}}
   await page.locator('#tab-account').click();await page.locator('#checkPrivacy').click();await page.waitForFunction(()=>document.getElementById('privacyValue').textContent==='Call privacy retrieved');
   assert.equal(await page.locator('body').innerText().then(t=>t.includes(token)),false);assert.equal(await page.evaluate(()=>JSON.stringify(localStorage).includes('123456')),false);
